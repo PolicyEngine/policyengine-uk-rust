@@ -74,6 +74,8 @@ struct Cli {
 struct JsonOutput {
     fiscal_year: String,
     budgetary_impact: BudgetaryImpact,
+    program_breakdown: ProgramBreakdown,
+    caseloads: Caseloads,
     decile_impacts: Vec<DecileImpact>,
     winners_losers: WinnersLosers,
 }
@@ -87,6 +89,41 @@ struct BudgetaryImpact {
     reform_benefits: f64,
     benefit_spending_change: f64,
     net_cost: f64,
+}
+
+#[derive(Serialize)]
+struct ProgramBreakdown {
+    income_tax: f64,
+    employee_ni: f64,
+    employer_ni: f64,
+    universal_credit: f64,
+    child_benefit: f64,
+    state_pension: f64,
+    pension_credit: f64,
+    housing_benefit: f64,
+    child_tax_credit: f64,
+    working_tax_credit: f64,
+    income_support: f64,
+    council_tax_reduction: f64,
+    scottish_child_payment: f64,
+    benefit_cap_reduction: f64,
+}
+
+#[derive(Serialize)]
+struct Caseloads {
+    income_tax_payers: f64,
+    ni_payers: f64,
+    employer_ni_payers: f64,
+    universal_credit: f64,
+    child_benefit: f64,
+    state_pension: f64,
+    pension_credit: f64,
+    housing_benefit: f64,
+    child_tax_credit: f64,
+    working_tax_credit: f64,
+    income_support: f64,
+    scottish_child_payment: f64,
+    benefit_cap_affected: f64,
 }
 
 #[derive(Serialize)]
@@ -259,6 +296,106 @@ fn main() -> anyhow::Result<()> {
         avg_loss: if losers > 0.0 { (total_loss.abs() / losers).round() } else { 0.0 },
     };
 
+    // Program-level breakdown and caseloads (weighted totals from baseline)
+    let benunits = &dataset.benunits;
+    let (program_breakdown, caseloads) = {
+        // Tax spending and caseloads
+        let mut income_tax = 0.0f64;
+        let mut employee_ni = 0.0f64;
+        let mut employer_ni = 0.0f64;
+        let mut it_payers = 0.0f64;
+        let mut ni_payers = 0.0f64;
+        let mut eni_payers = 0.0f64;
+        for hh in households {
+            for &pid in &hh.person_ids {
+                let pr = &baseline.person_results[pid];
+                income_tax += hh.weight * pr.income_tax;
+                employee_ni += hh.weight * pr.national_insurance;
+                employer_ni += hh.weight * pr.employer_ni;
+                if pr.income_tax > 0.0 { it_payers += hh.weight; }
+                if pr.national_insurance > 0.0 { ni_payers += hh.weight; }
+                if pr.employer_ni > 0.0 { eni_payers += hh.weight; }
+            }
+        }
+        // Benefit spending and caseloads
+        let mut uc = 0.0f64;
+        let mut cb = 0.0f64;
+        let mut sp = 0.0f64;
+        let mut pc = 0.0f64;
+        let mut hb = 0.0f64;
+        let mut ctc = 0.0f64;
+        let mut wtc = 0.0f64;
+        let mut is_val = 0.0f64;
+        let mut ctr = 0.0f64;
+        let mut scp = 0.0f64;
+        let mut cap = 0.0f64;
+        let mut cl_uc = 0.0f64;
+        let mut cl_cb = 0.0f64;
+        let mut cl_sp = 0.0f64;
+        let mut cl_pc = 0.0f64;
+        let mut cl_hb = 0.0f64;
+        let mut cl_ctc = 0.0f64;
+        let mut cl_wtc = 0.0f64;
+        let mut cl_is = 0.0f64;
+        let mut cl_scp = 0.0f64;
+        let mut cl_cap = 0.0f64;
+        for bu in benunits {
+            let w = households[bu.household_id].weight;
+            let br = &baseline.benunit_results[bu.id];
+            uc += w * br.universal_credit;
+            cb += w * br.child_benefit;
+            sp += w * br.state_pension;
+            pc += w * br.pension_credit;
+            hb += w * br.housing_benefit;
+            ctc += w * br.child_tax_credit;
+            wtc += w * br.working_tax_credit;
+            is_val += w * br.income_support;
+            ctr += w * br.council_tax_reduction;
+            scp += w * br.scottish_child_payment;
+            cap += w * br.benefit_cap_reduction;
+            if br.universal_credit > 0.0 { cl_uc += w; }
+            if br.child_benefit > 0.0 { cl_cb += w; }
+            if br.state_pension > 0.0 { cl_sp += w; }
+            if br.pension_credit > 0.0 { cl_pc += w; }
+            if br.housing_benefit > 0.0 { cl_hb += w; }
+            if br.child_tax_credit > 0.0 { cl_ctc += w; }
+            if br.working_tax_credit > 0.0 { cl_wtc += w; }
+            if br.income_support > 0.0 { cl_is += w; }
+            if br.scottish_child_payment > 0.0 { cl_scp += w; }
+            if br.benefit_cap_reduction > 0.0 { cl_cap += w; }
+        }
+        (ProgramBreakdown {
+            income_tax,
+            employee_ni,
+            employer_ni,
+            universal_credit: uc,
+            child_benefit: cb,
+            state_pension: sp,
+            pension_credit: pc,
+            housing_benefit: hb,
+            child_tax_credit: ctc,
+            working_tax_credit: wtc,
+            income_support: is_val,
+            council_tax_reduction: ctr,
+            scottish_child_payment: scp,
+            benefit_cap_reduction: cap,
+        }, Caseloads {
+            income_tax_payers: it_payers,
+            ni_payers,
+            employer_ni_payers: eni_payers,
+            universal_credit: cl_uc,
+            child_benefit: cl_cb,
+            state_pension: cl_sp,
+            pension_credit: cl_pc,
+            housing_benefit: cl_hb,
+            child_tax_credit: cl_ctc,
+            working_tax_credit: cl_wtc,
+            income_support: cl_is,
+            scottish_child_payment: cl_scp,
+            benefit_cap_affected: cl_cap,
+        })
+    };
+
     // JSON output mode
     if json_mode {
         let output = JsonOutput {
@@ -272,6 +409,8 @@ fn main() -> anyhow::Result<()> {
                 benefit_spending_change: benefit_change,
                 net_cost,
             },
+            program_breakdown,
+            caseloads,
             decile_impacts,
             winners_losers,
         };

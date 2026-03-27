@@ -493,53 +493,16 @@ fn calculate_income_support(
 /// Council Tax Reduction (Council Tax Support).
 ///
 /// CTR = max(0, council_tax - max(0, (income - applicable_amount) * 20%))
+/// Council Tax Reduction is administered at local authority level with varying schemes.
+/// We do not model it nationally — return 0.0 (could be extended to use reported amounts).
 fn calculate_council_tax_reduction(
-    bu: &BenUnit,
-    people: &[Person],
+    _bu: &BenUnit,
+    _people: &[Person],
     _person_results: &[PersonResult],
-    household: &Household,
-    params: &Parameters,
+    _household: &Household,
+    _params: &Parameters,
 ) -> f64 {
-    let ctr = match &params.council_tax_reduction {
-        Some(ctr) => ctr,
-        None => return 0.0,
-    };
-
-    let council_tax = household.council_tax;
-    if council_tax <= 0.0 {
-        return 0.0;
-    }
-
-    let is_couple = bu.is_couple(people);
-    let eldest_age = bu.eldest_adult_age(people);
-    let num_children = bu.num_children(people);
-
-    let personal_allowance_weekly = if is_couple {
-        ctr.personal_allowance_couple
-    } else if eldest_age >= 25.0 {
-        ctr.personal_allowance_single_25_plus
-    } else {
-        ctr.personal_allowance_single_under25
-    };
-
-    let family_premium_weekly = if num_children > 0 { ctr.family_premium } else { 0.0 };
-    let child_allowance_weekly = ctr.child_allowance * num_children as f64;
-
-    let applicable_amount = (personal_allowance_weekly + family_premium_weekly + child_allowance_weekly) * 52.0;
-
-    let income: f64 = bu.person_ids.iter()
-        .map(|&pid| {
-            let p = &people[pid];
-            p.employment_income + p.self_employment_income
-                + p.pension_income + p.state_pension_reported
-                + p.savings_interest_income + p.other_income
-        })
-        .sum();
-
-    let excess_income = (income - applicable_amount).max(0.0);
-    let reduction = excess_income * ctr.taper_rate;
-
-    (council_tax - reduction).max(0.0)
+    0.0
 }
 
 /// Scottish Child Payment: £26.70/week per eligible child under 16.
@@ -614,6 +577,23 @@ fn calculate_benefit_cap(
         .filter(|&&pid| people[pid].is_adult())
         .any(|&pid| people[pid].is_sp_age());
     if any_sp_age {
+        return 0.0;
+    }
+
+    // Exempt if anyone in the benunit receives disability benefits (PIP, DLA, AA)
+    // or carer's allowance or ESA support group
+    let any_disability_exempt = bu.person_ids.iter().any(|&pid| {
+        let p = &people[pid];
+        p.pip_dl_reported > 0.0
+            || p.pip_m_reported > 0.0
+            || p.dla_sc_reported > 0.0
+            || p.dla_m_reported > 0.0
+            || p.attendance_allowance_reported > 0.0
+            || p.carers_allowance_reported > 0.0
+            || p.esa_income_reported > 0.0
+            || p.esa_contrib_reported > 0.0
+    });
+    if any_disability_exempt {
         return 0.0;
     }
 
@@ -894,6 +874,7 @@ mod tests {
 
     #[test]
     fn test_council_tax_reduction() {
+        // CTR is LA-level, not nationally modelled — always returns 0
         let params = Parameters::for_year(2025).unwrap();
         let mut p = Person::default();
         p.age = 30.0;
@@ -915,10 +896,7 @@ mod tests {
             .map(|p| crate::variables::income_tax::calculate(p, &params))
             .collect();
         let result = calculate_benunit(&bu, &people, &pr, &hh, &params);
-        // Low earner below applicable amount should get full CTR
-        assert!(result.council_tax_reduction > 0.0,
-            "Low earner should get council tax reduction");
-        assert!(result.council_tax_reduction <= 1800.0,
-            "CTR should not exceed council tax");
+        assert_eq!(result.council_tax_reduction, 0.0,
+            "CTR is LA-level, not nationally modelled");
     }
 }

@@ -242,18 +242,22 @@ export default function Home() {
         )}
       </div>
 
-      {/* Loading bar */}
+      {/* Loading spinner */}
       {loading && (
-        <div style={{ height: 2, background: palette.border, overflow: "hidden" }}>
-          <div
-            style={{
-              height: "100%",
-              background: PRIMARY,
-              width: "100%",
-              animation: "pulse 1s ease-in-out infinite",
-            }}
-          />
-        </div>
+        <div
+          style={{
+            position: "fixed",
+            bottom: 20,
+            right: 20,
+            zIndex: 1000,
+            width: 36,
+            height: 36,
+            border: `3px solid ${palette.border}`,
+            borderTop: `3px solid ${PRIMARY}`,
+            borderRadius: "50%",
+            animation: "spin 0.8s linear infinite",
+          }}
+        />
       )}
 
       {/* Body */}
