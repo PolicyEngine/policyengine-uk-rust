@@ -71,6 +71,47 @@ pension_credit:
   savings_credit_threshold_single: 174.49
   savings_credit_threshold_couple: 277.12
 
+benefit_cap:
+  single_london: 15410.0
+  single_outside_london: 13400.0
+  non_single_london: 23000.0
+  non_single_outside_london: 20000.0
+  earnings_exemption_threshold: 7400.0
+
+housing_benefit:
+  withdrawal_rate: 0.65
+  personal_allowance_single_under25: 67.25
+  personal_allowance_single_25_plus: 84.80
+  personal_allowance_couple: 133.30
+  child_allowance: 77.78
+  family_premium: 17.85
+
+tax_credits:
+  wtc_basic_element: 2280.0
+  wtc_couple_element: 2340.0
+  wtc_lone_parent_element: 2340.0
+  wtc_30_hour_element: 950.0
+  ctc_child_element: 3235.0
+  ctc_family_element: 545.0
+  ctc_disabled_child_element: 3905.0
+  ctc_severely_disabled_child_element: 1575.0
+  income_threshold: 7455.0
+  taper_rate: 0.41
+  wtc_min_hours_single: 30.0
+  wtc_min_hours_couple: 24.0
+
+council_tax_reduction:
+  taper_rate: 0.20
+  personal_allowance_single_under25: 67.25
+  personal_allowance_single_25_plus: 84.80
+  personal_allowance_couple: 133.30
+  child_allowance: 77.78
+  family_premium: 17.85
+
+scottish_child_payment:
+  weekly_amount: 25.00
+  max_age: 16.0
+
 growth_factors:
   # OBR Economic and Fiscal Outlook, March 2026
   cpi_rate: 0.05670        # 5.670% CPI inflation (FY 2023/24)
