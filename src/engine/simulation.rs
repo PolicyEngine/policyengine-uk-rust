@@ -46,6 +46,10 @@ pub struct HouseholdResult {
     pub total_tax: f64,
     pub total_benefits: f64,
     pub gross_income: f64,
+    /// Modified OECD equivalisation factor for the household
+    pub equivalisation_factor: f64,
+    /// HBAI-definition equivalised net income BHC
+    pub equivalised_net_income: f64,
 }
 
 /// Complete simulation result set
@@ -117,11 +121,30 @@ impl Simulation {
                 .map(|&bid| benunit_results[bid].total_benefits)
                 .sum();
 
+            let net_income = gross - total_tax + total_benefits;
+
+            // Modified OECD equivalisation scale (used by HBAI):
+            // First adult: 0.67, additional adults (14+): 0.33, children (<14): 0.20
+            let mut adults = 0usize;
+            let mut children = 0usize;
+            for &pid in &hh.person_ids {
+                if self.people[pid].age >= 14.0 {
+                    adults += 1;
+                } else {
+                    children += 1;
+                }
+            }
+            let eq_factor = if adults == 0 { 1.0 } else {
+                0.67 + (adults.saturating_sub(1) as f64) * 0.33 + (children as f64) * 0.20
+            };
+
             HouseholdResult {
                 gross_income: gross,
                 total_tax,
                 total_benefits,
-                net_income: gross - total_tax + total_benefits,
+                net_income,
+                equivalisation_factor: eq_factor,
+                equivalised_net_income: net_income / eq_factor,
             }
         }).collect();
         household_results = hr;

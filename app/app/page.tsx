@@ -42,20 +42,26 @@ function buildReformOverlay(
     const base = baselineValues[slider.key];
     if (Math.abs(val - base) < slider.step * 0.5) continue;
 
-    if (slider.path[1] === "uk_brackets") {
-      if (!overlay["income_tax"]) overlay["income_tax"] = {};
-      const itOverlay = overlay["income_tax"] as Record<string, unknown>;
-      if (!itOverlay["uk_brackets"]) {
-        const baseIT = baselineParams["income_tax"] as Record<string, unknown>;
-        itOverlay["uk_brackets"] = JSON.parse(
-          JSON.stringify(baseIT["uk_brackets"])
+    const isBracketPath =
+      slider.path[1] === "uk_brackets" || slider.path[1] === "scottish_brackets";
+
+    if (isBracketPath) {
+      const section = slider.path[0];
+      const bracketKey = slider.path[1];
+      if (!overlay[section]) overlay[section] = {};
+      const sectionOverlay = overlay[section] as Record<string, unknown>;
+      if (!sectionOverlay[bracketKey]) {
+        const baseSection = baselineParams[section] as Record<string, unknown>;
+        sectionOverlay[bracketKey] = JSON.parse(
+          JSON.stringify(baseSection[bracketKey])
         );
       }
-      const brackets = itOverlay["uk_brackets"] as Array<
+      const brackets = sectionOverlay[bracketKey] as Array<
         Record<string, number>
       >;
       const idx = parseInt(slider.path[2]);
-      brackets[idx].rate = val;
+      const field = slider.path[3];
+      brackets[idx][field] = val;
     } else {
       const section = slider.path[0];
       if (!overlay[section]) overlay[section] = {};

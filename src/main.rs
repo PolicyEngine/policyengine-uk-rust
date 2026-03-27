@@ -201,9 +201,11 @@ fn main() -> anyhow::Result<()> {
     let benefit_change = reform_benefits - baseline_benefits;
     let net_cost = -revenue_change + benefit_change;
 
-    // Decile analysis
+    // Decile analysis — ranked by equivalised HBAI net income BHC (baseline)
     let mut hh_incomes: Vec<(usize, f64, f64)> = households.iter().map(|hh| {
-        (hh.id, baseline.household_results[hh.id].net_income, reformed.household_results[hh.id].net_income)
+        (hh.id,
+         baseline.household_results[hh.id].equivalised_net_income,
+         reformed.household_results[hh.id].equivalised_net_income)
     }).collect();
     hh_incomes.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
 
