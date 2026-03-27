@@ -1,0 +1,66 @@
+import { SliderConfig } from "./types";
+
+export const SLIDERS: SliderConfig[] = [
+  {
+    key: "personal_allowance",
+    label: "Personal Allowance",
+    section: "Income Tax",
+    path: ["income_tax", "personal_allowance"],
+    min: 0,
+    max: 25000,
+    step: 100,
+    format: "currency",
+  },
+  {
+    key: "basic_rate",
+    label: "Basic Rate",
+    section: "Income Tax",
+    path: ["income_tax", "uk_brackets", "0", "rate"],
+    min: 0,
+    max: 0.5,
+    step: 0.01,
+    format: "percent",
+  },
+  {
+    key: "higher_rate",
+    label: "Higher Rate",
+    section: "Income Tax",
+    path: ["income_tax", "uk_brackets", "1", "rate"],
+    min: 0,
+    max: 0.7,
+    step: 0.01,
+    format: "percent",
+  },
+  {
+    key: "additional_rate",
+    label: "Additional Rate",
+    section: "Income Tax",
+    path: ["income_tax", "uk_brackets", "2", "rate"],
+    min: 0,
+    max: 0.8,
+    step: 0.01,
+    format: "percent",
+  },
+  {
+    key: "ni_main_rate",
+    label: "Employee NI Rate",
+    section: "National Insurance",
+    path: ["national_insurance", "main_rate"],
+    min: 0,
+    max: 0.2,
+    step: 0.005,
+    format: "percent",
+  },
+  {
+    key: "uc_taper_rate",
+    label: "UC Taper Rate",
+    section: "Universal Credit",
+    path: ["universal_credit", "taper_rate"],
+    min: 0,
+    max: 1.0,
+    step: 0.01,
+    format: "percent",
+  },
+];
+
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
