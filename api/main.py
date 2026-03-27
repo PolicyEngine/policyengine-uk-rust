@@ -11,9 +11,15 @@ from pydantic import BaseModel
 
 app = FastAPI(title="PolicyEngine UK API")
 
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    # GitHub Pages frontend
+    "https://policyengine.github.io",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
