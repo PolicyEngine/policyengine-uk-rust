@@ -5,12 +5,15 @@ import ParameterSlider from "@/components/ParameterSlider";
 import DecileChart from "@/components/DecileChart";
 import BudgetarySummary from "@/components/BudgetarySummary";
 import WinnersLosers from "@/components/WinnersLosers";
-import { SLIDERS } from "@/lib/constants";
-import { palette, FF_MONO, FF_DISPLAY, FF_BODY } from "@/lib/theme";
-import { fetchBaseline, fetchParameters, runSimulation } from "@/lib/api";
+import { SLIDERS, SECTIONS, YEARS } from "@/lib/constants";
+import { palette, FF_MONO, FF_DISPLAY } from "@/lib/theme";
+import {
+  fetchAllBaselines,
+  fetchParameters,
+  runSimulationMultiYear,
+} from "@/lib/api";
 import { SimulationResult } from "@/lib/types";
 
-const YEARS = [2025, 2026, 2027, 2028, 2029];
 const HEADER_HEIGHT = 56;
 const PRIMARY = palette.accent;
 
@@ -64,10 +67,15 @@ function buildReformOverlay(
   return overlay;
 }
 
+function formatBnShort(v: number): string {
+  const bn = v / 1e9;
+  const sign = bn >= 0 ? "+" : "";
+  return `${sign}£${bn.toFixed(1)}bn`;
+}
+
 export default function Home() {
-  const [year, setYear] = useState(2025);
   const [loading, setLoading] = useState(true);
-  const [result, setResult] = useState<SimulationResult | null>(null);
+  const [results, setResults] = useState<Record<string, SimulationResult>>({});
   const [baselineParams, setBaselineParams] = useState<Record<
     string,
     unknown
@@ -76,17 +84,20 @@ export default function Home() {
   const [baselineValues, setBaselineValues] = useState<Record<string, number>>(
     {}
   );
+  const [baselines, setBaselines] = useState<Record<string, SimulationResult>>(
+    {}
+  );
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
   const [hasReform, setHasReform] = useState(false);
+  const [selectedYear, setSelectedYear] = useState(2025);
 
+  // Load baselines + params for primary year (2025) on mount
   useEffect(() => {
-    let cancelled = false;
     setLoading(true);
-
-    Promise.all([fetchBaseline(year), fetchParameters(year)])
-      .then(([baseline, params]) => {
-        if (cancelled) return;
-        setResult(baseline);
+    Promise.all([fetchAllBaselines(), fetchParameters(2025)])
+      .then(([allBaselines, params]) => {
+        setBaselines(allBaselines);
+        setResults(allBaselines);
         setBaselineParams(params);
 
         const values: Record<string, number> = {};
@@ -99,14 +110,10 @@ export default function Home() {
         setLoading(false);
       })
       .catch((e) => {
-        console.error("Failed to load baseline:", e);
+        console.error("Failed to load baselines:", e);
         setLoading(false);
       });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [year]);
+  }, []);
 
   const handleSliderChange = useCallback(
     (key: string, value: number) => {
@@ -122,7 +129,7 @@ export default function Home() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
 
       if (!anyChanged) {
-        fetchBaseline(year).then(setResult);
+        setResults(baselines);
         return;
       }
 
@@ -134,9 +141,9 @@ export default function Home() {
           baselineValues,
           baselineParams
         );
-        runSimulation(year, overlay)
+        runSimulationMultiYear(YEARS, overlay)
           .then((res) => {
-            setResult(res);
+            setResults(res);
             setLoading(false);
           })
           .catch((e) => {
@@ -145,20 +152,22 @@ export default function Home() {
           });
       }, 300);
     },
-    [sliderValues, baselineValues, baselineParams, year]
+    [sliderValues, baselineValues, baselineParams, baselines]
   );
 
   const resetAll = useCallback(() => {
     setSliderValues({ ...baselineValues });
     setHasReform(false);
-    fetchBaseline(year).then(setResult);
-  }, [baselineValues, year]);
+    setResults(baselines);
+  }, [baselineValues, baselines]);
 
   const numChanged = SLIDERS.filter(
     (s) =>
       Math.abs((sliderValues[s.key] ?? 0) - (baselineValues[s.key] ?? 0)) >
       s.step * 0.5
   ).length;
+
+  const selectedResult = results[String(selectedYear)];
 
   return (
     <div
@@ -178,15 +187,14 @@ export default function Home() {
           background: palette.bgApp,
           borderBottom: `1px solid ${palette.border}`,
           display: "flex",
-          alignItems: "stretch",
+          alignItems: "center",
           padding: "0 8px",
+          justifyContent: "space-between",
         }}
       >
         <div
           style={{
             padding: "0 20px",
-            flexShrink: 0,
-            borderRight: `1px solid ${palette.border}`,
             display: "flex",
             alignItems: "center",
             gap: 8,
@@ -206,53 +214,8 @@ export default function Home() {
           </span>
         </div>
 
-        <div
-          style={{
-            flex: 1,
-            overflow: "hidden",
-            display: "flex",
-            alignItems: "stretch",
-          }}
-        >
-          {YEARS.map((y) => {
-            const isActive = year === y;
-            return (
-              <button
-                key={y}
-                onClick={() => setYear(y)}
-                style={{
-                  fontFamily: FF_MONO,
-                  fontSize: 14,
-                  color: isActive ? palette.textPrimary : palette.textMuted,
-                  background: "transparent",
-                  border: "none",
-                  borderBottom: isActive
-                    ? `3px solid ${PRIMARY}`
-                    : "3px solid transparent",
-                  borderTop: "3px solid transparent",
-                  padding: "0 20px",
-                  height: HEADER_HEIGHT,
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                  transition: "color 0.15s, border-color 0.15s",
-                  fontWeight: isActive ? 600 : 400,
-                }}
-              >
-                {y}/{(y + 1).toString().slice(-2)}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Reset all — top right */}
         {hasReform && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              paddingRight: 12,
-            }}
-          >
+          <div style={{ display: "flex", alignItems: "center", paddingRight: 12 }}>
             <button
               onClick={resetAll}
               style={{
@@ -265,7 +228,6 @@ export default function Home() {
                 cursor: "pointer",
                 borderRadius: 0,
                 fontWeight: 600,
-                transition: "all 0.15s",
               }}
             >
               Reset all ({numChanged})
@@ -309,7 +271,7 @@ export default function Home() {
           {/* Left panel: parameters */}
           <div
             style={{
-              flex: "0 0 40%",
+              flex: "0 0 36%",
               minWidth: 0,
               overflow: "hidden",
               display: "flex",
@@ -322,15 +284,12 @@ export default function Home() {
                 flexShrink: 0,
                 padding: "14px 20px 10px",
                 borderBottom: `1px solid ${palette.border}`,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
               }}
             >
               <span
                 style={{
-                  fontFamily: FF_BODY,
-                  fontSize: 16,
+                  fontFamily: FF_MONO,
+                  fontSize: 11,
                   fontWeight: 700,
                   color: palette.textPrimary,
                   textTransform: "uppercase",
@@ -351,51 +310,44 @@ export default function Home() {
                 flexDirection: "column",
               }}
             >
-              {["Income Tax", "National Insurance", "Universal Credit"].map(
-                (section) => (
-                  <div
-                    key={section}
-                    style={{ borderBottom: `1px solid ${palette.borderSubtle}` }}
-                  >
-                    <div
+              {SECTIONS.map((section) => (
+                <div
+                  key={section}
+                  style={{ borderBottom: `1px solid ${palette.borderSubtle}` }}
+                >
+                  <div style={{ padding: "6px 6px 2px", margin: "0 -6px" }}>
+                    <span
                       style={{
-                        padding: "6px 6px 2px",
-                        margin: "0 -6px",
+                        fontSize: "0.95rem",
+                        fontWeight: 600,
+                        color: palette.textSecondary,
+                        letterSpacing: "0.02em",
                       }}
                     >
-                      <span
-                        style={{
-                          fontSize: "0.95rem",
-                          fontWeight: 600,
-                          color: palette.textSecondary,
-                          letterSpacing: "0.02em",
-                        }}
-                      >
-                        {section}
-                      </span>
-                    </div>
-                    {SLIDERS.filter((s) => s.section === section).map(
-                      (slider) => (
-                        <ParameterSlider
-                          key={slider.key}
-                          label={slider.label}
-                          value={sliderValues[slider.key] ?? 0}
-                          baselineValue={baselineValues[slider.key] ?? 0}
-                          min={slider.min}
-                          max={slider.max}
-                          step={slider.step}
-                          format={slider.format}
-                          onChange={(v) => handleSliderChange(slider.key, v)}
-                        />
-                      )
-                    )}
+                      {section}
+                    </span>
                   </div>
-                )
-              )}
+                  {SLIDERS.filter((s) => s.section === section).map(
+                    (slider) => (
+                      <ParameterSlider
+                        key={slider.key}
+                        label={slider.label}
+                        value={sliderValues[slider.key] ?? 0}
+                        baselineValue={baselineValues[slider.key] ?? 0}
+                        min={slider.min}
+                        max={slider.max}
+                        step={slider.step}
+                        format={slider.format}
+                        onChange={(v) => handleSliderChange(slider.key, v)}
+                      />
+                    )
+                  )}
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* Right panel: results */}
+          {/* Right panel: multi-year results */}
           <div
             style={{
               flex: 1,
@@ -407,13 +359,104 @@ export default function Home() {
               gap: 16,
             }}
           >
-            {result ? (
+            {/* Multi-year summary table */}
+            <div
+              style={{
+                border: `1px solid ${palette.border}`,
+                overflow: "hidden",
+              }}
+            >
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  fontFamily: FF_MONO,
+                  fontSize: 13,
+                }}
+              >
+                <thead>
+                  <tr
+                    style={{
+                      borderBottom: `1px solid ${palette.border}`,
+                      background: palette.bgSubtle,
+                    }}
+                  >
+                    <th style={thStyle}>Year</th>
+                    <th style={thStyle}>Revenue</th>
+                    <th style={thStyle}>Benefits</th>
+                    <th style={thStyle}>Net cost</th>
+                    <th style={thStyle}>Winners</th>
+                    <th style={thStyle}>Losers</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {YEARS.map((y) => {
+                    const r = results[String(y)];
+                    if (!r) return null;
+                    const isSelected = y === selectedYear;
+                    return (
+                      <tr
+                        key={y}
+                        onClick={() => setSelectedYear(y)}
+                        style={{
+                          borderBottom: `1px solid ${palette.borderSubtle}`,
+                          cursor: "pointer",
+                          background: isSelected
+                            ? palette.bgSubtle
+                            : "transparent",
+                          transition: "background 0.1s",
+                        }}
+                      >
+                        <td style={{ ...tdStyle, fontWeight: 600 }}>
+                          {y}/{(y + 1).toString().slice(-2)}
+                        </td>
+                        <td style={tdStyle}>
+                          <ColorVal v={r.budgetary_impact.revenue_change} positive />
+                        </td>
+                        <td style={tdStyle}>
+                          <ColorVal v={r.budgetary_impact.benefit_spending_change} positive={false} />
+                        </td>
+                        <td style={tdStyle}>
+                          <ColorVal v={r.budgetary_impact.net_cost} positive={false} />
+                        </td>
+                        <td style={tdStyle}>
+                          <span style={{ color: palette.positive }}>
+                            {r.winners_losers.winners_pct}%
+                          </span>
+                        </td>
+                        <td style={tdStyle}>
+                          <span style={{ color: palette.negative }}>
+                            {r.winners_losers.losers_pct}%
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Detail for selected year */}
+            {selectedResult && (
               <>
-                <BudgetarySummary data={result.budgetary_impact} />
-                <WinnersLosers data={result.winners_losers} />
-                <DecileChart data={result.decile_impacts} />
+                <div
+                  style={{
+                    fontFamily: FF_MONO,
+                    fontSize: 11,
+                    color: palette.textDimmed,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                  }}
+                >
+                  Detail: {selectedYear}/{(selectedYear + 1).toString().slice(-2)}
+                </div>
+                <BudgetarySummary data={selectedResult.budgetary_impact} />
+                <WinnersLosers data={selectedResult.winners_losers} />
+                <DecileChart data={selectedResult.decile_impacts} />
               </>
-            ) : (
+            )}
+
+            {!selectedResult && !loading && (
               <div
                 style={{
                   display: "flex",
@@ -435,4 +478,30 @@ export default function Home() {
       </div>
     </div>
   );
+}
+
+const thStyle: React.CSSProperties = {
+  padding: "8px 12px",
+  textAlign: "left",
+  fontSize: 11,
+  fontWeight: 600,
+  color: palette.textDimmed,
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+};
+
+const tdStyle: React.CSSProperties = {
+  padding: "8px 12px",
+  fontVariantNumeric: "tabular-nums",
+};
+
+function ColorVal({ v, positive }: { v: number; positive: boolean }) {
+  const isNeutral = Math.abs(v) < 1e7;
+  const isGood = positive ? v >= 0 : v <= 0;
+  const color = isNeutral
+    ? palette.textDimmed
+    : isGood
+    ? palette.positive
+    : palette.negative;
+  return <span style={{ color }}>{formatBnShort(v)}</span>;
 }
