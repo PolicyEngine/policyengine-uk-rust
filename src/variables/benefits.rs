@@ -791,7 +791,8 @@ mod tests {
         let people = vec![p];
         let bu = BenUnit {
             id: 0, household_id: 0, person_ids: vec![0],
-            take_up_seed: 0.85, rent_monthly: 600.0, // seed > 0.80 = legacy system
+            take_up_seed: 0.85, on_uc: false, on_legacy: true,
+            rent_monthly: 600.0,
             is_lone_parent: false,
         };
         let hh = Household {
@@ -819,7 +820,8 @@ mod tests {
         let people = vec![p, child];
         let bu = BenUnit {
             id: 0, household_id: 0, person_ids: vec![0, 1],
-            take_up_seed: 0.85, rent_monthly: 0.0, // seed > 0.80 = legacy system
+            take_up_seed: 0.85, on_uc: false, on_legacy: true,
+            rent_monthly: 0.0,
             is_lone_parent: true,
         };
         let hh = Household {
@@ -840,7 +842,7 @@ mod tests {
     fn test_benefit_cap() {
         let params = Parameters::for_year(2025).unwrap();
         // Non-working single person in London with massive UC entitlement
-        let (mut people, mut bu, hh) = make_single_bu(0.0, 4);
+        let (people, mut bu, hh) = make_single_bu(0.0, 4);
         bu.rent_monthly = 3000.0; // Very high rent to push above cap
         let pr: Vec<PersonResult> = people.iter()
             .map(|p| crate::variables::income_tax::calculate(p, &params))
@@ -866,7 +868,8 @@ mod tests {
         let people = vec![p, child];
         let bu = BenUnit {
             id: 0, household_id: 0, person_ids: vec![0, 1],
-            take_up_seed: 0.0, rent_monthly: 0.0,
+            take_up_seed: 0.0, on_uc: true, on_legacy: false,
+            rent_monthly: 0.0,
             is_lone_parent: true,
         };
         let hh = Household {
@@ -894,7 +897,8 @@ mod tests {
         let people = vec![p];
         let bu = BenUnit {
             id: 0, household_id: 0, person_ids: vec![0],
-            take_up_seed: 0.99, rent_monthly: 0.0, // High seed = claims nothing
+            take_up_seed: 0.99, on_uc: false, on_legacy: false,
+            rent_monthly: 0.0,
             is_lone_parent: false,
         };
         let hh = Household {
