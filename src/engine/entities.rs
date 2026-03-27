@@ -137,6 +137,7 @@ impl Person {
     }
 
     /// Earned income (employment + self-employment).
+    #[allow(dead_code)]
     pub fn earned_income(&self) -> f64 {
         self.employment_income + self.self_employment_income
     }
@@ -161,13 +162,12 @@ pub struct BenUnit {
     pub id: usize,
     pub household_id: usize,
     pub person_ids: Vec<usize>,
-    pub would_claim_uc: bool,
-    pub would_claim_child_benefit: bool,
-    pub would_claim_pc: bool,
-    pub would_claim_hb: bool,
-    pub would_claim_ctc: bool,
-    pub would_claim_wtc: bool,
-    pub would_claim_is: bool,
+    /// Random seed [0, 1) for take-up decisions — deterministic per benunit.
+    pub take_up_seed: f64,
+    /// Whether this benunit reported UC receipt in the FRS.
+    pub on_uc: bool,
+    /// Whether this benunit reported any legacy means-tested benefit (HB/CTC/WTC/IS) in the FRS.
+    pub on_legacy: bool,
     pub rent_monthly: f64,
     pub is_lone_parent: bool,
 }

@@ -28,6 +28,36 @@ pub struct Parameters {
     #[serde(default)]
     pub scottish_child_payment: Option<ScottishChildPaymentParams>,
     pub growth_factors: GrowthFactors,
+    #[serde(default = "TakeUpRates::default")]
+    pub take_up: TakeUpRates,
+}
+
+/// Take-up rates for means-tested benefits.
+/// Each rate is the fraction of eligible families that actually claim.
+/// Source: DWP Income-Related Benefits Estimates of Take-Up.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TakeUpRates {
+    pub universal_credit: f64,
+    pub child_benefit: f64,
+    pub pension_credit: f64,
+    pub housing_benefit: f64,
+    pub child_tax_credit: f64,
+    pub working_tax_credit: f64,
+    pub income_support: f64,
+}
+
+impl Default for TakeUpRates {
+    fn default() -> Self {
+        TakeUpRates {
+            universal_credit: 0.80,
+            child_benefit: 0.93,
+            pension_credit: 0.63,
+            housing_benefit: 0.80,
+            child_tax_credit: 0.83,
+            working_tax_credit: 0.67,
+            income_support: 0.85,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

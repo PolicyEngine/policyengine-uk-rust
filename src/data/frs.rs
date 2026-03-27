@@ -153,6 +153,7 @@ fn parse_households(table: &Table) -> Vec<HouseholdRecord> {
 
 // ── Benefit unit parsing ─────────────────────────────────────────────────
 
+#[allow(dead_code)]
 struct BenUnitRecord {
     sernum: i64,
     benunit: i64,
@@ -345,6 +346,7 @@ fn aggregate_penprov(table: &Table) -> HashMap<PersonKey, PenprovAgg> {
 
 // ── Person record parsing ────────────────────────────────────────────────
 
+#[allow(dead_code)]
 struct PersonRecord {
     sernum: i64,
     benunit: i64,
@@ -568,19 +570,17 @@ fn assemble_dataset(
         if let Some(&hh_idx) = hh_map.get(&bu.sernum) {
             let bu_idx = benunits.len();
             bu_map.insert((bu.sernum, bu.benunit), bu_idx);
+            // Deterministic take-up seed from benunit index
+            let seed = (((bu_idx as u64).wrapping_mul(2654435761)) & 0xFFFF) as f64 / 65536.0;
             benunits.push(BenUnit {
                 id: bu_idx,
                 household_id: hh_idx,
                 person_ids: Vec::new(),
-                would_claim_uc: bu.claims_uc,
-                would_claim_child_benefit: true,  // Derived below from person data
-                would_claim_pc: false,             // Derived below from person data
-                would_claim_hb: false,             // Derived below from person data
-                would_claim_ctc: false,            // Derived below from person data
-                would_claim_wtc: false,            // Derived below from person data
-                would_claim_is: false,             // Derived below from person data
+                take_up_seed: seed,
+                on_uc: bu.claims_uc,
+                on_legacy: false,  // Derived below from person reported amounts
                 rent_monthly: bu.rent_weekly * WEEKS_IN_YEAR / 12.0,
-                is_lone_parent: false,             // Set after people are assigned
+                is_lone_parent: false,
             });
             households[hh_idx].benunit_ids.push(bu_idx);
         }
@@ -658,16 +658,22 @@ fn assemble_dataset(
         let num_children = bu.person_ids.iter().filter(|&&pid| people[pid].is_child()).count();
         bu.is_lone_parent = num_adults == 1 && num_children > 0;
 
-        // Set take-up flags based on whether any person in the benunit reports receiving the benefit
+        // Derive on_legacy from reported receipt of any legacy means-tested benefit
         for &pid in &bu.person_ids {
             let p = &people[pid];
-            if p.housing_benefit_reported > 0.0 { bu.would_claim_hb = true; }
-            if p.child_tax_credit_reported > 0.0 { bu.would_claim_ctc = true; }
-            if p.working_tax_credit_reported > 0.0 { bu.would_claim_wtc = true; }
-            if p.income_support_reported > 0.0 { bu.would_claim_is = true; }
-            if p.pension_credit_reported > 0.0 { bu.would_claim_pc = true; }
-            if p.child_benefit_reported > 0.0 { bu.would_claim_child_benefit = true; }
-            if p.universal_credit_reported > 0.0 { bu.would_claim_uc = true; }
+            if p.housing_benefit_reported > 0.0
+                || p.child_tax_credit_reported > 0.0
+                || p.working_tax_credit_reported > 0.0
+                || p.income_support_reported > 0.0
+            {
+                bu.on_legacy = true;
+            }
+        }
+        // Also update on_uc if any person reports UC
+        for &pid in &bu.person_ids {
+            if people[pid].universal_credit_reported > 0.0 {
+                bu.on_uc = true;
+            }
         }
     }
 

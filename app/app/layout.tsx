@@ -28,8 +28,8 @@ export default function RootLayout({
       lang="en"
       className={`${dmSerif.variable} ${dmSans.variable} ${jetbrainsMono.variable}`}
     >
-      <body className={`${dmSans.className} antialiased`}>
-        <main className="h-screen overflow-hidden">{children}</main>
+      <body className={`${dmSans.className} antialiased`} style={{ margin: 0, padding: 0, height: "100vh", overflow: "hidden" }}>
+        {children}
       </body>
     </html>
   );

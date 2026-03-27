@@ -114,9 +114,7 @@ fn write_benunits(dataset: &Dataset, output_dir: &Path) -> anyhow::Result<()> {
     wtr.write_record(&[
         "benunit_id", "household_id",
         "person_ids",
-        "would_claim_uc", "would_claim_child_benefit", "would_claim_pension_credit",
-        "would_claim_housing_benefit", "would_claim_child_tax_credit",
-        "would_claim_working_tax_credit", "would_claim_income_support",
+        "take_up_seed", "on_uc", "on_legacy",
         "rent_monthly", "is_lone_parent",
     ])?;
 
@@ -130,13 +128,9 @@ fn write_benunits(dataset: &Dataset, output_dir: &Path) -> anyhow::Result<()> {
             bu.id.to_string(),
             bu.household_id.to_string(),
             ids,
-            bu.would_claim_uc.to_string(),
-            bu.would_claim_child_benefit.to_string(),
-            bu.would_claim_pc.to_string(),
-            bu.would_claim_hb.to_string(),
-            bu.would_claim_ctc.to_string(),
-            bu.would_claim_wtc.to_string(),
-            bu.would_claim_is.to_string(),
+            format!("{:.6}", bu.take_up_seed),
+            bu.on_uc.to_string(),
+            bu.on_legacy.to_string(),
             format!("{:.2}", bu.rent_monthly),
             bu.is_lone_parent.to_string(),
         ])?;
@@ -330,21 +324,15 @@ fn load_benunits_csv(data_dir: &Path) -> anyhow::Result<Vec<BenUnit>> {
         let id = parse_usize(next());
         let household_id = parse_usize(next());
         let person_ids = parse_id_list(next());
-        let would_claim_uc = parse_bool(next());
-        let would_claim_child_benefit = parse_bool(next());
-        let would_claim_pc = parse_bool(next());
-        let would_claim_hb = parse_bool(next());
-        let would_claim_ctc = parse_bool(next());
-        let would_claim_wtc = parse_bool(next());
-        let would_claim_is = parse_bool(next());
+        let take_up_seed = parse_f64(next());
+        let on_uc = parse_bool(next());
+        let on_legacy = parse_bool(next());
         let rent_monthly = parse_f64(next());
         let is_lone_parent = parse_bool(next());
 
         benunits.push(BenUnit {
             id, household_id, person_ids,
-            would_claim_uc, would_claim_child_benefit, would_claim_pc,
-            would_claim_hb, would_claim_ctc, would_claim_wtc, would_claim_is,
-            rent_monthly, is_lone_parent,
+            take_up_seed, on_uc, on_legacy, rent_monthly, is_lone_parent,
         });
     }
 

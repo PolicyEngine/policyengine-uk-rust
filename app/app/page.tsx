@@ -263,21 +263,13 @@ export default function Home() {
       {/* Body */}
       <div
         style={{
-          flex: 1,
+          display: "flex",
+          height: `calc(100vh - ${HEADER_HEIGHT}px)`,
           overflow: "hidden",
-          position: "relative",
-          padding: "10px 16px",
+          background: palette.bgApp,
+          borderTop: `1px solid ${palette.border}`,
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            height: "100%",
-            overflow: "hidden",
-            background: palette.bgApp,
-            border: `1px solid ${palette.border}`,
-          }}
-        >
           {/* Left panel: parameters */}
           <div
             style={{
@@ -373,7 +365,7 @@ export default function Home() {
             <div
               style={{
                 border: `1px solid ${palette.border}`,
-                overflow: "hidden",
+                flexShrink: 0,
               }}
             >
               <table
@@ -484,25 +476,26 @@ export default function Home() {
               </div>
             )}
           </div>
-        </div>
       </div>
     </div>
   );
 }
 
 const thStyle: React.CSSProperties = {
-  padding: "8px 12px",
+  padding: "6px 8px",
   textAlign: "left",
   fontSize: 11,
   fontWeight: 600,
   color: palette.textDimmed,
   textTransform: "uppercase",
   letterSpacing: "0.06em",
+  whiteSpace: "nowrap",
 };
 
 const tdStyle: React.CSSProperties = {
-  padding: "8px 12px",
+  padding: "6px 8px",
   fontVariantNumeric: "tabular-nums",
+  whiteSpace: "nowrap",
 };
 
 function ColorVal({ v, positive }: { v: number; positive: boolean }) {

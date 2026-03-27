@@ -3,6 +3,9 @@ use crate::engine::simulation::*;
 use crate::parameters::Parameters;
 
 /// Calculate all benefit-unit-level benefits.
+///
+/// UC replaces six legacy benefits (HB, IS, CTC, WTC, income-based JSA, income-related ESA).
+/// A benunit is on either UC or legacy, not both. The take_up_seed determines the system.
 pub fn calculate_benunit(
     bu: &BenUnit,
     people: &[Person],
@@ -10,15 +13,41 @@ pub fn calculate_benunit(
     household: &Household,
     params: &Parameters,
 ) -> BenUnitResult {
+    // Non-means-tested / universal benefits (available regardless of UC/legacy)
     let child_benefit = calculate_child_benefit(bu, people, person_results, params);
-    let uc = calculate_universal_credit(bu, people, person_results, params);
     let state_pension = calculate_state_pension(bu, people);
-    let pension_credit = calculate_pension_credit(bu, people, params);
-    let housing_benefit = calculate_housing_benefit(bu, people, person_results, params);
-    let (ctc, wtc) = calculate_tax_credits(bu, people, person_results, params);
-    let income_support = calculate_income_support(bu, people, person_results, params);
     let ctr = calculate_council_tax_reduction(bu, people, person_results, household, params);
-    let scp = calculate_scottish_child_payment(bu, people, household, params);
+
+    // UC and legacy benefits are mutually exclusive.
+    // Use FRS-reported system from the data.
+    let (uc, pension_credit, housing_benefit, ctc, wtc, income_support, scp);
+    if bu.on_uc {
+        uc = calculate_universal_credit(bu, people, person_results, params);
+        pension_credit = calculate_pension_credit(bu, people, params);
+        housing_benefit = 0.0;
+        ctc = 0.0;
+        wtc = 0.0;
+        income_support = 0.0;
+        scp = calculate_scottish_child_payment(bu, people, household, params);
+    } else if bu.on_legacy {
+        uc = (0.0, 0.0, 0.0);
+        pension_credit = calculate_pension_credit(bu, people, params);
+        housing_benefit = calculate_housing_benefit(bu, people, person_results, params);
+        let tc = calculate_tax_credits(bu, people, person_results, params);
+        ctc = tc.0;
+        wtc = tc.1;
+        income_support = calculate_income_support(bu, people, person_results, params);
+        scp = 0.0;
+    } else {
+        // Not claiming any means-tested benefit
+        uc = (0.0, 0.0, 0.0);
+        pension_credit = calculate_pension_credit(bu, people, params);
+        housing_benefit = 0.0;
+        ctc = 0.0;
+        wtc = 0.0;
+        income_support = 0.0;
+        scp = 0.0;
+    }
 
     // Sum pre-cap benefits
     let pre_cap_benefits = uc.0 + child_benefit + state_pension + pension_credit
@@ -50,6 +79,11 @@ pub fn calculate_benunit(
     }
 }
 
+/// Check if a benunit takes up a benefit based on its random seed and the take-up rate.
+fn takes_up(bu: &BenUnit, rate: f64) -> bool {
+    bu.take_up_seed < rate
+}
+
 /// Child Benefit: eldest child gets higher rate, others get additional rate.
 /// Subject to High Income Child Benefit Charge (HICBC).
 fn calculate_child_benefit(
@@ -58,10 +92,6 @@ fn calculate_child_benefit(
     person_results: &[PersonResult],
     params: &Parameters,
 ) -> f64 {
-    if !bu.would_claim_child_benefit {
-        return 0.0;
-    }
-
     let num_children = bu.num_children(people);
     if num_children == 0 {
         return 0.0;
@@ -77,7 +107,7 @@ fn calculate_child_benefit(
         .map(|&pid| person_results[pid].adjusted_net_income)
         .fold(0.0_f64, f64::max);
 
-    if max_income <= params.child_benefit.hicbc_threshold {
+    let amount = if max_income <= params.child_benefit.hicbc_threshold {
         annual
     } else if max_income >= params.child_benefit.hicbc_taper_end {
         0.0
@@ -85,7 +115,13 @@ fn calculate_child_benefit(
         let fraction = (max_income - params.child_benefit.hicbc_threshold)
             / (params.child_benefit.hicbc_taper_end - params.child_benefit.hicbc_threshold);
         annual * (1.0 - fraction)
+    };
+
+    if amount > 0.0 {
+        let tu = params.take_up.child_benefit;
+        if !takes_up(bu, tu) { return 0.0; }
     }
+    amount
 }
 
 /// Universal Credit calculation.
@@ -101,7 +137,11 @@ fn calculate_universal_credit(
     person_results: &[PersonResult],
     params: &Parameters,
 ) -> (f64, f64, f64) {
-    if !bu.would_claim_uc {
+    // Basic eligibility: at least one working-age adult (not SP age)
+    let any_working_age = bu.person_ids.iter()
+        .filter(|&&pid| people[pid].is_adult())
+        .any(|&pid| !people[pid].is_sp_age());
+    if !any_working_age {
         return (0.0, 0.0, 0.0);
     }
 
@@ -227,10 +267,6 @@ fn calculate_state_pension(bu: &BenUnit, people: &[Person]) -> f64 {
 /// But savings credit only applies to those reaching SP age before 6 April 2016 — we include it
 /// but the data should flag eligibility. Here we calculate it for all SP-age claimants.
 fn calculate_pension_credit(bu: &BenUnit, people: &[Person], params: &Parameters) -> f64 {
-    if !bu.would_claim_pc {
-        return 0.0;
-    }
-
     let any_sp_age = bu.person_ids.iter()
         .filter(|&&pid| people[pid].is_adult())
         .any(|&pid| people[pid].is_sp_age());
@@ -269,7 +305,7 @@ fn calculate_pension_credit(bu: &BenUnit, people: &[Person], params: &Parameters
     } else {
         pc.savings_credit_threshold_single
     };
-    let sc_threshold_annual = sc_threshold * 52.0;
+    let _sc_threshold_annual = sc_threshold * 52.0;
 
     // Maximum savings credit = 60% of (minimum guarantee - savings credit threshold)
     let max_sc_weekly = (min_guarantee_weekly - sc_threshold) * 0.60;
@@ -284,7 +320,12 @@ fn calculate_pension_credit(bu: &BenUnit, people: &[Person], params: &Parameters
         0.0
     };
 
-    gc + sc
+    let amount = gc + sc;
+    if amount > 0.0 {
+        let tu = params.take_up.pension_credit;
+        if !takes_up(bu, tu) { return 0.0; }
+    }
+    amount
 }
 
 /// Housing Benefit (legacy system).
@@ -295,13 +336,9 @@ fn calculate_pension_credit(bu: &BenUnit, people: &[Person], params: &Parameters
 fn calculate_housing_benefit(
     bu: &BenUnit,
     people: &[Person],
-    person_results: &[PersonResult],
+    _person_results: &[PersonResult],
     params: &Parameters,
 ) -> f64 {
-    if !bu.would_claim_hb {
-        return 0.0;
-    }
-
     let hb_params = match &params.housing_benefit {
         Some(hb) => hb,
         None => return 0.0,
@@ -343,7 +380,8 @@ fn calculate_housing_benefit(
     let excess_income = (income - applicable_amount).max(0.0);
     let reduction = excess_income * hb_params.withdrawal_rate;
 
-    (eligible_rent - reduction).max(0.0)
+    let amount = (eligible_rent - reduction).max(0.0);
+    amount
 }
 
 /// Tax Credits: Working Tax Credit (WTC) and Child Tax Credit (CTC).
@@ -356,7 +394,7 @@ fn calculate_housing_benefit(
 fn calculate_tax_credits(
     bu: &BenUnit,
     people: &[Person],
-    person_results: &[PersonResult],
+    _person_results: &[PersonResult],
     params: &Parameters,
 ) -> (f64, f64) {
     let tc = match &params.tax_credits {
@@ -368,7 +406,7 @@ fn calculate_tax_credits(
     let is_couple = bu.is_couple(people);
 
     // CTC: available if there are children
-    let max_ctc = if bu.would_claim_ctc && num_children > 0 {
+    let max_ctc = if num_children > 0 {
         tc.ctc_family_element + tc.ctc_child_element * num_children as f64
             + bu.person_ids.iter()
                 .filter(|&&pid| people[pid].is_child())
@@ -399,7 +437,7 @@ fn calculate_tax_credits(
         tc.wtc_min_hours_single
     };
 
-    let max_wtc = if bu.would_claim_wtc && total_hours_weekly >= min_hours {
+    let max_wtc = if total_hours_weekly >= min_hours {
         let mut wtc = tc.wtc_basic_element;
         if is_couple {
             wtc += tc.wtc_couple_element;
@@ -451,10 +489,6 @@ fn calculate_income_support(
     _person_results: &[PersonResult],
     params: &Parameters,
 ) -> f64 {
-    if !bu.would_claim_is {
-        return 0.0;
-    }
-
     // Use HB applicable amount params (they share the same personal allowance structure)
     let hb_params = match &params.housing_benefit {
         Some(hb) => hb,
@@ -519,11 +553,6 @@ fn calculate_scottish_child_payment(
     };
 
     if !household.region.is_scotland() {
-        return 0.0;
-    }
-
-    // Must be on a qualifying benefit (UC or legacy)
-    if !bu.would_claim_uc {
         return 0.0;
     }
 
@@ -636,13 +665,7 @@ mod tests {
             id: 0,
             household_id: 0,
             person_ids: ids,
-            would_claim_uc: true,
-            would_claim_child_benefit: true,
-            would_claim_pc: true,
-            would_claim_hb: false,
-            would_claim_ctc: false,
-            would_claim_wtc: false,
-            would_claim_is: false,
+            take_up_seed: 0.0, on_uc: true, on_legacy: false,
             rent_monthly: 800.0,
             is_lone_parent: num_children > 0,
         };
@@ -740,10 +763,8 @@ mod tests {
         let people = vec![p];
         let bu = BenUnit {
             id: 0, household_id: 0, person_ids: vec![0],
-            would_claim_uc: false, would_claim_child_benefit: false,
-            would_claim_pc: true, would_claim_hb: false,
-            would_claim_ctc: false, would_claim_wtc: false,
-            would_claim_is: false, rent_monthly: 0.0,
+            take_up_seed: 0.0, on_uc: false, on_legacy: false,
+            rent_monthly: 0.0,
             is_lone_parent: false,
         };
         let hh = Household {
@@ -770,10 +791,7 @@ mod tests {
         let people = vec![p];
         let bu = BenUnit {
             id: 0, household_id: 0, person_ids: vec![0],
-            would_claim_uc: false, would_claim_child_benefit: false,
-            would_claim_pc: false, would_claim_hb: true,
-            would_claim_ctc: false, would_claim_wtc: false,
-            would_claim_is: false, rent_monthly: 600.0,
+            take_up_seed: 0.85, rent_monthly: 600.0, // seed > 0.80 = legacy system
             is_lone_parent: false,
         };
         let hh = Household {
@@ -784,7 +802,7 @@ mod tests {
             .map(|p| crate::variables::income_tax::calculate(p, &params))
             .collect();
         let result = calculate_benunit(&bu, &people, &pr, &hh, &params);
-        assert!(result.housing_benefit > 0.0, "Low earner should get HB");
+        assert!(result.housing_benefit > 0.0, "Low earner on legacy should get HB");
         assert!(result.housing_benefit <= 7200.0, "HB should not exceed rent");
     }
 
@@ -801,10 +819,7 @@ mod tests {
         let people = vec![p, child];
         let bu = BenUnit {
             id: 0, household_id: 0, person_ids: vec![0, 1],
-            would_claim_uc: false, would_claim_child_benefit: true,
-            would_claim_pc: false, would_claim_hb: false,
-            would_claim_ctc: true, would_claim_wtc: true,
-            would_claim_is: false, rent_monthly: 0.0,
+            take_up_seed: 0.85, rent_monthly: 0.0, // seed > 0.80 = legacy system
             is_lone_parent: true,
         };
         let hh = Household {
@@ -815,9 +830,9 @@ mod tests {
             .map(|p| crate::variables::income_tax::calculate(p, &params))
             .collect();
         let result = calculate_benunit(&bu, &people, &pr, &hh, &params);
-        // CTC + WTC should be positive for low-income lone parent
+        // CTC + WTC should be positive for low-income lone parent on legacy
         assert!(result.child_tax_credit > 0.0 || result.working_tax_credit > 0.0,
-            "Low-income lone parent should receive tax credits. CTC={}, WTC={}",
+            "Low-income lone parent on legacy should receive tax credits. CTC={}, WTC={}",
             result.child_tax_credit, result.working_tax_credit);
     }
 
@@ -851,10 +866,7 @@ mod tests {
         let people = vec![p, child];
         let bu = BenUnit {
             id: 0, household_id: 0, person_ids: vec![0, 1],
-            would_claim_uc: true, would_claim_child_benefit: true,
-            would_claim_pc: false, would_claim_hb: false,
-            would_claim_ctc: false, would_claim_wtc: false,
-            would_claim_is: false, rent_monthly: 0.0,
+            take_up_seed: 0.0, rent_monthly: 0.0,
             is_lone_parent: true,
         };
         let hh = Household {
@@ -882,10 +894,7 @@ mod tests {
         let people = vec![p];
         let bu = BenUnit {
             id: 0, household_id: 0, person_ids: vec![0],
-            would_claim_uc: false, would_claim_child_benefit: false,
-            would_claim_pc: false, would_claim_hb: false,
-            would_claim_ctc: false, would_claim_wtc: false,
-            would_claim_is: false, rent_monthly: 0.0,
+            take_up_seed: 0.99, rent_monthly: 0.0, // High seed = claims nothing
             is_lone_parent: false,
         };
         let hh = Household {

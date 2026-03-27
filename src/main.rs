@@ -296,7 +296,7 @@ fn main() -> anyhow::Result<()> {
         avg_loss: if losers > 0.0 { (total_loss.abs() / losers).round() } else { 0.0 },
     };
 
-    // Program-level breakdown and caseloads (weighted totals from baseline)
+    // Program-level breakdown and caseloads (weighted totals from reform)
     let benunits = &dataset.benunits;
     let (program_breakdown, caseloads) = {
         // Tax spending and caseloads
@@ -308,7 +308,7 @@ fn main() -> anyhow::Result<()> {
         let mut eni_payers = 0.0f64;
         for hh in households {
             for &pid in &hh.person_ids {
-                let pr = &baseline.person_results[pid];
+                let pr = &reformed.person_results[pid];
                 income_tax += hh.weight * pr.income_tax;
                 employee_ni += hh.weight * pr.national_insurance;
                 employer_ni += hh.weight * pr.employer_ni;
@@ -341,7 +341,7 @@ fn main() -> anyhow::Result<()> {
         let mut cl_cap = 0.0f64;
         for bu in benunits {
             let w = households[bu.household_id].weight;
-            let br = &baseline.benunit_results[bu.id];
+            let br = &reformed.benunit_results[bu.id];
             uc += w * br.universal_credit;
             cb += w * br.child_benefit;
             sp += w * br.state_pension;

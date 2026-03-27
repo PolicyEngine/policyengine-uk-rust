@@ -175,19 +175,17 @@ pub fn generate_synthetic_frs(year: u32) -> Dataset {
             0.0
         };
 
+        // Deterministic take-up seed from benunit index
+        let seed = (((bu_id as u64).wrapping_mul(2654435761)) & 0xFFFF) as f64 / 65536.0;
         benunits.push(BenUnit {
             id: bu_id,
             household_id: hh_idx,
             person_ids: bu_person_ids.clone(),
-            would_claim_uc: profile.claims_uc,
-            would_claim_child_benefit: true,
-            would_claim_pc: true,
-            would_claim_hb: false,
-            would_claim_ctc: false,
-            would_claim_wtc: false,
-            would_claim_is: false,
+            take_up_seed: seed,
+            on_uc: seed < 0.50,     // ~50% on UC in synthetic data
+            on_legacy: seed >= 0.50 && seed < 0.65,  // ~15% on legacy
             rent_monthly: rent,
-            is_lone_parent: false, // Synthetic data: simplified
+            is_lone_parent: false,
         });
         hh_bu_ids.push(bu_id);
         bu_id += 1;
@@ -212,6 +210,7 @@ pub fn generate_synthetic_frs(year: u32) -> Dataset {
     }
 }
 
+#[allow(dead_code)]
 struct IncomeProfile {
     adult1_age: f64,
     adult1_employment: f64,
