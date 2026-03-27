@@ -47,6 +47,10 @@ national_insurance:
   # (Reduction in Rates) Act 2024 c.1)
   main_rate: 0.08
   additional_rate: 0.02
+  # Class 2 (self-employed flat rate): SSCBA 1992 s.11
+  # £3.45/week for profits above small profits threshold £6,725
+  class2_flat_rate_weekly: 3.45
+  class2_small_profits_threshold: 6725.0
   # Class 1 employer (secondary): SSCBA 1992 s.9; SI 2025/288
   # Secondary threshold reduced to £5,000/year from April 2025 (Autumn Budget 2024)
   # Employer rate increased to 15% from April 2025
@@ -108,6 +112,62 @@ pension_credit:
   # Savings credit threshold: reg.7(2)
   savings_credit_threshold_single: 198.27
   savings_credit_threshold_couple: 314.34
+
+benefit_cap:
+  # Welfare Reform Act 2012 s.96; Benefit Cap (Housing Benefit and UC) Regs 2016
+  # SI 2016/509 as amended. Rates frozen since 2016.
+  single_london: 15410.0       # £296.35/week
+  single_outside_london: 13400.0  # £257.69/week
+  non_single_london: 23000.0   # £442.31/week
+  non_single_outside_london: 20000.0  # £384.62/week
+  earnings_exemption_threshold: 10152.0  # £846/month
+
+housing_benefit:
+  # Housing Benefit Regs 2006 (SI 2006/213)
+  # Withdrawal rate: reg.70(1)(a) — 65%
+  withdrawal_rate: 0.65
+  # Applicable amount personal allowances (weekly): Sch.3
+  personal_allowance_single_under25: 71.70
+  personal_allowance_single_25_plus: 90.50
+  personal_allowance_couple: 142.25
+  child_allowance: 83.73
+  family_premium: 18.53
+
+tax_credits:
+  # Tax Credits Act 2002; SI 2002/2005 (Working Tax Credit Regs)
+  # SI 2002/2007 (Child Tax Credit Regs)
+  # WTC elements (annual)
+  wtc_basic_element: 2435.0
+  wtc_couple_element: 2500.0
+  wtc_lone_parent_element: 2500.0
+  wtc_30_hour_element: 1015.0
+  # CTC elements (annual)
+  ctc_child_element: 3455.0
+  ctc_family_element: 545.0
+  ctc_disabled_child_element: 4170.0
+  ctc_severely_disabled_child_element: 1680.0
+  # Income thresholds and taper
+  income_threshold: 7455.0
+  taper_rate: 0.41
+  # Minimum hours for WTC
+  wtc_min_hours_single: 30.0
+  wtc_min_hours_couple: 24.0
+
+council_tax_reduction:
+  # Council Tax Reduction Schemes (Prescribed Requirements) (England) Regs 2012
+  # SI 2012/2885
+  taper_rate: 0.20
+  personal_allowance_single_under25: 71.70
+  personal_allowance_single_25_plus: 90.50
+  personal_allowance_couple: 142.25
+  child_allowance: 83.73
+  family_premium: 18.53
+
+scottish_child_payment:
+  # Social Security (Scotland) Act 2018; SSI 2020/351
+  # £26.70/week from November 2024
+  weekly_amount: 26.70
+  max_age: 16.0
 
 growth_factors:
   # OBR Economic and Fiscal Outlook, March 2026

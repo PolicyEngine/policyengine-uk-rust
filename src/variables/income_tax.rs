@@ -57,9 +57,10 @@ pub fn calculate(person: &Person, params: &Parameters) -> PersonResult {
 
     // Step 7: National Insurance
     let ni_class1 = calculate_ni_class1(person, params);
+    let ni_class2 = calculate_ni_class2(person, params);
     let ni_class4 = calculate_ni_class4(person, params);
     let ni_employer = calculate_ni_employer(person, params);
-    let national_insurance = ni_class1 + ni_class4;
+    let national_insurance = ni_class1 + ni_class2 + ni_class4;
 
     PersonResult {
         income_tax,
@@ -217,7 +218,11 @@ fn apply_brackets(taxable_income: f64, brackets: &[TaxBracket]) -> f64 {
 }
 
 /// Savings income tax using stacking (savings sit on top of earned income).
-/// Applies Personal Savings Allowance (PSA): £1000 basic, £500 higher, £0 additional.
+///
+/// ITA 2007 s.12: Starting rate for savings (0%) on first £5,000, reduced £1 for £1 by
+/// non-savings taxable income.
+///
+/// ITA 2007 s.57: Personal Savings Allowance (PSA) — £1000 basic, £500 higher, £0 additional.
 fn calculate_savings_tax(earned_taxable: f64, savings_taxable: f64, params: &Parameters) -> f64 {
     if savings_taxable <= 0.0 {
         return 0.0;
@@ -228,21 +233,29 @@ fn calculate_savings_tax(earned_taxable: f64, savings_taxable: f64, params: &Par
     let higher_limit = params.income_tax.uk_brackets.get(2)
         .map_or(125140.0, |b| b.threshold);
 
+    // Savings starter rate band: 0% on first £5,000, reduced by earned taxable income
+    let starter_band = (params.income_tax.savings_starter_rate_band - earned_taxable).max(0.0);
+    let in_starter = savings_taxable.min(starter_band);
+    let savings_after_starter = savings_taxable - in_starter;
+
+    // PSA depends on marginal rate band
     let psa = if earned_taxable >= higher_limit {
-        0.0
+        0.0  // Additional rate taxpayer: no PSA
     } else if earned_taxable >= basic_limit {
-        500.0
+        500.0  // Higher rate taxpayer: £500 PSA
     } else {
-        1000.0
+        1000.0  // Basic rate taxpayer: £1000 PSA
     };
 
-    let taxable_after_psa = (savings_taxable - psa).max(0.0);
+    let taxable_after_psa = (savings_after_starter - psa).max(0.0);
     if taxable_after_psa <= 0.0 {
         return 0.0;
     }
 
-    let tax_with = apply_brackets(earned_taxable + taxable_after_psa, &params.income_tax.uk_brackets);
-    let tax_without = apply_brackets(earned_taxable, &params.income_tax.uk_brackets);
+    // Stack remaining savings on top of earned + starter-band savings to get rates
+    let base = earned_taxable + in_starter; // starter band taxed at 0%, so just shifts the stack
+    let tax_with = apply_brackets(base + taxable_after_psa, &params.income_tax.uk_brackets);
+    let tax_without = apply_brackets(base, &params.income_tax.uk_brackets);
     (tax_with - tax_without).max(0.0)
 }
 
@@ -283,6 +296,16 @@ fn calculate_ni_class1(person: &Person, params: &Parameters) -> f64 {
     let additional_band = (earnings - ni.upper_earnings_limit_annual).max(0.0);
 
     main_band * ni.main_rate + additional_band * ni.additional_rate
+}
+
+/// National Insurance: Class 2 self-employed flat-rate contributions.
+/// SSCBA 1992 s.11: flat weekly rate if self-employment profits exceed small profits threshold.
+fn calculate_ni_class2(person: &Person, params: &Parameters) -> f64 {
+    let profits = person.self_employment_income;
+    if profits < params.national_insurance.class2_small_profits_threshold {
+        return 0.0;
+    }
+    params.national_insurance.class2_flat_rate_weekly * (365.25 / 7.0)
 }
 
 /// National Insurance: Class 1 employer contributions

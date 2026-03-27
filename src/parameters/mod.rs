@@ -17,6 +17,16 @@ pub struct Parameters {
     pub child_benefit: ChildBenefitParams,
     pub state_pension: StatePensionParams,
     pub pension_credit: PensionCreditParams,
+    #[serde(default)]
+    pub benefit_cap: Option<BenefitCapParams>,
+    #[serde(default)]
+    pub housing_benefit: Option<HousingBenefitParams>,
+    #[serde(default)]
+    pub tax_credits: Option<TaxCreditsParams>,
+    #[serde(default)]
+    pub council_tax_reduction: Option<CouncilTaxReductionParams>,
+    #[serde(default)]
+    pub scottish_child_payment: Option<ScottishChildPaymentParams>,
     pub growth_factors: GrowthFactors,
 }
 
@@ -61,6 +71,11 @@ pub struct NationalInsuranceParams {
     pub secondary_threshold_annual: f64,
     #[serde(default = "default_employer_rate")]
     pub employer_rate: f64,
+    // Class 2 (self-employed flat rate)
+    #[serde(default = "default_class2_flat_rate")]
+    pub class2_flat_rate_weekly: f64,
+    #[serde(default = "default_class2_spt")]
+    pub class2_small_profits_threshold: f64,
     // Class 4 (self-employed)
     pub class4_lower_profits_limit: f64,
     pub class4_upper_profits_limit: f64,
@@ -70,6 +85,8 @@ pub struct NationalInsuranceParams {
 
 fn default_secondary_threshold() -> f64 { 5000.0 }
 fn default_employer_rate() -> f64 { 0.15 }
+fn default_class2_flat_rate() -> f64 { 3.45 }
+fn default_class2_spt() -> f64 { 6725.0 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UniversalCreditParams {
@@ -117,6 +134,68 @@ pub struct PensionCreditParams {
     pub standard_minimum_couple: f64,
     pub savings_credit_threshold_single: f64,
     pub savings_credit_threshold_couple: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BenefitCapParams {
+    pub single_london: f64,
+    pub single_outside_london: f64,
+    pub non_single_london: f64,
+    pub non_single_outside_london: f64,
+    /// Net earned income threshold for exemption (annual)
+    pub earnings_exemption_threshold: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HousingBenefitParams {
+    /// Taper/withdrawal rate (65%)
+    pub withdrawal_rate: f64,
+    /// Personal allowances for applicable amount (weekly)
+    pub personal_allowance_single_under25: f64,
+    pub personal_allowance_single_25_plus: f64,
+    pub personal_allowance_couple: f64,
+    pub child_allowance: f64,
+    pub family_premium: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaxCreditsParams {
+    // WTC elements (annual)
+    pub wtc_basic_element: f64,
+    pub wtc_couple_element: f64,
+    pub wtc_lone_parent_element: f64,
+    pub wtc_30_hour_element: f64,
+    // CTC elements (annual)
+    pub ctc_child_element: f64,
+    pub ctc_family_element: f64,
+    pub ctc_disabled_child_element: f64,
+    pub ctc_severely_disabled_child_element: f64,
+    // Income thresholds and taper
+    pub income_threshold: f64,
+    pub taper_rate: f64,
+    /// Minimum hours per week to qualify for WTC
+    pub wtc_min_hours_single: f64,
+    pub wtc_min_hours_couple: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CouncilTaxReductionParams {
+    /// Taper/withdrawal rate (20%)
+    pub taper_rate: f64,
+    /// Personal allowances for applicable amount (weekly)
+    pub personal_allowance_single_under25: f64,
+    pub personal_allowance_single_25_plus: f64,
+    pub personal_allowance_couple: f64,
+    pub child_allowance: f64,
+    pub family_premium: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScottishChildPaymentParams {
+    /// Weekly amount per eligible child
+    pub weekly_amount: f64,
+    /// Maximum age of child
+    pub max_age: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
