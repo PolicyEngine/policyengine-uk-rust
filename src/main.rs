@@ -15,6 +15,7 @@ use crate::parameters::Parameters;
 use crate::reforms::Reform;
 use crate::data::synthetic::generate_synthetic_frs;
 use crate::data::frs::load_frs;
+use crate::data::clean::{write_clean_csvs, load_clean_frs};
 
 #[derive(Parser)]
 #[command(name = "policyengine-uk")]
@@ -50,6 +51,15 @@ struct Cli {
     /// Export baseline parameters as JSON
     #[arg(long)]
     export_params_json: bool,
+
+    /// Extract raw FRS data to clean CSVs. Requires --frs.
+    /// Writes persons.csv, benunits.csv, households.csv to the given directory.
+    #[arg(long)]
+    extract_frs: Option<PathBuf>,
+
+    /// Load from clean FRS CSVs (produced by --extract-frs) instead of raw FRS.
+    #[arg(long)]
+    clean_frs: Option<PathBuf>,
 
     /// Output format: "pretty" (default) or "json" for machine-readable output
     #[arg(long, default_value = "pretty")]
@@ -115,8 +125,23 @@ fn main() -> anyhow::Result<()> {
 
     let json_mode = cli.output == "json";
 
+    // Extract FRS to clean CSVs if requested
+    if let Some(output_dir) = &cli.extract_frs {
+        let frs_path = cli.frs.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("--extract-frs requires --frs <raw-frs-dir>"))?;
+        eprintln!("Loading raw FRS from {}...", frs_path.display());
+        let dataset = load_frs(frs_path)?;
+        eprintln!("Loaded {} households, {} people", dataset.households.len(), dataset.people.len());
+        write_clean_csvs(&dataset, output_dir)?;
+        eprintln!("Wrote clean CSVs to {}", output_dir.display());
+        return Ok(());
+    }
+
     // Load dataset
-    let dataset = if let Some(frs_path) = &cli.frs {
+    let dataset = if let Some(clean_path) = &cli.clean_frs {
+        if !json_mode { println!("  {} Loading clean FRS from {}...", "▸".bright_cyan(), clean_path.display()); }
+        load_clean_frs(clean_path)?
+    } else if let Some(frs_path) = &cli.frs {
         if !json_mode { println!("  {} Loading FRS microdata from {}...", "▸".bright_cyan(), frs_path.display()); }
         load_frs(frs_path)?
     } else {

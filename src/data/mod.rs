@@ -1,5 +1,6 @@
 pub mod synthetic;
 pub mod frs;
+pub mod clean;
 
 use crate::engine::entities::*;
 
