@@ -9,10 +9,13 @@ use crate::variables;
 pub struct PersonResult {
     pub income_tax: f64,
     pub national_insurance: f64,
+    pub employer_ni: f64,
     pub total_income: f64,
     pub taxable_income: f64,
     pub personal_allowance: f64,
     pub adjusted_net_income: f64,
+    pub unused_personal_allowance: f64,
+    pub marriage_allowance_deduction: f64,
 }
 
 /// Results for a benefit unit
@@ -21,6 +24,8 @@ pub struct PersonResult {
 pub struct BenUnitResult {
     pub universal_credit: f64,
     pub child_benefit: f64,
+    pub state_pension: f64,
+    pub pension_credit: f64,
     pub total_benefits: f64,
     pub uc_max_amount: f64,
     pub uc_income_reduction: f64,
@@ -75,6 +80,14 @@ impl Simulation {
             variables::income_tax::calculate(person, &self.parameters)
         }).collect();
         person_results = pr;
+
+        // Phase 1b: Marriage allowance (benunit-level adjustment to person tax)
+        // Cannot be parallelised as it mutates person_results across benunits
+        for bu in &self.benunits {
+            variables::income_tax::apply_marriage_allowance(
+                bu, &self.people, &mut person_results, &self.parameters,
+            );
+        }
 
         // Phase 2: BenUnit-level calculations (parallelised)
         let br: Vec<BenUnitResult> = self.benunits.par_iter().map(|bu| {

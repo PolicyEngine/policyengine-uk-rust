@@ -28,6 +28,8 @@ national_insurance:
   upper_earnings_limit_annual: 50270.0
   main_rate: 0.12    # 12% before Jan 2024 cut (10% from Jan, but 12% for full FY avg)
   additional_rate: 0.02
+  secondary_threshold_annual: 9100.0
+  employer_rate: 0.138
   class4_lower_profits_limit: 12570.0
   class4_upper_profits_limit: 50270.0
   class4_main_rate: 0.09

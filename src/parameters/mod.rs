@@ -38,20 +38,38 @@ pub struct IncomeTaxParams {
     pub dividend_higher_rate: f64,
     pub dividend_additional_rate: f64,
     pub savings_starter_rate_band: f64,
+    /// Marriage Allowance: fraction of PA transferable (default 10%)
+    #[serde(default = "default_ma_fraction")]
+    pub marriage_allowance_max_fraction: f64,
+    /// Rounding increment for marriage allowance (default £10)
+    #[serde(default = "default_ma_rounding")]
+    pub marriage_allowance_rounding: f64,
 }
+
+fn default_ma_fraction() -> f64 { 0.10 }
+fn default_ma_rounding() -> f64 { 10.0 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NationalInsuranceParams {
+    // Class 1 employee (primary)
     pub primary_threshold_annual: f64,
     pub upper_earnings_limit_annual: f64,
     pub main_rate: f64,
     pub additional_rate: f64,
+    // Class 1 employer (secondary)
+    #[serde(default = "default_secondary_threshold")]
+    pub secondary_threshold_annual: f64,
+    #[serde(default = "default_employer_rate")]
+    pub employer_rate: f64,
     // Class 4 (self-employed)
     pub class4_lower_profits_limit: f64,
     pub class4_upper_profits_limit: f64,
     pub class4_main_rate: f64,
     pub class4_additional_rate: f64,
 }
+
+fn default_secondary_threshold() -> f64 { 5000.0 }
+fn default_employer_rate() -> f64 { 0.15 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UniversalCreditParams {
@@ -151,6 +169,18 @@ impl Parameters {
     /// Serialise parameters to YAML for human-readable reform files.
     pub fn to_yaml(&self) -> String {
         serde_yaml::to_string(self).unwrap_or_default()
+    }
+
+    /// Serialise parameters to JSON.
+    pub fn to_json(&self) -> String {
+        serde_json::to_string(self).unwrap_or_default()
+    }
+
+    /// Apply a JSON overlay (reform) on top of these parameters.
+    pub fn apply_json_overlay(&self, json_str: &str) -> anyhow::Result<Self> {
+        let json_val: serde_json::Value = serde_json::from_str(json_str)?;
+        let yaml_str = serde_yaml::to_string(&json_val)?;
+        self.apply_yaml_overlay(&yaml_str)
     }
 
     /// Apply a YAML overlay (reform) on top of these parameters.

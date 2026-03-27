@@ -26,6 +26,7 @@ use std::path::Path;
 ///     - { rate: 0.50, threshold: 250000.0 }
 /// ```
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct Reform {
     pub name: String,
     pub parameters: Parameters,

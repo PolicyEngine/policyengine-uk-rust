@@ -1,6 +1,71 @@
 use crate::engine::entities::*;
 use crate::data::Dataset;
 
+/// Helper to create a Person with common defaults for synthetic data.
+fn make_person(
+    id: usize,
+    benunit_id: usize,
+    household_id: usize,
+    age: f64,
+    employment_income: f64,
+    self_employment_income: f64,
+    pension_income: f64,
+    savings_interest_income: f64,
+    dividend_income: f64,
+    property_income: f64,
+    is_scotland: bool,
+    hours_worked: f64,
+    is_disabled: bool,
+    is_carer: bool,
+) -> Person {
+    Person {
+        id,
+        benunit_id,
+        household_id,
+        age,
+        gender: if age < 18.0 { Gender::Male } else { Gender::Female }, // arbitrary for synthetic
+        is_benunit_head: false, // set after creation
+        is_household_head: false,
+        employment_income,
+        self_employment_income,
+        pension_income,
+        state_pension_reported: if age >= 66.0 && pension_income > 0.0 { 10600.0 } else { 0.0 },
+        savings_interest_income,
+        dividend_income,
+        property_income,
+        maintenance_income: 0.0,
+        miscellaneous_income: 0.0,
+        other_income: 0.0,
+        is_in_scotland: is_scotland,
+        hours_worked,
+        is_disabled,
+        is_enhanced_disabled: false,
+        is_severely_disabled: false,
+        is_carer,
+        employee_pension_contributions: 0.0,
+        personal_pension_contributions: 0.0,
+        childcare_expenses: 0.0,
+        child_benefit_reported: 0.0,
+        housing_benefit_reported: 0.0,
+        income_support_reported: 0.0,
+        pension_credit_reported: 0.0,
+        child_tax_credit_reported: 0.0,
+        working_tax_credit_reported: 0.0,
+        universal_credit_reported: 0.0,
+        dla_sc_reported: 0.0,
+        dla_m_reported: 0.0,
+        pip_dl_reported: 0.0,
+        pip_m_reported: 0.0,
+        carers_allowance_reported: 0.0,
+        attendance_allowance_reported: 0.0,
+        esa_income_reported: 0.0,
+        esa_contrib_reported: 0.0,
+        jsa_income_reported: 0.0,
+        jsa_contrib_reported: 0.0,
+        would_claim_marriage_allowance: false,
+    }
+}
+
 /// Generate a synthetic FRS-like dataset for microsimulation.
 /// This creates a representative sample of ~20,000 households with realistic
 /// income distributions based on published ONS/DWP statistics.
@@ -14,8 +79,6 @@ pub fn generate_synthetic_frs(year: u32) -> Dataset {
     let mut person_id = 0usize;
     let mut bu_id = 0usize;
 
-    // UK income distribution (approximate percentiles from ONS ASHE 2023-24)
-    // We create households across the full distribution
     let income_profiles: Vec<IncomeProfile> = generate_income_distribution();
 
     let regions = [
@@ -34,43 +97,34 @@ pub fn generate_synthetic_frs(year: u32) -> Dataset {
     ];
 
     let total_households = 20_000usize;
-    // Total UK households ≈ 28.2 million
     let weight_per_hh = 28_200_000.0 / total_households as f64;
 
     for hh_idx in 0..total_households {
         let profile = &income_profiles[hh_idx % income_profiles.len()];
-
-        // Assign region proportionally
         let region = assign_region(hh_idx, total_households, &regions);
 
-        let _hh_person_start = person_id;
-        let _hh_bu_start = bu_id;
-
-        // Create benefit unit(s) for this household
         let mut hh_person_ids = Vec::new();
         let mut hh_bu_ids = Vec::new();
-
-        // Primary benefit unit
         let mut bu_person_ids = Vec::new();
 
         // Adult 1
-        let p1 = Person {
-            id: person_id,
-            benunit_id: bu_id,
-            household_id: hh_idx,
-            age: profile.adult1_age,
-            employment_income: profile.adult1_employment,
-            self_employment_income: profile.adult1_self_employment,
-            pension_income: profile.adult1_pension,
-            savings_interest_income: profile.savings_income,
-            dividend_income: profile.dividend_income,
-            property_income: profile.property_income,
-            other_income: 0.0,
-            is_in_scotland: region.is_scotland(),
-            hours_worked: if profile.adult1_employment > 0.0 { 37.5 } else { 0.0 },
-            is_disabled: hh_idx % 20 == 0,
-            is_carer: hh_idx % 30 == 0,
-        };
+        let mut p1 = make_person(
+            person_id, bu_id, hh_idx,
+            profile.adult1_age,
+            profile.adult1_employment,
+            profile.adult1_self_employment,
+            profile.adult1_pension,
+            profile.savings_income,
+            profile.dividend_income,
+            profile.property_income,
+            region.is_scotland(),
+            if profile.adult1_employment > 0.0 { 37.5 * 52.0 } else { 0.0 },
+            hh_idx % 20 == 0,
+            hh_idx % 30 == 0,
+        );
+        p1.is_benunit_head = true;
+        p1.is_household_head = true;
+        p1.gender = Gender::Male;
         bu_person_ids.push(person_id);
         hh_person_ids.push(person_id);
         people.push(p1);
@@ -78,23 +132,16 @@ pub fn generate_synthetic_frs(year: u32) -> Dataset {
 
         // Adult 2 (if couple)
         if profile.is_couple {
-            let p2 = Person {
-                id: person_id,
-                benunit_id: bu_id,
-                household_id: hh_idx,
-                age: profile.adult2_age,
-                employment_income: profile.adult2_employment,
-                self_employment_income: 0.0,
-                pension_income: 0.0,
-                savings_interest_income: 0.0,
-                dividend_income: 0.0,
-                property_income: 0.0,
-                other_income: 0.0,
-                is_in_scotland: region.is_scotland(),
-                hours_worked: if profile.adult2_employment > 0.0 { 25.0 } else { 0.0 },
-                is_disabled: false,
-                is_carer: false,
-            };
+            let mut p2 = make_person(
+                person_id, bu_id, hh_idx,
+                profile.adult2_age,
+                profile.adult2_employment,
+                0.0, 0.0, 0.0, 0.0, 0.0,
+                region.is_scotland(),
+                if profile.adult2_employment > 0.0 { 25.0 * 52.0 } else { 0.0 },
+                false, false,
+            );
+            p2.gender = Gender::Female;
             bu_person_ids.push(person_id);
             hh_person_ids.push(person_id);
             people.push(p2);
@@ -103,29 +150,14 @@ pub fn generate_synthetic_frs(year: u32) -> Dataset {
 
         // Children
         for c in 0..profile.num_children {
-            let child_age = match c {
-                0 => 8.0,
-                1 => 5.0,
-                2 => 2.0,
-                _ => 1.0,
-            };
-            let child = Person {
-                id: person_id,
-                benunit_id: bu_id,
-                household_id: hh_idx,
-                age: child_age,
-                employment_income: 0.0,
-                self_employment_income: 0.0,
-                pension_income: 0.0,
-                savings_interest_income: 0.0,
-                dividend_income: 0.0,
-                property_income: 0.0,
-                other_income: 0.0,
-                is_in_scotland: region.is_scotland(),
-                hours_worked: 0.0,
-                is_disabled: false,
-                is_carer: false,
-            };
+            let child_age = match c { 0 => 8.0, 1 => 5.0, 2 => 2.0, _ => 1.0 };
+            let child = make_person(
+                person_id, bu_id, hh_idx,
+                child_age,
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                region.is_scotland(),
+                0.0, false, false,
+            );
             bu_person_ids.push(person_id);
             hh_person_ids.push(person_id);
             people.push(child);
@@ -148,6 +180,8 @@ pub fn generate_synthetic_frs(year: u32) -> Dataset {
             household_id: hh_idx,
             person_ids: bu_person_ids,
             would_claim_uc: profile.claims_uc,
+            would_claim_child_benefit: true,
+            would_claim_pc: true,
             rent_monthly: rent,
         });
         hh_bu_ids.push(bu_id);
@@ -190,7 +224,6 @@ struct IncomeProfile {
 }
 
 /// Generate income profiles matching UK income distribution.
-/// Based on ONS ASHE 2023, DWP FRS statistics, and HMRC SPI.
 fn generate_income_distribution() -> Vec<IncomeProfile> {
     let mut profiles = Vec::new();
 

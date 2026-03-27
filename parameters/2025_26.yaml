@@ -47,6 +47,11 @@ national_insurance:
   # (Reduction in Rates) Act 2024 c.1)
   main_rate: 0.08
   additional_rate: 0.02
+  # Class 1 employer (secondary): SSCBA 1992 s.9; SI 2025/288
+  # Secondary threshold reduced to £5,000/year from April 2025 (Autumn Budget 2024)
+  # Employer rate increased to 15% from April 2025
+  secondary_threshold_annual: 5000.0
+  employer_rate: 0.15
   # Class 4 (self-employed): SSCBA 1992 s.15
   class4_lower_profits_limit: 12570.0
   class4_upper_profits_limit: 50270.0
