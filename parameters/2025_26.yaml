@@ -1,0 +1,112 @@
+# UK Tax-Benefit Parameters for Fiscal Year 2025/26
+# All values are annual unless noted. Monthly UC amounts are per assessment period.
+# Sources: UK legislation via Lex API (legislation.gov.uk)
+
+fiscal_year: "2025/26"
+
+income_tax:
+  # ITA 2007 s.35 — Personal allowance frozen at £12,570 since 2021/22
+  # Citation: Income Tax Act 2007 c.3 s.35; frozen by Finance Act 2021 s.5
+  personal_allowance: 12570.0
+  # ITA 2007 s.35(2) — taper: £1 reduction per £2 above threshold
+  pa_taper_threshold: 100000.0
+  pa_taper_rate: 0.5
+
+  # ITA 2007 s.10 — basic rate limit frozen at £37,700
+  # Higher rate threshold = PA + basic rate limit = £50,270
+  uk_brackets:
+    - { rate: 0.20, threshold: 0.0 }       # Basic rate (ITA 2007 s.6(2))
+    - { rate: 0.40, threshold: 37700.0 }    # Higher rate
+    - { rate: 0.45, threshold: 125140.0 }   # Additional rate (Finance Act 2023)
+
+  # Scottish rates set by Scottish Rate Resolution 2025/26
+  # Scotland Act 1998 s.80C; Scottish Parliament resolution
+  scottish_brackets:
+    - { rate: 0.19, threshold: 0.0 }       # Starter rate
+    - { rate: 0.20, threshold: 2306.0 }    # Basic rate
+    - { rate: 0.21, threshold: 13991.0 }   # Intermediate rate
+    - { rate: 0.42, threshold: 31092.0 }   # Higher rate
+    - { rate: 0.45, threshold: 62430.0 }   # Advanced rate
+    - { rate: 0.48, threshold: 125140.0 }  # Top rate
+
+  # ITA 2007 s.8 — dividend rates
+  dividend_allowance: 500.0
+  dividend_basic_rate: 0.0875
+  dividend_higher_rate: 0.3375
+  dividend_additional_rate: 0.3935
+  savings_starter_rate_band: 5000.0
+
+national_insurance:
+  # SSCBA 1992 s.5-6; SI 2025/288 (Contributions Regulations 2025)
+  # Primary threshold: £125/week = £6,500/year (reg.10(a) — £125/week from 6 Apr 2025)
+  # But NI primary threshold aligned to PA at £12,570 since 2022
+  # Upper earnings limit: £967/week × 52 = £50,270
+  primary_threshold_annual: 12570.0
+  upper_earnings_limit_annual: 50270.0
+  # Main rate reduced to 8% from 6 Jan 2024 (National Insurance Contributions
+  # (Reduction in Rates) Act 2024 c.1)
+  main_rate: 0.08
+  additional_rate: 0.02
+  # Class 4 (self-employed): SSCBA 1992 s.15
+  class4_lower_profits_limit: 12570.0
+  class4_upper_profits_limit: 50270.0
+  class4_main_rate: 0.06
+  class4_additional_rate: 0.02
+
+universal_credit:
+  # UC Regs 2013 (SI 2013/376) reg.36, as amended by SI 2025/295 art.32
+  # Monthly amounts (per assessment period)
+  standard_allowance_single_under25: 316.98  # reg.36 table
+  standard_allowance_single_over25: 400.14
+  standard_allowance_couple_under25: 497.55
+  standard_allowance_couple_over25: 628.10
+  # Child element: reg.24, reg.36 table
+  child_element_first: 339.00   # First child (monthly)
+  child_element_subsequent: 292.81  # Each subsequent child (monthly)
+  disabled_child_lower: 158.76
+  disabled_child_higher: 495.87
+  # LCWRA element: reg.36 table
+  lcwra_element: 423.27
+  # Carer element: reg.36 table
+  carer_element: 201.68
+  # reg.22 — taper rate 55%, work allowances
+  # SI 2025/295 art.32: higher work allowance £684/month, lower £411/month
+  taper_rate: 0.55
+  work_allowance_higher: 684.0   # No housing costs (monthly)
+  work_allowance_lower: 411.0    # With housing costs (monthly)
+  child_limit: 2
+  # Housing cost contributions: Sch.4 para.14(1) — £93.02/month
+  housing_cost_contribution: 93.02
+
+child_benefit:
+  # Child Benefit (Rates) Regs 2006 (SI 2006/965) reg.2
+  # As amended by SI 2025/292 art.2 (from 7 April 2025)
+  eldest_weekly: 26.05
+  additional_weekly: 17.25
+  # HICBC: ITEPA 2003 s.681B-681H; threshold raised to £60k from 2024/25
+  hicbc_threshold: 60000.0
+  hicbc_taper_end: 80000.0
+
+state_pension:
+  # Pensions Act 2014 c.19 s.2-4; full rate set by SI 2025/295 art.6(1)
+  # State Pension Regs 2015 reg.1A: £230.25/week from April 2025
+  new_state_pension_weekly: 230.25
+  # Old basic state pension: SSCBA 1992 Sch.4 Part I
+  # SI 2025/295 art.4(2): £176.45/week (full rate Cat A with 30 qualifying years)
+  old_basic_pension_weekly: 176.45
+
+pension_credit:
+  # State Pension Credit Regs 2002 (SI 2002/1792) reg.6
+  # As amended by SI 2025/295 art.29
+  standard_minimum_single: 227.10  # Weekly (reg.6(1)(b))
+  standard_minimum_couple: 346.60  # Weekly (reg.6(1)(a))
+  # Savings credit threshold: reg.7(2)
+  savings_credit_threshold_single: 198.27
+  savings_credit_threshold_couple: 314.34
+
+growth_factors:
+  # OBR Economic and Fiscal Outlook, March 2026
+  # Table 1.7 (Inflation) and Table 1.6 (Labour Market)
+  cpi_rate: 0.03438        # 3.438% CPI inflation (FY 2025/26)
+  gdp_deflator: 0.03239    # 3.239% GDP deflator
+  earnings_growth: 0.04585  # 4.585% average weekly earnings growth

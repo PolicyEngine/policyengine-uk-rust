@@ -1,0 +1,76 @@
+# UK Tax-Benefit Parameters for Fiscal Year 2023/24
+# Sources: UK legislation via Lex API (legislation.gov.uk)
+
+fiscal_year: "2023/24"
+
+income_tax:
+  personal_allowance: 12570.0         # ITA 2007 s.35 (frozen)
+  pa_taper_threshold: 100000.0
+  pa_taper_rate: 0.5
+  uk_brackets:
+    - { rate: 0.20, threshold: 0.0 }
+    - { rate: 0.40, threshold: 37700.0 }
+    - { rate: 0.45, threshold: 125140.0 }  # Additional rate threshold reduced from £150k
+  scottish_brackets:
+    - { rate: 0.19, threshold: 0.0 }       # Starter
+    - { rate: 0.20, threshold: 2162.0 }    # Basic
+    - { rate: 0.21, threshold: 13118.0 }   # Intermediate
+    - { rate: 0.42, threshold: 31092.0 }   # Higher
+    - { rate: 0.47, threshold: 125140.0 }  # Top (no advanced rate in 2023/24)
+  dividend_allowance: 1000.0   # Reduced from £2k to £1k for 2023/24
+  dividend_basic_rate: 0.0875
+  dividend_higher_rate: 0.3375
+  dividend_additional_rate: 0.3935
+  savings_starter_rate_band: 5000.0
+
+national_insurance:
+  primary_threshold_annual: 12570.0
+  upper_earnings_limit_annual: 50270.0
+  main_rate: 0.12    # 12% before Jan 2024 cut (10% from Jan, but 12% for full FY avg)
+  additional_rate: 0.02
+  class4_lower_profits_limit: 12570.0
+  class4_upper_profits_limit: 50270.0
+  class4_main_rate: 0.09
+  class4_additional_rate: 0.02
+
+universal_credit:
+  # SI 2023/233 (Up-rating Order 2023), amending UC Regs 2013 reg.36
+  standard_allowance_single_under25: 292.11
+  standard_allowance_single_over25: 368.74
+  standard_allowance_couple_under25: 458.51
+  standard_allowance_couple_over25: 578.82
+  child_element_first: 315.00
+  child_element_subsequent: 269.58
+  disabled_child_lower: 146.31
+  disabled_child_higher: 456.89
+  lcwra_element: 390.06
+  carer_element: 185.86
+  taper_rate: 0.55
+  work_allowance_higher: 631.0
+  work_allowance_lower: 379.0
+  child_limit: 2
+  housing_cost_contribution: 85.73
+
+child_benefit:
+  # SI 2023/237 — Child Benefit (Rates) Regs as amended
+  eldest_weekly: 24.00
+  additional_weekly: 15.90
+  hicbc_threshold: 50000.0   # £50k threshold for 2023/24
+  hicbc_taper_end: 60000.0   # Full clawback at £60k
+
+state_pension:
+  # SI 2023/234 art.6: £203.85/week
+  new_state_pension_weekly: 203.85
+  old_basic_pension_weekly: 156.20
+
+pension_credit:
+  standard_minimum_single: 201.05
+  standard_minimum_couple: 306.85
+  savings_credit_threshold_single: 174.49
+  savings_credit_threshold_couple: 277.12
+
+growth_factors:
+  # OBR Economic and Fiscal Outlook, March 2026
+  cpi_rate: 0.05670        # 5.670% CPI inflation (FY 2023/24)
+  gdp_deflator: 0.05298    # 5.298% GDP deflator
+  earnings_growth: 0.05661  # 5.661% average weekly earnings growth

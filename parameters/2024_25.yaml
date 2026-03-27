@@ -1,0 +1,78 @@
+# UK Tax-Benefit Parameters for Fiscal Year 2024/25
+# Sources: UK legislation via Lex API (legislation.gov.uk)
+
+fiscal_year: "2024/25"
+
+income_tax:
+  personal_allowance: 12570.0         # ITA 2007 s.35 (frozen)
+  pa_taper_threshold: 100000.0
+  pa_taper_rate: 0.5
+  uk_brackets:
+    - { rate: 0.20, threshold: 0.0 }
+    - { rate: 0.40, threshold: 37700.0 }
+    - { rate: 0.45, threshold: 125140.0 }
+  scottish_brackets:
+    - { rate: 0.19, threshold: 0.0 }       # Starter
+    - { rate: 0.20, threshold: 2306.0 }    # Basic
+    - { rate: 0.21, threshold: 13991.0 }   # Intermediate
+    - { rate: 0.42, threshold: 31092.0 }   # Higher
+    - { rate: 0.45, threshold: 62430.0 }   # Advanced
+    - { rate: 0.48, threshold: 125140.0 }  # Top
+  dividend_allowance: 500.0
+  dividend_basic_rate: 0.0875
+  dividend_higher_rate: 0.3375
+  dividend_additional_rate: 0.3935
+  savings_starter_rate_band: 5000.0
+
+national_insurance:
+  primary_threshold_annual: 12570.0
+  upper_earnings_limit_annual: 50270.0
+  main_rate: 0.08    # Reduced from 10% to 8% from 6 Apr 2024
+  additional_rate: 0.02
+  class4_lower_profits_limit: 12570.0
+  class4_upper_profits_limit: 50270.0
+  class4_main_rate: 0.06  # Reduced from 8% to 6% from 6 Apr 2024
+  class4_additional_rate: 0.02
+
+universal_credit:
+  # SI 2024/242 (Up-rating Order 2024), amending UC Regs 2013 reg.36
+  standard_allowance_single_under25: 311.68
+  standard_allowance_single_over25: 393.45
+  standard_allowance_couple_under25: 489.23
+  standard_allowance_couple_over25: 617.60
+  child_element_first: 333.33
+  child_element_subsequent: 287.92
+  disabled_child_lower: 156.11
+  disabled_child_higher: 487.58
+  lcwra_element: 416.19
+  carer_element: 198.31
+  taper_rate: 0.55
+  work_allowance_higher: 673.0
+  work_allowance_lower: 404.0
+  child_limit: 2
+  housing_cost_contribution: 91.47
+
+child_benefit:
+  # SI 2024/247 — Child Benefit (Rates) Regs as amended
+  eldest_weekly: 25.60
+  additional_weekly: 16.95
+  hicbc_threshold: 60000.0   # Raised from £50k to £60k in 2024/25
+  hicbc_taper_end: 80000.0
+
+state_pension:
+  # SI 2024/242 art.6: State Pension Regs 2015 reg.1A — £221.20/week
+  new_state_pension_weekly: 221.20
+  old_basic_pension_weekly: 169.50
+
+pension_credit:
+  # SI 2024/242 art.29 — State Pension Credit Regs 2002 reg.6
+  standard_minimum_single: 218.15
+  standard_minimum_couple: 332.95
+  savings_credit_threshold_single: 189.80
+  savings_credit_threshold_couple: 301.22
+
+growth_factors:
+  # OBR Economic and Fiscal Outlook, March 2026
+  cpi_rate: 0.02355        # 2.355% CPI inflation (FY 2024/25)
+  gdp_deflator: 0.04040    # 4.040% GDP deflator
+  earnings_growth: 0.05569  # 5.569% average weekly earnings growth

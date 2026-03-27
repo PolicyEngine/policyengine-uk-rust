@@ -1,0 +1,79 @@
+# UK Tax-Benefit Parameters for Fiscal Year 2026/27
+# Projected using OBR March 2026 CPI forecasts applied to 2025/26 base values.
+# Income tax thresholds assumed frozen per current government policy.
+# Benefits uprated by September 2025 CPI (OBR forecast: ~3.4%).
+
+fiscal_year: "2026/27"
+
+income_tax:
+  personal_allowance: 12570.0         # Frozen (Finance Act 2021 s.5)
+  pa_taper_threshold: 100000.0
+  pa_taper_rate: 0.5
+  uk_brackets:
+    - { rate: 0.20, threshold: 0.0 }
+    - { rate: 0.40, threshold: 37700.0 }  # Frozen
+    - { rate: 0.45, threshold: 125140.0 }
+  scottish_brackets:
+    - { rate: 0.19, threshold: 0.0 }
+    - { rate: 0.20, threshold: 2306.0 }
+    - { rate: 0.21, threshold: 13991.0 }
+    - { rate: 0.42, threshold: 31092.0 }
+    - { rate: 0.45, threshold: 62430.0 }
+    - { rate: 0.48, threshold: 125140.0 }
+  dividend_allowance: 500.0
+  dividend_basic_rate: 0.0875
+  dividend_higher_rate: 0.3375
+  dividend_additional_rate: 0.3935
+  savings_starter_rate_band: 5000.0
+
+national_insurance:
+  primary_threshold_annual: 12570.0
+  upper_earnings_limit_annual: 50270.0
+  main_rate: 0.08
+  additional_rate: 0.02
+  class4_lower_profits_limit: 12570.0
+  class4_upper_profits_limit: 50270.0
+  class4_main_rate: 0.06
+  class4_additional_rate: 0.02
+
+universal_credit:
+  # Projected: 2025/26 amounts uprated by ~3.4% CPI
+  standard_allowance_single_under25: 327.76
+  standard_allowance_single_over25: 413.75
+  standard_allowance_couple_under25: 514.46
+  standard_allowance_couple_over25: 649.46
+  child_element_first: 350.53
+  child_element_subsequent: 302.77
+  disabled_child_lower: 164.16
+  disabled_child_higher: 512.73
+  lcwra_element: 437.66
+  carer_element: 208.54
+  taper_rate: 0.55
+  work_allowance_higher: 707.0
+  work_allowance_lower: 425.0
+  child_limit: 2
+  housing_cost_contribution: 96.18
+
+child_benefit:
+  eldest_weekly: 26.94    # Uprated by CPI
+  additional_weekly: 17.84
+  hicbc_threshold: 60000.0
+  hicbc_taper_end: 80000.0
+
+state_pension:
+  # Triple lock: higher of CPI, earnings, or 2.5%
+  # OBR forecast earnings growth 4.6% > CPI 3.4% > 2.5%, so earnings used
+  new_state_pension_weekly: 240.81  # £230.25 × 1.0459
+  old_basic_pension_weekly: 184.55
+
+pension_credit:
+  standard_minimum_single: 237.52
+  standard_minimum_couple: 362.52
+  savings_credit_threshold_single: 207.37
+  savings_credit_threshold_couple: 328.78
+
+growth_factors:
+  # OBR Economic and Fiscal Outlook, March 2026
+  cpi_rate: 0.02015        # 2.015% CPI inflation (FY 2026/27)
+  gdp_deflator: 0.02006    # 2.006% GDP deflator
+  earnings_growth: 0.03172  # 3.172% average weekly earnings growth
