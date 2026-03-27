@@ -178,11 +178,16 @@ pub fn generate_synthetic_frs(year: u32) -> Dataset {
         benunits.push(BenUnit {
             id: bu_id,
             household_id: hh_idx,
-            person_ids: bu_person_ids,
+            person_ids: bu_person_ids.clone(),
             would_claim_uc: profile.claims_uc,
             would_claim_child_benefit: true,
             would_claim_pc: true,
+            would_claim_hb: false,
+            would_claim_ctc: false,
+            would_claim_wtc: false,
+            would_claim_is: false,
             rent_monthly: rent,
+            is_lone_parent: false, // Synthetic data: simplified
         });
         hh_bu_ids.push(bu_id);
         bu_id += 1;

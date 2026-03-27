@@ -164,7 +164,12 @@ pub struct BenUnit {
     pub would_claim_uc: bool,
     pub would_claim_child_benefit: bool,
     pub would_claim_pc: bool,
+    pub would_claim_hb: bool,
+    pub would_claim_ctc: bool,
+    pub would_claim_wtc: bool,
+    pub would_claim_is: bool,
     pub rent_monthly: f64,
+    pub is_lone_parent: bool,
 }
 
 impl BenUnit {

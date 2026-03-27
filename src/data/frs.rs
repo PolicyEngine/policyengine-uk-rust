@@ -157,6 +157,10 @@ struct BenUnitRecord {
     sernum: i64,
     benunit: i64,
     claims_uc: bool,
+    claims_hb: bool,
+    claims_ctc: bool,
+    claims_wtc: bool,
+    claims_is: bool,
     rent_weekly: f64,
 }
 
@@ -166,6 +170,10 @@ fn parse_benunits(table: &Table) -> Vec<BenUnitRecord> {
             sernum: get_i64(row, "sernum"),
             benunit: get_i64(row, "benunit"),
             claims_uc: get_i64(row, "buuc") == 1,
+            claims_hb: get_i64(row, "buhben") == 1,
+            claims_ctc: get_i64(row, "buctc") == 1,
+            claims_wtc: get_i64(row, "buwtc") == 1,
+            claims_is: get_i64(row, "buis") == 1,
             rent_weekly: get_positive_f64(row, "burent"),
         }
     }).collect()
@@ -573,9 +581,14 @@ fn assemble_dataset(
                 household_id: hh_idx,
                 person_ids: Vec::new(),
                 would_claim_uc: bu.claims_uc,
-                would_claim_child_benefit: true, // Default; real take-up set from data
+                would_claim_child_benefit: true,
                 would_claim_pc: true,
+                would_claim_hb: bu.claims_hb,
+                would_claim_ctc: bu.claims_ctc,
+                would_claim_wtc: bu.claims_wtc,
+                would_claim_is: bu.claims_is,
                 rent_monthly: bu.rent_weekly * WEEKS_IN_YEAR / 12.0,
+                is_lone_parent: false, // Set after people are assigned
             });
             households[hh_idx].benunit_ids.push(bu_idx);
         }
@@ -645,6 +658,13 @@ fn assemble_dataset(
                 households[hh_idx].person_ids.push(pid);
             }
         }
+    }
+
+    // Set lone parent status
+    for bu in &mut benunits {
+        let num_adults = bu.person_ids.iter().filter(|&&pid| people[pid].is_adult()).count();
+        let num_children = bu.person_ids.iter().filter(|&&pid| people[pid].is_child()).count();
+        bu.is_lone_parent = num_adults == 1 && num_children > 0;
     }
 
     Ok(Dataset {

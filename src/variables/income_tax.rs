@@ -386,7 +386,11 @@ mod tests {
     fn test_ni_class4() {
         let params = Parameters::for_year(2025).unwrap();
         let result = calculate(&test_person_se(40000.0), &params);
-        assert!((result.national_insurance - 1645.80).abs() < 1.0);
+        // Class 4: (40000 - 12570) × 0.06 = £1,645.80
+        // Class 2: £3.45 × 52.18 = ~£179.96
+        let expected = 1645.80 + params.national_insurance.class2_flat_rate_weekly * (365.25 / 7.0);
+        assert!((result.national_insurance - expected).abs() < 1.0,
+            "Expected ~{:.2}, got {:.2}", expected, result.national_insurance);
     }
 
     #[test]
@@ -461,7 +465,12 @@ mod tests {
             would_claim_uc: false,
             would_claim_child_benefit: false,
             would_claim_pc: false,
+            would_claim_hb: false,
+            would_claim_ctc: false,
+            would_claim_wtc: false,
+            would_claim_is: false,
             rent_monthly: 0.0,
+            is_lone_parent: false,
         };
 
         let mut results: Vec<PersonResult> = people.iter()
@@ -507,7 +516,12 @@ mod tests {
             would_claim_uc: false,
             would_claim_child_benefit: false,
             would_claim_pc: false,
+            would_claim_hb: false,
+            would_claim_ctc: false,
+            would_claim_wtc: false,
+            would_claim_is: false,
             rent_monthly: 0.0,
+            is_lone_parent: false,
         };
 
         let mut results: Vec<PersonResult> = people.iter()

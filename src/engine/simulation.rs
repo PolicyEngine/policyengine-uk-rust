@@ -26,6 +26,13 @@ pub struct BenUnitResult {
     pub child_benefit: f64,
     pub state_pension: f64,
     pub pension_credit: f64,
+    pub housing_benefit: f64,
+    pub child_tax_credit: f64,
+    pub working_tax_credit: f64,
+    pub income_support: f64,
+    pub council_tax_reduction: f64,
+    pub scottish_child_payment: f64,
+    pub benefit_cap_reduction: f64,
     pub total_benefits: f64,
     pub uc_max_amount: f64,
     pub uc_income_reduction: f64,
@@ -91,7 +98,8 @@ impl Simulation {
 
         // Phase 2: BenUnit-level calculations (parallelised)
         let br: Vec<BenUnitResult> = self.benunits.par_iter().map(|bu| {
-            variables::benefits::calculate_benunit(bu, &self.people, &person_results, &self.parameters)
+            let hh = &self.households[bu.household_id];
+            variables::benefits::calculate_benunit(bu, &self.people, &person_results, hh, &self.parameters)
         }).collect();
         benunit_results = br;
 
