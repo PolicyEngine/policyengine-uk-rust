@@ -1,23 +1,52 @@
 use std::path::Path;
 use crate::engine::entities::*;
+use crate::engine::simulation::Simulation;
 use crate::data::Dataset;
+use crate::parameters::Parameters;
 
 /// Write a Dataset to clean CSVs with descriptive column names.
 ///
 /// Produces three files in `output_dir`:
 ///   - persons.csv: one row per person, annual values
-///   - benunits.csv: one row per benefit unit
+///   - benunits.csv: one row per benefit unit (includes ENR flags)
 ///   - households.csv: one row per household
 ///
-/// All monetary values are ANNUAL (already converted from FRS weekly).
-pub fn write_clean_csvs(dataset: &Dataset, output_dir: &Path) -> anyhow::Result<()> {
+/// `params` is used to compute baseline entitlements so that ENR flags can be
+/// baked into benunits.csv at extract time, avoiding a baseline re-run on every
+/// simulation.
+pub fn write_clean_csvs(dataset: &mut Dataset, params: &Parameters, output_dir: &Path) -> anyhow::Result<()> {
     std::fs::create_dir_all(output_dir)?;
+
+    compute_enr_flags(dataset, params);
 
     write_persons(dataset, output_dir)?;
     write_benunits(dataset, output_dir)?;
     write_households(dataset, output_dir)?;
 
     Ok(())
+}
+
+/// Run a baseline simulation pass and mark each benunit as an ENR for each
+/// benefit where the model says they are entitled but they did not report receipt.
+fn compute_enr_flags(dataset: &mut Dataset, params: &Parameters) {
+    let sim = Simulation::new(
+        dataset.people.clone(),
+        dataset.benunits.clone(),
+        dataset.households.clone(),
+        params.clone(),
+    );
+    let results = sim.run();
+
+    for bu in &mut dataset.benunits {
+        let br = &results.benunit_results[bu.id];
+        // ENR = entitled (model says > 0) AND not reporting receipt
+        bu.is_enr_uc  = br.universal_credit > 0.0  && !bu.reported_uc;
+        bu.is_enr_hb  = br.housing_benefit  > 0.0  && !bu.reported_hb;
+        bu.is_enr_pc  = br.pension_credit   > 0.0  && !bu.reported_pc;
+        bu.is_enr_cb  = br.child_benefit    > 0.0  && !bu.reported_cb;
+        bu.is_enr_ctc = br.child_tax_credit > 0.0  && !bu.reported_ctc;
+        bu.is_enr_wtc = br.working_tax_credit > 0.0 && !bu.reported_wtc;
+    }
 }
 
 fn write_persons(dataset: &Dataset, output_dir: &Path) -> anyhow::Result<()> {
@@ -116,6 +145,12 @@ fn write_benunits(dataset: &Dataset, output_dir: &Path) -> anyhow::Result<()> {
         "person_ids",
         "take_up_seed", "on_uc", "on_legacy",
         "rent_monthly", "is_lone_parent",
+        // Reported receipt flags
+        "reported_cb", "reported_uc", "reported_hb",
+        "reported_pc", "reported_ctc", "reported_wtc", "reported_is",
+        // ENR flags
+        "is_enr_uc", "is_enr_hb", "is_enr_pc",
+        "is_enr_cb", "is_enr_ctc", "is_enr_wtc",
     ])?;
 
     for bu in &dataset.benunits {
@@ -133,6 +168,19 @@ fn write_benunits(dataset: &Dataset, output_dir: &Path) -> anyhow::Result<()> {
             bu.on_legacy.to_string(),
             format!("{:.2}", bu.rent_monthly),
             bu.is_lone_parent.to_string(),
+            bu.reported_cb.to_string(),
+            bu.reported_uc.to_string(),
+            bu.reported_hb.to_string(),
+            bu.reported_pc.to_string(),
+            bu.reported_ctc.to_string(),
+            bu.reported_wtc.to_string(),
+            bu.reported_is.to_string(),
+            bu.is_enr_uc.to_string(),
+            bu.is_enr_hb.to_string(),
+            bu.is_enr_pc.to_string(),
+            bu.is_enr_cb.to_string(),
+            bu.is_enr_ctc.to_string(),
+            bu.is_enr_wtc.to_string(),
         ])?;
     }
 
@@ -329,10 +377,26 @@ fn load_benunits_csv(data_dir: &Path) -> anyhow::Result<Vec<BenUnit>> {
         let on_legacy = parse_bool(next());
         let rent_monthly = parse_f64(next());
         let is_lone_parent = parse_bool(next());
+        let reported_cb  = parse_bool(next());
+        let reported_uc  = parse_bool(next());
+        let reported_hb  = parse_bool(next());
+        let reported_pc  = parse_bool(next());
+        let reported_ctc = parse_bool(next());
+        let reported_wtc = parse_bool(next());
+        let reported_is  = parse_bool(next());
+        let is_enr_uc  = parse_bool(next());
+        let is_enr_hb  = parse_bool(next());
+        let is_enr_pc  = parse_bool(next());
+        let is_enr_cb  = parse_bool(next());
+        let is_enr_ctc = parse_bool(next());
+        let is_enr_wtc = parse_bool(next());
 
         benunits.push(BenUnit {
             id, household_id, person_ids,
             take_up_seed, on_uc, on_legacy, rent_monthly, is_lone_parent,
+            reported_cb, reported_uc, reported_hb, reported_pc,
+            reported_ctc, reported_wtc, reported_is,
+            is_enr_uc, is_enr_hb, is_enr_pc, is_enr_cb, is_enr_ctc, is_enr_wtc,
         });
     }
 

@@ -30,7 +30,6 @@ pub struct BenUnitResult {
     pub child_tax_credit: f64,
     pub working_tax_credit: f64,
     pub income_support: f64,
-    pub council_tax_reduction: f64,
     pub scottish_child_payment: f64,
     pub benefit_cap_reduction: f64,
     pub total_benefits: f64,

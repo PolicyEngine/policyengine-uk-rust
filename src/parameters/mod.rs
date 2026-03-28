@@ -24,8 +24,6 @@ pub struct Parameters {
     #[serde(default)]
     pub tax_credits: Option<TaxCreditsParams>,
     #[serde(default)]
-    pub council_tax_reduction: Option<CouncilTaxReductionParams>,
-    #[serde(default)]
     pub scottish_child_payment: Option<ScottishChildPaymentParams>,
     pub growth_factors: GrowthFactors,
     #[serde(default = "TakeUpRates::default")]
@@ -44,6 +42,10 @@ pub struct TakeUpRates {
     pub child_tax_credit: f64,
     pub working_tax_credit: f64,
     pub income_support: f64,
+    /// Take-up rate for genuinely new entrants (not ENRs) when a reform expands
+    /// eligibility. Models partial behavioural response to new entitlement.
+    #[serde(default = "TakeUpRates::default_new_entrant_rate")]
+    pub new_entrant_rate: f64,
 }
 
 impl Default for TakeUpRates {
@@ -56,8 +58,13 @@ impl Default for TakeUpRates {
             child_tax_credit: 0.83,
             working_tax_credit: 0.67,
             income_support: 0.85,
+            new_entrant_rate: 0.3,
         }
     }
+}
+
+impl TakeUpRates {
+    fn default_new_entrant_rate() -> f64 { 0.3 }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -206,18 +213,6 @@ pub struct TaxCreditsParams {
     /// Minimum hours per week to qualify for WTC
     pub wtc_min_hours_single: f64,
     pub wtc_min_hours_couple: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CouncilTaxReductionParams {
-    /// Taper/withdrawal rate (20%)
-    pub taper_rate: f64,
-    /// Personal allowances for applicable amount (weekly)
-    pub personal_allowance_single_under25: f64,
-    pub personal_allowance_single_25_plus: f64,
-    pub personal_allowance_couple: f64,
-    pub child_allowance: f64,
-    pub family_premium: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

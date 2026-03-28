@@ -182,10 +182,11 @@ pub fn generate_synthetic_frs(year: u32) -> Dataset {
             household_id: hh_idx,
             person_ids: bu_person_ids.clone(),
             take_up_seed: seed,
-            on_uc: seed < 0.50,     // ~50% on UC in synthetic data
-            on_legacy: seed >= 0.50 && seed < 0.65,  // ~15% on legacy
+            on_uc: seed < 0.50,
+            on_legacy: seed >= 0.50 && seed < 0.65,
             rent_monthly: rent,
             is_lone_parent: false,
+            ..BenUnit::default()
         });
         hh_bu_ids.push(bu_id);
         bu_id += 1;

@@ -157,7 +157,7 @@ impl Person {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct BenUnit {
     pub id: usize,
     pub household_id: usize,
@@ -170,6 +170,24 @@ pub struct BenUnit {
     pub on_legacy: bool,
     pub rent_monthly: f64,
     pub is_lone_parent: bool,
+
+    // Reported receipt flags (true = any member reported non-zero amount)
+    pub reported_cb: bool,
+    pub reported_uc: bool,
+    pub reported_hb: bool,
+    pub reported_pc: bool,
+    pub reported_ctc: bool,
+    pub reported_wtc: bool,
+    pub reported_is: bool,
+
+    // Entitled Non-Recipient flags (computed at extract time from baseline policy)
+    // True = model says entitled under baseline policy but no reported receipt.
+    pub is_enr_uc: bool,
+    pub is_enr_hb: bool,
+    pub is_enr_pc: bool,
+    pub is_enr_cb: bool,
+    pub is_enr_ctc: bool,
+    pub is_enr_wtc: bool,
 }
 
 impl BenUnit {

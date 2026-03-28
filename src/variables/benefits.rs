@@ -16,30 +16,35 @@ pub fn calculate_benunit(
     // Non-means-tested / universal benefits (available regardless of UC/legacy)
     let child_benefit = calculate_child_benefit(bu, people, person_results, params);
     let state_pension = calculate_state_pension(bu, people);
-    let ctr = calculate_council_tax_reduction(bu, people, person_results, household, params);
 
-    // UC and legacy benefits are mutually exclusive.
-    // Use FRS-reported system from the data.
+    let ne = params.take_up.new_entrant_rate;
+
+    // UC and legacy benefits are mutually exclusive based on reported system.
+    // Within each system, apply three-way take-up: reported → full, ENR → full rate, new → new_entrant_rate.
     let (uc, pension_credit, housing_benefit, ctc, wtc, income_support, scp);
-    if bu.on_uc {
-        uc = calculate_universal_credit(bu, people, person_results, params);
+    if bu.on_uc || bu.is_enr_uc {
+        let raw_uc = calculate_universal_credit(bu, people, person_results, params);
+        let takes = takes_up_reform(bu, params.take_up.universal_credit, bu.reported_uc, bu.is_enr_uc, ne);
+        uc = if takes { raw_uc } else { (0.0, raw_uc.1, raw_uc.2) };
         pension_credit = calculate_pension_credit(bu, people, params);
         housing_benefit = 0.0;
         ctc = 0.0;
         wtc = 0.0;
         income_support = 0.0;
-        scp = calculate_scottish_child_payment(bu, people, household, params);
-    } else if bu.on_legacy {
+        scp = if takes { calculate_scottish_child_payment(bu, people, household, params) } else { 0.0 };
+    } else if bu.on_legacy || bu.is_enr_hb || bu.is_enr_ctc || bu.is_enr_wtc {
         uc = (0.0, 0.0, 0.0);
         pension_credit = calculate_pension_credit(bu, people, params);
-        housing_benefit = calculate_housing_benefit(bu, people, person_results, params);
+        let raw_hb = calculate_housing_benefit(bu, people, person_results, params);
+        housing_benefit = if raw_hb > 0.0 && takes_up_reform(bu, params.take_up.housing_benefit, bu.reported_hb, bu.is_enr_hb, ne) { raw_hb } else { 0.0 };
         let tc = calculate_tax_credits(bu, people, person_results, params);
-        ctc = tc.0;
-        wtc = tc.1;
+        let tc_takes = takes_up_reform(bu, params.take_up.child_tax_credit, bu.reported_ctc || bu.reported_wtc, bu.is_enr_ctc || bu.is_enr_wtc, ne);
+        ctc = if tc_takes { tc.0 } else { 0.0 };
+        wtc = if tc_takes { tc.1 } else { 0.0 };
         income_support = calculate_income_support(bu, people, person_results, params);
         scp = 0.0;
     } else {
-        // Not claiming any means-tested benefit
+        // Not on any means-tested system — check if newly entitled under reform
         uc = (0.0, 0.0, 0.0);
         pension_credit = calculate_pension_credit(bu, people, params);
         housing_benefit = 0.0;
@@ -51,7 +56,7 @@ pub fn calculate_benunit(
 
     // Sum pre-cap benefits
     let pre_cap_benefits = uc.0 + child_benefit + state_pension + pension_credit
-        + housing_benefit + ctc + wtc + income_support + ctr + scp;
+        + housing_benefit + ctc + wtc + income_support + scp;
 
     // Apply benefit cap
     let benefit_cap_reduction = calculate_benefit_cap(
@@ -70,7 +75,6 @@ pub fn calculate_benunit(
         child_tax_credit: ctc,
         working_tax_credit: wtc,
         income_support,
-        council_tax_reduction: ctr,
         scottish_child_payment: scp,
         benefit_cap_reduction,
         total_benefits,
@@ -82,6 +86,16 @@ pub fn calculate_benunit(
 /// Check if a benunit takes up a benefit based on its random seed and the take-up rate.
 fn takes_up(bu: &BenUnit, rate: f64) -> bool {
     bu.take_up_seed < rate
+}
+
+/// Three-way take-up decision for a benefit:
+/// - Reported receipt → always receives (current recipient, behavioural status quo)
+/// - ENR in baseline  → full take-up rate (willing claimant, just wasn't eligible before)
+/// - Genuinely new    → new_entrant_rate (partial behavioural response to new entitlement)
+fn takes_up_reform(bu: &BenUnit, rate: f64, reported: bool, is_enr: bool, new_entrant_rate: f64) -> bool {
+    if reported  { return true; }
+    if is_enr    { return takes_up(bu, rate); }
+    takes_up(bu, new_entrant_rate)
 }
 
 /// Child Benefit: eldest child gets higher rate, others get additional rate.
@@ -119,7 +133,8 @@ fn calculate_child_benefit(
 
     if amount > 0.0 {
         let tu = params.take_up.child_benefit;
-        if !takes_up(bu, tu) { return 0.0; }
+        let ne = params.take_up.new_entrant_rate;
+        if !takes_up_reform(bu, tu, bu.reported_cb, bu.is_enr_cb, ne) { return 0.0; }
     }
     amount
 }
@@ -323,7 +338,8 @@ fn calculate_pension_credit(bu: &BenUnit, people: &[Person], params: &Parameters
     let amount = gc + sc;
     if amount > 0.0 {
         let tu = params.take_up.pension_credit;
-        if !takes_up(bu, tu) { return 0.0; }
+        let ne = params.take_up.new_entrant_rate;
+        if !takes_up_reform(bu, tu, bu.reported_pc, bu.is_enr_pc, ne) { return 0.0; }
     }
     amount
 }
@@ -524,21 +540,6 @@ fn calculate_income_support(
     (applicable_amount - income).max(0.0)
 }
 
-/// Council Tax Reduction (Council Tax Support).
-///
-/// CTR = max(0, council_tax - max(0, (income - applicable_amount) * 20%))
-/// Council Tax Reduction is administered at local authority level with varying schemes.
-/// We do not model it nationally — return 0.0 (could be extended to use reported amounts).
-fn calculate_council_tax_reduction(
-    _bu: &BenUnit,
-    _people: &[Person],
-    _person_results: &[PersonResult],
-    _household: &Household,
-    _params: &Parameters,
-) -> f64 {
-    0.0
-}
-
 /// Scottish Child Payment: £26.70/week per eligible child under 16.
 /// Only available in Scotland to UC/legacy benefit claimants.
 fn calculate_scottish_child_payment(
@@ -668,6 +669,8 @@ mod tests {
             take_up_seed: 0.0, on_uc: true, on_legacy: false,
             rent_monthly: 800.0,
             is_lone_parent: num_children > 0,
+            reported_uc: true, reported_cb: true,
+            ..BenUnit::default()
         };
         let hh = Household {
             id: 0,
@@ -764,8 +767,9 @@ mod tests {
         let bu = BenUnit {
             id: 0, household_id: 0, person_ids: vec![0],
             take_up_seed: 0.0, on_uc: false, on_legacy: false,
-            rent_monthly: 0.0,
-            is_lone_parent: false,
+            rent_monthly: 0.0, is_lone_parent: false,
+            reported_pc: true,
+            ..BenUnit::default()
         };
         let hh = Household {
             id: 0, benunit_ids: vec![0], person_ids: vec![0],
@@ -792,8 +796,9 @@ mod tests {
         let bu = BenUnit {
             id: 0, household_id: 0, person_ids: vec![0],
             take_up_seed: 0.85, on_uc: false, on_legacy: true,
-            rent_monthly: 600.0,
-            is_lone_parent: false,
+            rent_monthly: 600.0, is_lone_parent: false,
+            reported_hb: true,
+            ..BenUnit::default()
         };
         let hh = Household {
             id: 0, benunit_ids: vec![0], person_ids: vec![0],
@@ -821,8 +826,9 @@ mod tests {
         let bu = BenUnit {
             id: 0, household_id: 0, person_ids: vec![0, 1],
             take_up_seed: 0.85, on_uc: false, on_legacy: true,
-            rent_monthly: 0.0,
-            is_lone_parent: true,
+            rent_monthly: 0.0, is_lone_parent: true,
+            reported_ctc: true, reported_wtc: true,
+            ..BenUnit::default()
         };
         let hh = Household {
             id: 0, benunit_ids: vec![0], person_ids: vec![0, 1],
@@ -869,8 +875,9 @@ mod tests {
         let bu = BenUnit {
             id: 0, household_id: 0, person_ids: vec![0, 1],
             take_up_seed: 0.0, on_uc: true, on_legacy: false,
-            rent_monthly: 0.0,
-            is_lone_parent: true,
+            rent_monthly: 0.0, is_lone_parent: true,
+            reported_uc: true,
+            ..BenUnit::default()
         };
         let hh = Household {
             id: 0, benunit_ids: vec![0], person_ids: vec![0, 1],
@@ -887,29 +894,4 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_council_tax_reduction() {
-        // CTR is LA-level, not nationally modelled — always returns 0
-        let params = Parameters::for_year(2025).unwrap();
-        let mut p = Person::default();
-        p.age = 30.0;
-        p.employment_income = 8000.0;
-        let people = vec![p];
-        let bu = BenUnit {
-            id: 0, household_id: 0, person_ids: vec![0],
-            take_up_seed: 0.99, on_uc: false, on_legacy: false,
-            rent_monthly: 0.0,
-            is_lone_parent: false,
-        };
-        let hh = Household {
-            id: 0, benunit_ids: vec![0], person_ids: vec![0],
-            weight: 1.0, region: Region::London, rent: 0.0, council_tax: 1800.0,
-        };
-        let pr: Vec<PersonResult> = people.iter()
-            .map(|p| crate::variables::income_tax::calculate(p, &params))
-            .collect();
-        let result = calculate_benunit(&bu, &people, &pr, &hh, &params);
-        assert_eq!(result.council_tax_reduction, 0.0,
-            "CTR is LA-level, not nationally modelled");
-    }
 }

@@ -459,12 +459,10 @@ mod tests {
 
         let people = vec![person_a, person_b];
         let bu = BenUnit {
-            id: 0,
-            household_id: 0,
-            person_ids: vec![0, 1],
+            id: 0, household_id: 0, person_ids: vec![0, 1],
             take_up_seed: 0.99, on_uc: false, on_legacy: false,
-            rent_monthly: 0.0,
-            is_lone_parent: false,
+            rent_monthly: 0.0, is_lone_parent: false,
+            ..BenUnit::default()
         };
 
         let mut results: Vec<PersonResult> = people.iter()
@@ -504,12 +502,10 @@ mod tests {
 
         let people = vec![person_a, person_b];
         let bu = BenUnit {
-            id: 0,
-            household_id: 0,
-            person_ids: vec![0, 1],
+            id: 0, household_id: 0, person_ids: vec![0, 1],
             take_up_seed: 0.99, on_uc: false, on_legacy: false,
-            rent_monthly: 0.0,
-            is_lone_parent: false,
+            rent_monthly: 0.0, is_lone_parent: false,
+            ..BenUnit::default()
         };
 
         let mut results: Vec<PersonResult> = people.iter()

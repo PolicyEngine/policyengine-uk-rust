@@ -581,6 +581,7 @@ fn assemble_dataset(
                 on_legacy: false,  // Derived below from person reported amounts
                 rent_monthly: bu.rent_weekly * WEEKS_IN_YEAR / 12.0,
                 is_lone_parent: false,
+                ..BenUnit::default()
             });
             households[hh_idx].benunit_ids.push(bu_idx);
         }
@@ -652,28 +653,21 @@ fn assemble_dataset(
         }
     }
 
-    // Derive take-up flags and lone parent status from person-level reported benefits
+    // Derive flags and lone parent status from person-level reported benefits
     for bu in &mut benunits {
         let num_adults = bu.person_ids.iter().filter(|&&pid| people[pid].is_adult()).count();
         let num_children = bu.person_ids.iter().filter(|&&pid| people[pid].is_child()).count();
         bu.is_lone_parent = num_adults == 1 && num_children > 0;
 
-        // Derive on_legacy from reported receipt of any legacy means-tested benefit
         for &pid in &bu.person_ids {
             let p = &people[pid];
-            if p.housing_benefit_reported > 0.0
-                || p.child_tax_credit_reported > 0.0
-                || p.working_tax_credit_reported > 0.0
-                || p.income_support_reported > 0.0
-            {
-                bu.on_legacy = true;
-            }
-        }
-        // Also update on_uc if any person reports UC
-        for &pid in &bu.person_ids {
-            if people[pid].universal_credit_reported > 0.0 {
-                bu.on_uc = true;
-            }
+            if p.universal_credit_reported > 0.0    { bu.on_uc = true; bu.reported_uc = true; }
+            if p.housing_benefit_reported > 0.0     { bu.on_legacy = true; bu.reported_hb = true; }
+            if p.child_tax_credit_reported > 0.0    { bu.on_legacy = true; bu.reported_ctc = true; }
+            if p.working_tax_credit_reported > 0.0  { bu.on_legacy = true; bu.reported_wtc = true; }
+            if p.income_support_reported > 0.0      { bu.on_legacy = true; bu.reported_is = true; }
+            if p.child_benefit_reported > 0.0       { bu.reported_cb = true; }
+            if p.pension_credit_reported > 0.0      { bu.reported_pc = true; }
         }
     }
 

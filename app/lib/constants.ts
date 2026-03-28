@@ -863,68 +863,6 @@ export const SLIDERS: SliderConfig[] = [
     format: "percent",
   },
 
-  // ── Council Tax Reduction ───────────────────────────────────
-  {
-    key: "ctr_taper_rate",
-    label: "Taper Rate",
-    section: "Council Tax Reduction",
-    path: ["council_tax_reduction", "taper_rate"],
-    min: 0,
-    max: 1,
-    step: 0.01,
-    format: "percent",
-  },
-  {
-    key: "ctr_pa_single_under25",
-    label: "Personal Allowance (single <25, weekly)",
-    section: "Council Tax Reduction",
-    path: ["council_tax_reduction", "personal_allowance_single_under25"],
-    min: 0,
-    max: 150,
-    step: 1,
-    format: "currency",
-  },
-  {
-    key: "ctr_pa_single_25plus",
-    label: "Personal Allowance (single 25+, weekly)",
-    section: "Council Tax Reduction",
-    path: ["council_tax_reduction", "personal_allowance_single_25_plus"],
-    min: 0,
-    max: 200,
-    step: 1,
-    format: "currency",
-  },
-  {
-    key: "ctr_pa_couple",
-    label: "Personal Allowance (couple, weekly)",
-    section: "Council Tax Reduction",
-    path: ["council_tax_reduction", "personal_allowance_couple"],
-    min: 0,
-    max: 300,
-    step: 1,
-    format: "currency",
-  },
-  {
-    key: "ctr_child_allowance",
-    label: "Child Allowance (weekly)",
-    section: "Council Tax Reduction",
-    path: ["council_tax_reduction", "child_allowance"],
-    min: 0,
-    max: 200,
-    step: 1,
-    format: "currency",
-  },
-  {
-    key: "ctr_family_premium",
-    label: "Family Premium (weekly)",
-    section: "Council Tax Reduction",
-    path: ["council_tax_reduction", "family_premium"],
-    min: 0,
-    max: 50,
-    step: 0.5,
-    format: "currency",
-  },
-
   // ── Scottish Child Payment ──────────────────────────────────
   {
     key: "scp_weekly_amount",
@@ -959,7 +897,6 @@ export const SECTIONS = [
   "Benefit Cap",
   "Housing Benefit",
   "Tax Credits",
-  "Council Tax Reduction",
   "Scottish Child Payment",
 ];
 

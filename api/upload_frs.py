@@ -27,15 +27,17 @@ def upload(local_dir: Path) -> None:
 
     volume = modal.Volume.from_name(FRS_VOLUME_NAME, create_if_missing=True)
 
-    print(f"Uploading FRS clean CSVs from {local_dir} → Modal Volume '{FRS_VOLUME_NAME}':{REMOTE_PATH}")
+    # Files are stored at the volume root (e.g. "persons.csv").
+    # The volume is mounted at FRS_MOUNT_PATH in the container, so
+    # container path /data/frs_clean/persons.csv == volume root persons.csv.
+    print(f"Uploading FRS clean CSVs from {local_dir} → Modal Volume '{FRS_VOLUME_NAME}' (root)")
     with volume.batch_upload(force=True) as batch:
         for csv_file in local_dir.glob("*.csv"):
-            remote = f"{REMOTE_PATH}/{csv_file.name}"
-            batch.put_file(str(csv_file), remote)
-            print(f"  {csv_file.name} → {remote}")
+            batch.put_file(str(csv_file), csv_file.name)
+            print(f"  {csv_file.name} → /{csv_file.name}")
 
     print("Done. Volume contents:")
-    for entry in volume.listdir(REMOTE_PATH):
+    for entry in volume.listdir("/"):
         print(f"  {entry.path}")
 
 

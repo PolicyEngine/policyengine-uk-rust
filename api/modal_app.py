@@ -102,18 +102,19 @@ def _make_fastapi_app():
         try:
             result = subprocess.run(
                 cmd, capture_output=True, text=True, timeout=120,
-                env={**os.environ, "PARAMETERS_DIR": PARAMETERS_DIR},
+                cwd="/app",  # binary resolves parameters/ relative to cwd
             )
         except subprocess.TimeoutExpired:
             raise HTTPException(504, detail="Simulation timed out")
         if result.returncode != 0:
-            raise HTTPException(500, detail=f"Simulation failed: {result.stderr[:2000]}")
+            raise HTTPException(500, detail=f"Simulation failed: cmd={cmd} stderr={result.stderr[:2000]}")
         return json.loads(result.stdout)
 
     def get_baseline_params(year: int) -> dict:
         result = subprocess.run(
             [RUST_BINARY, "--year", str(year), "--export-params-json"],
             capture_output=True, text=True, timeout=10,
+            cwd="/app",
         )
         if result.returncode != 0:
             raise HTTPException(500, detail=f"Failed to load params: {result.stderr[:500]}")
@@ -132,7 +133,7 @@ def _make_fastapi_app():
     REFORM_SECTIONS = [
         "income_tax", "national_insurance", "universal_credit",
         "child_benefit", "benefit_cap", "housing_benefit",
-        "tax_credits", "council_tax_reduction", "scottish_child_payment",
+        "tax_credits", "scottish_child_payment",
         "pension_credit", "state_pension",
     ]
 
@@ -145,7 +146,6 @@ def _make_fastapi_app():
         benefit_cap: Optional[dict[str, Any]] = None
         housing_benefit: Optional[dict[str, Any]] = None
         tax_credits: Optional[dict[str, Any]] = None
-        council_tax_reduction: Optional[dict[str, Any]] = None
         scottish_child_payment: Optional[dict[str, Any]] = None
         pension_credit: Optional[dict[str, Any]] = None
         state_pension: Optional[dict[str, Any]] = None
@@ -159,7 +159,6 @@ def _make_fastapi_app():
         benefit_cap: Optional[dict[str, Any]] = None
         housing_benefit: Optional[dict[str, Any]] = None
         tax_credits: Optional[dict[str, Any]] = None
-        council_tax_reduction: Optional[dict[str, Any]] = None
         scottish_child_payment: Optional[dict[str, Any]] = None
         pension_credit: Optional[dict[str, Any]] = None
         state_pension: Optional[dict[str, Any]] = None
@@ -232,10 +231,11 @@ def _make_fastapi_app():
     # Startup caches all 7 year baselines — give it enough RAM
     memory=4096,
     cpu=4,
-    # Keep one container warm so the dashboard is snappy
-    keep_warm=1,
     timeout=300,
+    # EU West (Ireland) for lower latency from UK callers
+    region="eu-west-1",
 )
+@modal.concurrent(max_inputs=10)
 @modal.asgi_app()
 def api():
     return _make_fastapi_app()

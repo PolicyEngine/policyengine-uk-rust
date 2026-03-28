@@ -103,13 +103,6 @@ tax_credits:
   wtc_min_hours_single: 30.0
   wtc_min_hours_couple: 24.0
 
-council_tax_reduction:
-  taper_rate: 0.20
-  personal_allowance_single_under25: 71.70
-  personal_allowance_single_25_plus: 90.50
-  personal_allowance_couple: 142.25
-  child_allowance: 83.73
-  family_premium: 18.53
 
 scottish_child_payment:
   weekly_amount: 26.70
