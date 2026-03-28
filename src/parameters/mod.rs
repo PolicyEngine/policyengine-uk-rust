@@ -61,7 +61,9 @@ impl Default for TakeUpRates {
 }
 
 impl TakeUpRates {
-    fn default_new_entrant_rate() -> f64 { 0.3 }
+    fn default_new_entrant_rate() -> f64 {
+        0.3
+    }
 }
 
 /// UC managed migration rates by legacy benefit type.
@@ -115,8 +117,12 @@ pub struct IncomeTaxParams {
     pub marriage_allowance_rounding: f64,
 }
 
-fn default_ma_fraction() -> f64 { 0.10 }
-fn default_ma_rounding() -> f64 { 10.0 }
+fn default_ma_fraction() -> f64 {
+    0.10
+}
+fn default_ma_rounding() -> f64 {
+    10.0
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NationalInsuranceParams {
@@ -142,11 +148,19 @@ pub struct NationalInsuranceParams {
     pub class4_additional_rate: f64,
 }
 
-fn default_secondary_threshold() -> f64 { 5000.0 }
-fn default_employer_rate() -> f64 { 0.15 }
+fn default_secondary_threshold() -> f64 {
+    5000.0
+}
+fn default_employer_rate() -> f64 {
+    0.15
+}
 // Class 2 abolished from 6 April 2024 (NIC Act 2024); default to 0 for post-2024 years
-fn default_class2_flat_rate() -> f64 { 0.0 }
-fn default_class2_spt() -> f64 { 0.0 }
+fn default_class2_flat_rate() -> f64 {
+    0.0
+}
+fn default_class2_spt() -> f64 {
+    0.0
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UniversalCreditParams {
@@ -274,7 +288,9 @@ impl Parameters {
 
         anyhow::bail!(
             "No parameter file found for fiscal year {}/{}. Looked for: {}",
-            year, year + 1, paths_to_try.join(", ")
+            year,
+            year + 1,
+            paths_to_try.join(", ")
         )
     }
 
@@ -364,5 +380,32 @@ mod tests {
         assert!((reformed.income_tax.personal_allowance - 20000.0).abs() < 0.01);
         // Other values should be unchanged
         assert!((reformed.national_insurance.main_rate - 0.08).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_scottish_child_payment_alignment() {
+        let expected = [
+            (2025, 27.15),
+            (2026, 28.20),
+            (2027, 28.85),
+            (2028, 29.45),
+            (2029, 30.05),
+        ];
+
+        for (year, weekly_amount) in expected {
+            let params = Parameters::for_year(year).unwrap();
+            let scp = params
+                .scottish_child_payment
+                .as_ref()
+                .expect("Scottish Child Payment should be configured");
+            assert!(
+                (scp.weekly_amount - weekly_amount).abs() < 0.01,
+                "expected SCP weekly amount {} for {}, got {}",
+                weekly_amount,
+                year,
+                scp.weekly_amount
+            );
+            assert!((scp.max_age - 16.0).abs() < 0.01);
+        }
     }
 }

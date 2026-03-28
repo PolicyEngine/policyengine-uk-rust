@@ -719,14 +719,15 @@ source, and — for projected years — the methodology used to derive them.
 SIs: SI 2023/233 and SI 2023/234 (2023/24); SI 2024/242 (2024/25); SI 2025/295 and SI 2025/292
 (2025/26).
 
-**Projected years (2026/27 – 2029/30)**: derived from the OBR Economic and Fiscal Outlook March
-2026 growth factor forecasts. Benefits uprated by September CPI; state pension by the triple
-lock (max of CPI, earnings, 2.5%); income tax thresholds frozen until 2027/28 then CPI-uprated.
+**Projected years (2026/27 – 2029/30)**: generally derived from the OBR Economic and Fiscal
+Outlook March 2026 growth factor forecasts. Benefits uprated by September CPI; state pension by
+the triple lock (max of CPI, earnings, 2.5%); income tax thresholds frozen until 2027/28 then
+CPI-uprated. Scottish Child Payment follows the Scottish Fiscal Commission January 2026 forecast
+path already used in `policyengine-uk`.
 
-**Known issues in confirmed years** (to be fixed separately):
-- 2023/24 NI `main_rate` 0.115 is blended — the underlying rates are 12% and 10% (mid-year cut)
-- 2025/26 Scottish Child Payment `weekly_amount` should be £27.15 (SSI 2025/100), not £26.70
-- 2026/27 onward: Scottish Child Payment not uprated (still showing £26.70 — needs correction)
+**Known modelling approximations**:
+- 2023/24 NI `main_rate` 0.115 is represented as a fiscal-year blended annual rate to reflect the
+  January 2024 mid-year cut from 12% to 10%
 
 ---
 

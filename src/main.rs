@@ -1,21 +1,23 @@
+mod data;
 mod engine;
 mod parameters;
-mod variables;
-mod data;
 mod reforms;
+mod variables;
 
 use clap::Parser;
 use colored::Colorize;
-use comfy_table::{Table, ContentArrangement, presets};
-use serde::Serialize;
+use comfy_table::{presets, ContentArrangement, Table};
+use serde::{Deserialize, Serialize};
+use std::fs;
 use std::path::PathBuf;
 
+use crate::data::clean::{load_clean_frs, write_clean_csvs};
+use crate::data::frs::load_frs;
+use crate::data::synthetic::generate_synthetic_frs;
+use crate::engine::entities::{BenUnit, Household, Person};
 use crate::engine::Simulation;
 use crate::parameters::Parameters;
 use crate::reforms::Reform;
-use crate::data::synthetic::generate_synthetic_frs;
-use crate::data::frs::load_frs;
-use crate::data::clean::{write_clean_csvs, load_clean_frs};
 
 #[derive(Parser)]
 #[command(name = "policyengine-uk")]
@@ -60,6 +62,10 @@ struct Cli {
     /// Load from clean FRS CSVs (produced by --extract-frs) instead of raw FRS.
     #[arg(long)]
     clean_frs: Option<PathBuf>,
+
+    /// Load a single explicit scenario from JSON instead of FRS/synthetic data.
+    #[arg(long)]
+    scenario_json: Option<PathBuf>,
 
     /// Output format: "pretty" (default) or "json" for machine-readable output
     #[arg(long, default_value = "pretty")]
@@ -147,6 +153,13 @@ struct WinnersLosers {
     avg_loss: f64,
 }
 
+#[derive(Debug, Deserialize)]
+struct ScenarioInput {
+    people: Vec<Person>,
+    benunits: Vec<BenUnit>,
+    households: Vec<Household>,
+}
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
@@ -165,13 +178,49 @@ fn main() -> anyhow::Result<()> {
 
     let json_mode = cli.output == "json";
 
+    let reform_params = if let Some(json_str) = &cli.reform_json {
+        baseline_params.apply_json_overlay(json_str)?
+    } else if let Some(path) = &cli.reform {
+        let r = Reform::from_file(path, &baseline_params)?;
+        r.parameters
+    } else if json_mode || cli.scenario_json.is_some() {
+        baseline_params.clone()
+    } else {
+        let r = Reform::personal_allowance_20k(&baseline_params);
+        r.parameters
+    };
+
+    if let Some(path) = &cli.scenario_json {
+        let scenario = load_scenario_input(path)?;
+        validate_scenario_input(&scenario)?;
+        let sim = Simulation::new(
+            scenario.people,
+            scenario.benunits,
+            scenario.households,
+            reform_params,
+        );
+        let results = sim.run();
+        if json_mode {
+            println!("{}", serde_json::to_string(&results)?);
+        } else {
+            println!("{}", serde_json::to_string_pretty(&results)?);
+        }
+        return Ok(());
+    }
+
     // Extract FRS to clean CSVs if requested
     if let Some(output_dir) = &cli.extract_frs {
-        let frs_path = cli.frs.as_ref()
+        let frs_path = cli
+            .frs
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("--extract-frs requires --frs <raw-frs-dir>"))?;
         eprintln!("Loading raw FRS from {}...", frs_path.display());
         let mut dataset = load_frs(frs_path)?;
-        eprintln!("Loaded {} households, {} people", dataset.households.len(), dataset.people.len());
+        eprintln!(
+            "Loaded {} households, {} people",
+            dataset.households.len(),
+            dataset.people.len()
+        );
         eprintln!("Computing ENR flags from baseline {}...", cli.year);
         write_clean_csvs(&mut dataset, &baseline_params, output_dir)?;
         eprintln!("Wrote clean CSVs to {}", output_dir.display());
@@ -180,28 +229,28 @@ fn main() -> anyhow::Result<()> {
 
     // Load dataset
     let dataset = if let Some(clean_path) = &cli.clean_frs {
-        if !json_mode { println!("  {} Loading clean FRS from {}...", "▸".bright_cyan(), clean_path.display()); }
+        if !json_mode {
+            println!(
+                "  {} Loading clean FRS from {}...",
+                "▸".bright_cyan(),
+                clean_path.display()
+            );
+        }
         load_clean_frs(clean_path)?
     } else if let Some(frs_path) = &cli.frs {
-        if !json_mode { println!("  {} Loading FRS microdata from {}...", "▸".bright_cyan(), frs_path.display()); }
+        if !json_mode {
+            println!(
+                "  {} Loading FRS microdata from {}...",
+                "▸".bright_cyan(),
+                frs_path.display()
+            );
+        }
         load_frs(frs_path)?
     } else {
-        if !json_mode { println!("  {} Generating synthetic population...", "▸".bright_cyan()); }
+        if !json_mode {
+            println!("  {} Generating synthetic population...", "▸".bright_cyan());
+        }
         generate_synthetic_frs(cli.year)
-    };
-
-    // Load reform
-    let reform_params = if let Some(json_str) = &cli.reform_json {
-        baseline_params.apply_json_overlay(json_str)?
-    } else if let Some(path) = &cli.reform {
-        let r = Reform::from_file(path, &baseline_params)?;
-        r.parameters
-    } else if json_mode {
-        // JSON mode with no reform = baseline vs baseline
-        baseline_params.clone()
-    } else {
-        let r = Reform::personal_allowance_20k(&baseline_params);
-        r.parameters
     };
 
     // Run baseline
@@ -227,7 +276,10 @@ fn main() -> anyhow::Result<()> {
         println!("weight,equivalised_net_income,gross_income,total_tax,total_benefits");
         for hh in &dataset.households {
             let r = &baseline.household_results[hh.id];
-            println!("{},{},{},{},{}", hh.weight, r.equivalised_net_income, r.gross_income, r.total_tax, r.total_benefits);
+            println!(
+                "{},{},{},{},{}",
+                hh.weight, r.equivalised_net_income, r.gross_income, r.total_tax, r.total_benefits
+            );
         }
         return Ok(());
     }
@@ -235,42 +287,59 @@ fn main() -> anyhow::Result<()> {
     // Analysis
     let households = &dataset.households;
 
-    let baseline_revenue: f64 = households.iter()
+    let baseline_revenue: f64 = households
+        .iter()
         .map(|h| h.weight * baseline.household_results[h.id].total_tax)
         .sum();
-    let reform_revenue: f64 = households.iter()
+    let reform_revenue: f64 = households
+        .iter()
         .map(|h| h.weight * reformed.household_results[h.id].total_tax)
         .sum();
     let revenue_change = reform_revenue - baseline_revenue;
 
-    let baseline_benefits: f64 = households.iter()
+    let baseline_benefits: f64 = households
+        .iter()
         .map(|h| h.weight * baseline.household_results[h.id].total_benefits)
         .sum();
-    let reform_benefits: f64 = households.iter()
+    let reform_benefits: f64 = households
+        .iter()
         .map(|h| h.weight * reformed.household_results[h.id].total_benefits)
         .sum();
     let benefit_change = reform_benefits - baseline_benefits;
     let net_cost = -revenue_change + benefit_change;
 
     // Decile analysis — ranked by equivalised HBAI net income BHC (baseline)
-    let mut hh_incomes: Vec<(usize, f64, f64)> = households.iter().map(|hh| {
-        (hh.id,
-         baseline.household_results[hh.id].equivalised_net_income,
-         reformed.household_results[hh.id].equivalised_net_income)
-    }).collect();
+    let mut hh_incomes: Vec<(usize, f64, f64)> = households
+        .iter()
+        .map(|hh| {
+            (
+                hh.id,
+                baseline.household_results[hh.id].equivalised_net_income,
+                reformed.household_results[hh.id].equivalised_net_income,
+            )
+        })
+        .collect();
     hh_incomes.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
 
     let decile_size = hh_incomes.len() / 10;
     let mut decile_impacts = Vec::new();
     for d in 0..10 {
         let start = d * decile_size;
-        let end = if d == 9 { hh_incomes.len() } else { (d + 1) * decile_size };
+        let end = if d == 9 {
+            hh_incomes.len()
+        } else {
+            (d + 1) * decile_size
+        };
         let slice = &hh_incomes[start..end];
         let n = slice.len() as f64;
         let avg_base: f64 = slice.iter().map(|h| h.1).sum::<f64>() / n;
         let avg_reform: f64 = slice.iter().map(|h| h.2).sum::<f64>() / n;
         let avg_change = avg_reform - avg_base;
-        let pct_change = if avg_base != 0.0 { 100.0 * avg_change / avg_base } else { 0.0 };
+        let pct_change = if avg_base != 0.0 {
+            100.0 * avg_change / avg_base
+        } else {
+            0.0
+        };
         decile_impacts.push(DecileImpact {
             decile: d + 1,
             avg_baseline_income: (avg_base * 100.0).round() / 100.0,
@@ -306,8 +375,16 @@ fn main() -> anyhow::Result<()> {
         winners_pct: (1000.0 * winners / total_hh).round() / 10.0,
         losers_pct: (1000.0 * losers / total_hh).round() / 10.0,
         unchanged_pct: (1000.0 * unchanged / total_hh).round() / 10.0,
-        avg_gain: if winners > 0.0 { (total_gain / winners).round() } else { 0.0 },
-        avg_loss: if losers > 0.0 { (total_loss.abs() / losers).round() } else { 0.0 },
+        avg_gain: if winners > 0.0 {
+            (total_gain / winners).round()
+        } else {
+            0.0
+        },
+        avg_loss: if losers > 0.0 {
+            (total_loss.abs() / losers).round()
+        } else {
+            0.0
+        },
     };
 
     // Program-level breakdown and caseloads (weighted totals from reform)
@@ -326,9 +403,15 @@ fn main() -> anyhow::Result<()> {
                 income_tax += hh.weight * pr.income_tax;
                 employee_ni += hh.weight * pr.national_insurance;
                 employer_ni += hh.weight * pr.employer_ni;
-                if pr.income_tax > 0.0 { it_payers += hh.weight; }
-                if pr.national_insurance > 0.0 { ni_payers += hh.weight; }
-                if pr.employer_ni > 0.0 { eni_payers += hh.weight; }
+                if pr.income_tax > 0.0 {
+                    it_payers += hh.weight;
+                }
+                if pr.national_insurance > 0.0 {
+                    ni_payers += hh.weight;
+                }
+                if pr.employer_ni > 0.0 {
+                    eni_payers += hh.weight;
+                }
             }
         }
         // Benefit spending and caseloads
@@ -365,46 +448,69 @@ fn main() -> anyhow::Result<()> {
             is_val += w * br.income_support;
             scp += w * br.scottish_child_payment;
             cap += w * br.benefit_cap_reduction;
-            if br.universal_credit > 0.0 { cl_uc += w; }
-            if br.child_benefit > 0.0 { cl_cb += w; }
-            if br.state_pension > 0.0 { cl_sp += w; }
-            if br.pension_credit > 0.0 { cl_pc += w; }
-            if br.housing_benefit > 0.0 { cl_hb += w; }
-            if br.child_tax_credit > 0.0 { cl_ctc += w; }
-            if br.working_tax_credit > 0.0 { cl_wtc += w; }
-            if br.income_support > 0.0 { cl_is += w; }
-            if br.scottish_child_payment > 0.0 { cl_scp += w; }
-            if br.benefit_cap_reduction > 0.0 { cl_cap += w; }
+            if br.universal_credit > 0.0 {
+                cl_uc += w;
+            }
+            if br.child_benefit > 0.0 {
+                cl_cb += w;
+            }
+            if br.state_pension > 0.0 {
+                cl_sp += w;
+            }
+            if br.pension_credit > 0.0 {
+                cl_pc += w;
+            }
+            if br.housing_benefit > 0.0 {
+                cl_hb += w;
+            }
+            if br.child_tax_credit > 0.0 {
+                cl_ctc += w;
+            }
+            if br.working_tax_credit > 0.0 {
+                cl_wtc += w;
+            }
+            if br.income_support > 0.0 {
+                cl_is += w;
+            }
+            if br.scottish_child_payment > 0.0 {
+                cl_scp += w;
+            }
+            if br.benefit_cap_reduction > 0.0 {
+                cl_cap += w;
+            }
         }
-        (ProgramBreakdown {
-            income_tax,
-            employee_ni,
-            employer_ni,
-            universal_credit: uc,
-            child_benefit: cb,
-            state_pension: sp,
-            pension_credit: pc,
-            housing_benefit: hb,
-            child_tax_credit: ctc,
-            working_tax_credit: wtc,
-            income_support: is_val,
-            scottish_child_payment: scp,
-            benefit_cap_reduction: cap,
-        }, Caseloads {
-            income_tax_payers: it_payers,
-            ni_payers,
-            employer_ni_payers: eni_payers,
-            universal_credit: cl_uc,
-            child_benefit: cl_cb,
-            state_pension: cl_sp,
-            pension_credit: cl_pc,
-            housing_benefit: cl_hb,
-            child_tax_credit: cl_ctc,
-            working_tax_credit: cl_wtc,
-            income_support: cl_is,
-            scottish_child_payment: cl_scp,
-            benefit_cap_affected: cl_cap,
-        })
+        (
+            ProgramBreakdown {
+                income_tax,
+                employee_ni,
+                employer_ni,
+                universal_credit: uc,
+                child_benefit: cb,
+                state_pension: sp,
+                pension_credit: pc,
+                housing_benefit: hb,
+                child_tax_credit: ctc,
+                working_tax_credit: wtc,
+                income_support: is_val,
+                scottish_child_payment: scp,
+                benefit_cap_reduction: cap,
+            },
+            Caseloads {
+                income_tax_payers: it_payers,
+                ni_payers,
+                employer_ni_payers: eni_payers,
+                universal_credit: cl_uc,
+                child_benefit: cl_cb,
+                state_pension: cl_sp,
+                pension_credit: cl_pc,
+                housing_benefit: cl_hb,
+                child_tax_credit: cl_ctc,
+                working_tax_credit: cl_wtc,
+                income_support: cl_is,
+                scottish_child_payment: cl_scp,
+                benefit_cap_affected: cl_cap,
+            },
+        )
     };
 
     // JSON output mode
@@ -431,23 +537,51 @@ fn main() -> anyhow::Result<()> {
 
     // Pretty output
     println!();
-    println!("{}", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".bright_blue());
-    println!("  {} {}", "PolicyEngine UK".bright_white().bold(), format!("v{}", env!("CARGO_PKG_VERSION")).dimmed());
-    println!("  {}", "High-performance microsimulation engine in Rust".dimmed());
-    println!("{}", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".bright_blue());
+    println!(
+        "{}",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            .bright_blue()
+    );
+    println!(
+        "  {} {}",
+        "PolicyEngine UK".bright_white().bold(),
+        format!("v{}", env!("CARGO_PKG_VERSION")).dimmed()
+    );
+    println!(
+        "  {}",
+        "High-performance microsimulation engine in Rust".dimmed()
+    );
+    println!(
+        "{}",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            .bright_blue()
+    );
     println!();
 
-    println!("    {} {} households, {} people",
+    println!(
+        "    {} {} households, {} people",
         "✓".bright_green(),
         format_num(dataset.households.len()),
         format_num(dataset.people.len()),
     );
-    println!("    {} Fiscal year: {}", "◆".bright_cyan(), baseline_params.fiscal_year.bright_white());
+    println!(
+        "    {} Fiscal year: {}",
+        "◆".bright_cyan(),
+        baseline_params.fiscal_year.bright_white()
+    );
 
     println!();
-    println!("{}", "═══════════════════════════════════════════════════════════════════════════════════".bright_yellow());
+    println!(
+        "{}",
+        "═══════════════════════════════════════════════════════════════════════════════════"
+            .bright_yellow()
+    );
     println!("  {}", "FISCAL IMPACT".bright_white().bold().underline());
-    println!("{}", "═══════════════════════════════════════════════════════════════════════════════════".bright_yellow());
+    println!(
+        "{}",
+        "═══════════════════════════════════════════════════════════════════════════════════"
+            .bright_yellow()
+    );
 
     let mut fiscal_table = Table::new();
     fiscal_table.load_preset(presets::UTF8_FULL);
@@ -474,32 +608,59 @@ fn main() -> anyhow::Result<()> {
     println!("{fiscal_table}");
 
     // Winners and losers
-    println!("\n  {}", "WINNERS & LOSERS".bright_white().bold().underline());
+    println!(
+        "\n  {}",
+        "WINNERS & LOSERS".bright_white().bold().underline()
+    );
     println!();
-    println!("    {} {:.1}% gain — avg £{:.0}/year",
-        "▲".bright_green(), winners_losers.winners_pct, winners_losers.avg_gain);
-    println!("    {} {:.1}% lose — avg £{:.0}/year",
-        "▼".bright_red(), winners_losers.losers_pct, winners_losers.avg_loss);
-    println!("    {} {:.1}% unchanged",
-        "●".dimmed(), winners_losers.unchanged_pct);
+    println!(
+        "    {} {:.1}% gain — avg £{:.0}/year",
+        "▲".bright_green(),
+        winners_losers.winners_pct,
+        winners_losers.avg_gain
+    );
+    println!(
+        "    {} {:.1}% lose — avg £{:.0}/year",
+        "▼".bright_red(),
+        winners_losers.losers_pct,
+        winners_losers.avg_loss
+    );
+    println!(
+        "    {} {:.1}% unchanged",
+        "●".dimmed(),
+        winners_losers.unchanged_pct
+    );
 
     // Decile table
     if cli.deciles {
-        println!("\n  {}", "IMPACT BY INCOME DECILE".bright_white().bold().underline());
+        println!(
+            "\n  {}",
+            "IMPACT BY INCOME DECILE".bright_white().bold().underline()
+        );
         println!();
 
-        let max_abs_change = decile_impacts.iter()
+        let max_abs_change = decile_impacts
+            .iter()
             .map(|d| d.avg_change.abs())
             .fold(0.0f64, f64::max);
 
         let mut decile_table = Table::new();
         decile_table.load_preset(presets::UTF8_FULL);
-        decile_table.set_header(vec!["Decile", "Avg Baseline", "Avg Reform", "Avg Change", "% Change", ""]);
+        decile_table.set_header(vec![
+            "Decile",
+            "Avg Baseline",
+            "Avg Reform",
+            "Avg Change",
+            "% Change",
+            "",
+        ]);
 
         for d in &decile_impacts {
             let bar_len = if max_abs_change > 0.0 {
                 (d.avg_change.abs() / max_abs_change * 30.0) as usize
-            } else { 0 };
+            } else {
+                0
+            };
             let bar = if d.avg_change >= 0.0 {
                 format!("{}", "█".repeat(bar_len).bright_green())
             } else {
@@ -519,7 +680,11 @@ fn main() -> anyhow::Result<()> {
     }
 
     println!();
-    println!("{}", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".bright_blue());
+    println!(
+        "{}",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            .bright_blue()
+    );
     println!();
 
     Ok(())
@@ -535,6 +700,94 @@ fn format_num(n: usize) -> String {
         result.push(c);
     }
     result.chars().rev().collect()
+}
+
+fn load_scenario_input(path: &PathBuf) -> anyhow::Result<ScenarioInput> {
+    let raw = fs::read_to_string(path)?;
+    let scenario = serde_json::from_str::<ScenarioInput>(&raw)?;
+    Ok(scenario)
+}
+
+fn validate_scenario_input(scenario: &ScenarioInput) -> anyhow::Result<()> {
+    for (expected_id, person) in scenario.people.iter().enumerate() {
+        if person.id != expected_id {
+            anyhow::bail!(
+                "scenario_json people must be ordered by id; expected person id {}, found {}",
+                expected_id,
+                person.id
+            );
+        }
+        if person.benunit_id >= scenario.benunits.len() {
+            anyhow::bail!(
+                "person {} references missing benunit {}",
+                person.id,
+                person.benunit_id
+            );
+        }
+        if person.household_id >= scenario.households.len() {
+            anyhow::bail!(
+                "person {} references missing household {}",
+                person.id,
+                person.household_id
+            );
+        }
+    }
+
+    for (expected_id, benunit) in scenario.benunits.iter().enumerate() {
+        if benunit.id != expected_id {
+            anyhow::bail!(
+                "scenario_json benunits must be ordered by id; expected benunit id {}, found {}",
+                expected_id,
+                benunit.id
+            );
+        }
+        if benunit.household_id >= scenario.households.len() {
+            anyhow::bail!(
+                "benunit {} references missing household {}",
+                benunit.id,
+                benunit.household_id
+            );
+        }
+        for &person_id in &benunit.person_ids {
+            if person_id >= scenario.people.len() {
+                anyhow::bail!(
+                    "benunit {} references missing person {}",
+                    benunit.id,
+                    person_id
+                );
+            }
+        }
+    }
+
+    for (expected_id, household) in scenario.households.iter().enumerate() {
+        if household.id != expected_id {
+            anyhow::bail!(
+                "scenario_json households must be ordered by id; expected household id {}, found {}",
+                expected_id,
+                household.id
+            );
+        }
+        for &benunit_id in &household.benunit_ids {
+            if benunit_id >= scenario.benunits.len() {
+                anyhow::bail!(
+                    "household {} references missing benunit {}",
+                    household.id,
+                    benunit_id
+                );
+            }
+        }
+        for &person_id in &household.person_ids {
+            if person_id >= scenario.people.len() {
+                anyhow::bail!(
+                    "household {} references missing person {}",
+                    household.id,
+                    person_id
+                );
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn format_num_f(n: f64) -> String {
@@ -566,19 +819,94 @@ fn aggregate_stats(
     let hhs = &dataset.households;
     let bus = &dataset.benunits;
 
-    let income_tax: f64 = hhs.iter().flat_map(|h| h.person_ids.iter().map(|&p| h.weight * results.person_results[p].income_tax)).sum();
-    let employee_ni: f64 = hhs.iter().flat_map(|h| h.person_ids.iter().map(|&p| h.weight * results.person_results[p].national_insurance)).sum();
-    let employer_ni: f64 = hhs.iter().flat_map(|h| h.person_ids.iter().map(|&p| h.weight * results.person_results[p].employer_ni)).sum();
-    let uc: f64 = bus.iter().map(|b| hhs[b.household_id].weight * results.benunit_results[b.id].universal_credit).sum();
-    let cb: f64 = bus.iter().map(|b| hhs[b.household_id].weight * results.benunit_results[b.id].child_benefit).sum();
-    let sp: f64 = bus.iter().map(|b| hhs[b.household_id].weight * results.benunit_results[b.id].state_pension).sum();
-    let pc: f64 = bus.iter().map(|b| hhs[b.household_id].weight * results.benunit_results[b.id].pension_credit).sum();
-    let hb: f64 = bus.iter().map(|b| hhs[b.household_id].weight * results.benunit_results[b.id].housing_benefit).sum();
-    let ctc: f64 = bus.iter().map(|b| hhs[b.household_id].weight * results.benunit_results[b.id].child_tax_credit).sum();
-    let wtc: f64 = bus.iter().map(|b| hhs[b.household_id].weight * results.benunit_results[b.id].working_tax_credit).sum();
-    let it_payers: f64 = hhs.iter().flat_map(|h| h.person_ids.iter().map(|&p| if results.person_results[p].income_tax > 0.0 { h.weight } else { 0.0 })).sum();
-    let uc_claimants: f64 = bus.iter().map(|b| if results.benunit_results[b.id].universal_credit > 0.0 { hhs[b.household_id].weight } else { 0.0 }).sum();
-    (income_tax, employee_ni, employer_ni, uc, cb, sp, pc, hb, ctc + wtc, it_payers, uc_claimants, 0.0)
+    let income_tax: f64 = hhs
+        .iter()
+        .flat_map(|h| {
+            h.person_ids
+                .iter()
+                .map(|&p| h.weight * results.person_results[p].income_tax)
+        })
+        .sum();
+    let employee_ni: f64 = hhs
+        .iter()
+        .flat_map(|h| {
+            h.person_ids
+                .iter()
+                .map(|&p| h.weight * results.person_results[p].national_insurance)
+        })
+        .sum();
+    let employer_ni: f64 = hhs
+        .iter()
+        .flat_map(|h| {
+            h.person_ids
+                .iter()
+                .map(|&p| h.weight * results.person_results[p].employer_ni)
+        })
+        .sum();
+    let uc: f64 = bus
+        .iter()
+        .map(|b| hhs[b.household_id].weight * results.benunit_results[b.id].universal_credit)
+        .sum();
+    let cb: f64 = bus
+        .iter()
+        .map(|b| hhs[b.household_id].weight * results.benunit_results[b.id].child_benefit)
+        .sum();
+    let sp: f64 = bus
+        .iter()
+        .map(|b| hhs[b.household_id].weight * results.benunit_results[b.id].state_pension)
+        .sum();
+    let pc: f64 = bus
+        .iter()
+        .map(|b| hhs[b.household_id].weight * results.benunit_results[b.id].pension_credit)
+        .sum();
+    let hb: f64 = bus
+        .iter()
+        .map(|b| hhs[b.household_id].weight * results.benunit_results[b.id].housing_benefit)
+        .sum();
+    let ctc: f64 = bus
+        .iter()
+        .map(|b| hhs[b.household_id].weight * results.benunit_results[b.id].child_tax_credit)
+        .sum();
+    let wtc: f64 = bus
+        .iter()
+        .map(|b| hhs[b.household_id].weight * results.benunit_results[b.id].working_tax_credit)
+        .sum();
+    let it_payers: f64 = hhs
+        .iter()
+        .flat_map(|h| {
+            h.person_ids.iter().map(|&p| {
+                if results.person_results[p].income_tax > 0.0 {
+                    h.weight
+                } else {
+                    0.0
+                }
+            })
+        })
+        .sum();
+    let uc_claimants: f64 = bus
+        .iter()
+        .map(|b| {
+            if results.benunit_results[b.id].universal_credit > 0.0 {
+                hhs[b.household_id].weight
+            } else {
+                0.0
+            }
+        })
+        .sum();
+    (
+        income_tax,
+        employee_ni,
+        employer_ni,
+        uc,
+        cb,
+        sp,
+        pc,
+        hb,
+        ctc + wtc,
+        it_payers,
+        uc_claimants,
+        0.0,
+    )
 }
 
 #[cfg(test)]
@@ -596,7 +924,9 @@ mod obr_validation {
         use std::path::Path;
 
         if !Path::new("data/frs_clean").exists() {
-            eprintln!("Skipping OBR validation: data/frs_clean not found (run --extract-frs first)");
+            eprintln!(
+                "Skipping OBR validation: data/frs_clean not found (run --extract-frs first)"
+            );
             return;
         }
 
@@ -604,8 +934,10 @@ mod obr_validation {
             .expect("data/frs_clean must exist — run --extract-frs first");
         let params = Parameters::for_year(2025).unwrap();
         let sim = Simulation::new(
-            dataset.people.clone(), dataset.benunits.clone(),
-            dataset.households.clone(), params,
+            dataset.people.clone(),
+            dataset.benunits.clone(),
+            dataset.households.clone(),
+            params,
         );
         let results = sim.run();
 
@@ -614,27 +946,47 @@ mod obr_validation {
 
         macro_rules! weighted_person_sum {
             ($field:ident) => {
-                hhs.iter().flat_map(|h| h.person_ids.iter()
-                    .map(|&p| h.weight * results.person_results[p].$field))
+                hhs.iter()
+                    .flat_map(|h| {
+                        h.person_ids
+                            .iter()
+                            .map(|&p| h.weight * results.person_results[p].$field)
+                    })
                     .sum::<f64>()
             };
         }
         macro_rules! weighted_bu_sum {
             ($field:ident) => {
-                bus.iter().map(|b| hhs[b.household_id].weight * results.benunit_results[b.id].$field)
+                bus.iter()
+                    .map(|b| hhs[b.household_id].weight * results.benunit_results[b.id].$field)
                     .sum::<f64>()
             };
         }
         macro_rules! bu_caseload {
             ($field:ident) => {
-                bus.iter().map(|b| if results.benunit_results[b.id].$field > 0.0 { hhs[b.household_id].weight } else { 0.0 })
+                bus.iter()
+                    .map(|b| {
+                        if results.benunit_results[b.id].$field > 0.0 {
+                            hhs[b.household_id].weight
+                        } else {
+                            0.0
+                        }
+                    })
                     .sum::<f64>()
             };
         }
         macro_rules! person_caseload {
             ($field:ident) => {
-                hhs.iter().flat_map(|h| h.person_ids.iter()
-                    .map(|&p| if results.person_results[p].$field > 0.0 { h.weight } else { 0.0 }))
+                hhs.iter()
+                    .flat_map(|h| {
+                        h.person_ids.iter().map(|&p| {
+                            if results.person_results[p].$field > 0.0 {
+                                h.weight
+                            } else {
+                                0.0
+                            }
+                        })
+                    })
                     .sum::<f64>()
             };
         }
@@ -658,28 +1010,49 @@ mod obr_validation {
 
         // ── Revenue checks (OBR 2025/26 central forecast) ──
         // Income tax: ~£305bn (OBR), model ~£250bn due to FRS income underreporting
-        assert!(income_tax > 200e9 && income_tax < 380e9,
-            "Income tax £{:.0}bn outside [£200bn, £380bn]", income_tax / 1e9);
+        assert!(
+            income_tax > 200e9 && income_tax < 380e9,
+            "Income tax £{:.0}bn outside [£200bn, £380bn]",
+            income_tax / 1e9
+        );
         // Employee NI: ~£72bn
-        assert!(employee_ni > 40e9 && employee_ni < 100e9,
-            "Employee NI £{:.0}bn outside [£40bn, £100bn]", employee_ni / 1e9);
+        assert!(
+            employee_ni > 40e9 && employee_ni < 100e9,
+            "Employee NI £{:.0}bn outside [£40bn, £100bn]",
+            employee_ni / 1e9
+        );
         // Employer NI: ~£115bn (pre-2025 Budget rise)
-        assert!(employer_ni > 80e9 && employer_ni < 200e9,
-            "Employer NI £{:.0}bn outside [£80bn, £200bn]", employer_ni / 1e9);
+        assert!(
+            employer_ni > 80e9 && employer_ni < 200e9,
+            "Employer NI £{:.0}bn outside [£80bn, £200bn]",
+            employer_ni / 1e9
+        );
 
         // ── Benefit spending checks ──
         // UC: ~£79bn OBR (inc. housing element); model ~£60bn after legacy migration
-        assert!(uc > 40e9 && uc < 100e9,
-            "UC £{:.0}bn outside [£40bn, £100bn]", uc / 1e9);
+        assert!(
+            uc > 40e9 && uc < 100e9,
+            "UC £{:.0}bn outside [£40bn, £100bn]",
+            uc / 1e9
+        );
         // Child benefit: ~£15bn
-        assert!(cb > 8e9 && cb < 22e9,
-            "Child benefit £{:.0}bn outside [£8bn, £22bn]", cb / 1e9);
+        assert!(
+            cb > 8e9 && cb < 22e9,
+            "Child benefit £{:.0}bn outside [£8bn, £22bn]",
+            cb / 1e9
+        );
         // State pension: ~£130bn
-        assert!(sp > 80e9 && sp < 180e9,
-            "State pension £{:.0}bn outside [£80bn, £180bn]", sp / 1e9);
+        assert!(
+            sp > 80e9 && sp < 180e9,
+            "State pension £{:.0}bn outside [£80bn, £180bn]",
+            sp / 1e9
+        );
         // Pension credit: ~£6bn
-        assert!(pc > 2e9 && pc < 12e9,
-            "Pension credit £{:.0}bn outside [£2bn, £12bn]", pc / 1e9);
+        assert!(
+            pc > 2e9 && pc < 12e9,
+            "Pension credit £{:.0}bn outside [£2bn, £12bn]",
+            pc / 1e9
+        );
         // Housing benefit: now folded into UC housing element; standalone HB ~£0 in model
         // OBR shows £12bn standalone HB (pensioners/legacy remaining) — we skip this check
         // as the spending is captured within UC total above.
@@ -687,13 +1060,22 @@ mod obr_validation {
 
         // ── Caseload checks ──
         // IT payers: ~32m
-        assert!(it_payers > 25e6 && it_payers < 40e6,
-            "IT payers {:.1}m outside [25m, 40m]", it_payers / 1e6);
+        assert!(
+            it_payers > 25e6 && it_payers < 40e6,
+            "IT payers {:.1}m outside [25m, 40m]",
+            it_payers / 1e6
+        );
         // UC claimants: ~3-7m benefit units (OBR counts individuals; model counts benefit units)
-        assert!(uc_claimants > 2e6 && uc_claimants < 10e6,
-            "UC claimants {:.1}m outside [2m, 10m]", uc_claimants / 1e6);
+        assert!(
+            uc_claimants > 2e6 && uc_claimants < 10e6,
+            "UC claimants {:.1}m outside [2m, 10m]",
+            uc_claimants / 1e6
+        );
         // Child benefit claimants: ~6m families
-        assert!(cb_claimants > 4e6 && cb_claimants < 9e6,
-            "CB claimants {:.1}m outside [4m, 9m]", cb_claimants / 1e6);
+        assert!(
+            cb_claimants > 4e6 && cb_claimants < 9e6,
+            "CB claimants {:.1}m outside [4m, 9m]",
+            cb_claimants / 1e6
+        );
     }
 }

@@ -104,7 +104,7 @@ tax_credits:
 
 
 scottish_child_payment:
-  weekly_amount: 26.70
+  weekly_amount: 28.20
   max_age: 16.0
 
 uc_migration:

@@ -1,16 +1,21 @@
+use serde::{Deserialize, Serialize};
+
 /// Entity types in the UK tax-benefit system.
 /// Person → BenUnit (benefit unit / family) → Household
 ///
 /// A household contains one or more benefit units, each containing one or more persons.
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
 pub enum Gender {
+    #[default]
     Male,
     Female,
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Person {
     pub id: usize,
     pub benunit_id: usize,
@@ -23,8 +28,8 @@ pub struct Person {
     // Income sources (annual)
     pub employment_income: f64,
     pub self_employment_income: f64,
-    pub pension_income: f64,          // private pension income
-    pub state_pension_reported: f64,   // reported state pension receipt
+    pub pension_income: f64,         // private pension income
+    pub state_pension_reported: f64, // reported state pension receipt
     pub savings_interest_income: f64,
     pub dividend_income: f64,
     pub property_income: f64,
@@ -34,7 +39,7 @@ pub struct Person {
 
     // Employment
     pub is_in_scotland: bool,
-    pub hours_worked: f64,             // annual hours
+    pub hours_worked: f64, // annual hours
 
     // Disability/carer status
     pub is_disabled: bool,
@@ -75,7 +80,9 @@ pub struct Person {
 impl Default for Person {
     fn default() -> Self {
         Person {
-            id: 0, benunit_id: 0, household_id: 0,
+            id: 0,
+            benunit_id: 0,
+            household_id: 0,
             age: 30.0,
             gender: Gender::Male,
             is_benunit_head: false,
@@ -157,7 +164,8 @@ impl Person {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct BenUnit {
     pub id: usize,
     pub household_id: usize,
@@ -192,13 +200,15 @@ pub struct BenUnit {
 
 impl BenUnit {
     pub fn num_adults(&self, people: &[Person]) -> usize {
-        self.person_ids.iter()
+        self.person_ids
+            .iter()
             .filter(|&&pid| people[pid].is_adult())
             .count()
     }
 
     pub fn num_children(&self, people: &[Person]) -> usize {
-        self.person_ids.iter()
+        self.person_ids
+            .iter()
             .filter(|&&pid| people[pid].is_child())
             .count()
     }
@@ -208,7 +218,8 @@ impl BenUnit {
     }
 
     pub fn eldest_adult_age(&self, people: &[Person]) -> f64 {
-        self.person_ids.iter()
+        self.person_ids
+            .iter()
             .filter(|&&pid| people[pid].is_adult())
             .map(|&pid| people[pid].age)
             .fold(0.0_f64, f64::max)
@@ -216,7 +227,8 @@ impl BenUnit {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Household {
     pub id: usize,
     pub benunit_ids: Vec<usize>,
@@ -227,8 +239,24 @@ pub struct Household {
     pub council_tax: f64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+impl Default for Household {
+    fn default() -> Self {
+        Household {
+            id: 0,
+            benunit_ids: Vec::new(),
+            person_ids: Vec::new(),
+            weight: 1.0,
+            region: Region::default(),
+            rent: 0.0,
+            council_tax: 0.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
 pub enum Region {
+    #[default]
     NorthEast,
     NorthWest,
     Yorkshire,
