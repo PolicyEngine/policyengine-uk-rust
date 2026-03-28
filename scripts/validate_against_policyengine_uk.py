@@ -38,6 +38,18 @@ METRICS: dict[str, Metric] = {
     ),
     "ni_employer": Metric("person_results", "employer_ni", "ni_employer"),
     "child_benefit": Metric("benunit_results", "child_benefit", "child_benefit"),
+    "housing_benefit": Metric(
+        "benunit_results", "housing_benefit", "housing_benefit"
+    ),
+    "child_tax_credit": Metric(
+        "benunit_results", "child_tax_credit", "child_tax_credit"
+    ),
+    "working_tax_credit": Metric(
+        "benunit_results", "working_tax_credit", "working_tax_credit"
+    ),
+    "income_support": Metric(
+        "benunit_results", "income_support", "income_support"
+    ),
     "universal_credit": Metric(
         "benunit_results", "universal_credit", "universal_credit"
     ),
@@ -46,12 +58,17 @@ METRICS: dict[str, Metric] = {
     ),
     "state_pension": Metric("benunit_results", "state_pension", "state_pension"),
     "pension_credit": Metric("benunit_results", "pension_credit", "pension_credit"),
+    "benefit_cap_reduction": Metric(
+        "benunit_results", "benefit_cap_reduction", "benefit_cap_reduction"
+    ),
 }
 
 
 def _adult_hours(person: dict[str, Any]) -> float:
     if person.get("hours_worked") is not None:
         return float(person["hours_worked"])
+    if person.get("weekly_hours") is not None:
+        return float(person["weekly_hours"]) * 52.0
     earned_income = float(person.get("employment_income", 0.0)) + float(
         person.get("self_employment_income", 0.0)
     )
@@ -66,12 +83,15 @@ def build_case(
     benunit_flags: dict[str, Any] | None = None,
     housing_costs: float = 0.0,
     country: str | None = None,
+    region: str | None = None,
     metrics: list[str | CaseMetric],
     rust_reform: dict[str, Any] | None = None,
     policyengine_scenario: dict[str, Any] | None = None,
     known_failure: str | None = None,
+    tags: list[str] | None = None,
 ) -> dict[str, Any]:
     benunit_flags = benunit_flags or {}
+    tags = tags or []
 
     person_names = [person["name"] for person in people]
     person_ids = {name: idx for idx, name in enumerate(person_names)}
@@ -80,7 +100,8 @@ def build_case(
     pe_people: dict[str, dict[str, dict[int, Any]]] = {}
     adult_count = 0
     child_count = 0
-    is_scotland = country == "SCOTLAND"
+    household_region = region or ("SCOTLAND" if country == "SCOTLAND" else "NORTH_EAST")
+    is_scotland = country == "SCOTLAND" or household_region == "SCOTLAND"
 
     for idx, person in enumerate(people):
         age = float(person["age"])
@@ -108,6 +129,13 @@ def build_case(
             "savings_interest_income",
             "dividend_income",
             "property_income",
+            "child_benefit_reported",
+            "housing_benefit_reported",
+            "income_support_reported",
+            "pension_credit_reported",
+            "child_tax_credit_reported",
+            "working_tax_credit_reported",
+            "universal_credit_reported",
             "is_disabled",
             "is_enhanced_disabled",
             "is_severely_disabled",
@@ -118,11 +146,25 @@ def build_case(
                 rust_person[field] = person[field]
         rust_people.append(rust_person)
 
-        pe_person: dict[str, dict[int, Any]] = {"age": {year: age}}
+        weekly_hours = person.get("weekly_hours")
+        if weekly_hours is None:
+            weekly_hours = rust_person["hours_worked"] / 52.0
+
+        pe_person: dict[str, dict[int, Any]] = {
+            "age": {year: age},
+            "weekly_hours": {year: weekly_hours},
+        }
         for source_field, target_field in (
             ("employment_income", "employment_income"),
             ("self_employment_income", "self_employment_income"),
             ("state_pension_reported", "state_pension_reported"),
+            ("child_benefit_reported", "child_benefit_reported"),
+            ("housing_benefit_reported", "housing_benefit_reported"),
+            ("income_support_reported", "income_support_reported"),
+            ("pension_credit_reported", "pension_credit_reported"),
+            ("child_tax_credit_reported", "child_tax_credit_reported"),
+            ("working_tax_credit_reported", "working_tax_credit_reported"),
+            ("universal_credit_reported", "universal_credit_reported"),
             ("would_claim_marriage_allowance", "would_claim_marriage_allowance"),
             ("would_claim_scp", "would_claim_scp"),
         ):
@@ -165,6 +207,10 @@ def build_case(
         "would_claim_uc",
         "would_claim_child_benefit",
         "would_claim_pc",
+        "would_claim_housing_benefit",
+        "would_claim_CTC",
+        "would_claim_WTC",
+        "would_claim_IS",
     ):
         if field in benunit_flags:
             pe_benunit[field] = {year: benunit_flags[field]}
@@ -174,7 +220,7 @@ def build_case(
         "benunit_ids": [0],
         "person_ids": list(range(len(rust_people))),
         "weight": 1.0,
-        "region": "scotland" if is_scotland else "north_east",
+        "region": household_region.lower(),
         "rent": housing_costs,
         "council_tax": 0.0,
     }
@@ -182,6 +228,7 @@ def build_case(
     pe_household: dict[str, Any] = {"members": person_names}
     if housing_costs:
         pe_household["housing_costs"] = {year: housing_costs}
+    pe_household["region"] = {year: household_region}
     if country:
         pe_household["country"] = {year: country}
 
@@ -189,6 +236,7 @@ def build_case(
         "name": name,
         "year": year,
         "known_failure": known_failure,
+        "tags": tags,
         "metrics": [
             metric if isinstance(metric, CaseMetric) else CaseMetric(metric)
             for metric in metrics
@@ -218,6 +266,7 @@ CASES = [
         name="single_basic_rate_2025",
         year=2025,
         people=[{"name": "person", "age": 30, "employment_income": 30_000}],
+        tags=["baseline", "tax"],
         metrics=["income_tax", "national_insurance", "ni_employer"],
     ),
     build_case(
@@ -237,6 +286,7 @@ CASES = [
                 "would_claim_marriage_allowance": True,
             },
         ],
+        tags=["baseline", "tax", "sequence"],
         metrics=[
             CaseMetric("income_tax", reducer="sequence"),
             CaseMetric("national_insurance", reducer="sequence"),
@@ -251,12 +301,14 @@ CASES = [
             "reported_uc": True,
             "would_claim_uc": True,
         },
+        tags=["baseline", "uc"],
         metrics=["universal_credit"],
     ),
     build_case(
         name="income_tax_basic_rate_reform_2025",
         year=2025,
         people=[{"name": "person", "age": 30, "employment_income": 30_000}],
+        tags=["reform", "tax"],
         rust_reform={
             "income_tax": {
                 "uk_brackets": [
@@ -280,7 +332,67 @@ CASES = [
         benunit_flags={
             "would_claim_child_benefit": True,
         },
+        tags=["baseline", "child_benefit"],
         metrics=["child_benefit"],
+    ),
+    build_case(
+        name="legacy_tax_credits_lone_parent_2025",
+        year=2025,
+        people=[
+            {
+                "name": "adult",
+                "age": 30,
+                "employment_income": 15_000,
+                "weekly_hours": 35,
+                "child_tax_credit_reported": 1.0,
+                "working_tax_credit_reported": 1.0,
+            },
+            {"name": "child", "age": 5},
+        ],
+        benunit_flags={
+            "take_up_seed": 0.99,
+            "on_legacy": True,
+            "reported_ctc": True,
+            "reported_wtc": True,
+            "would_claim_uc": False,
+            "would_claim_child_benefit": True,
+            "would_claim_CTC": True,
+            "would_claim_WTC": True,
+        },
+        tags=["baseline", "legacy", "tax_credits"],
+        metrics=["child_tax_credit", "working_tax_credit"],
+        known_failure=(
+            "Rust legacy tax credits disagree materially with policyengine-uk for "
+            "a reported-claim lone-parent case."
+        ),
+    ),
+    build_case(
+        name="legacy_income_support_lone_parent_2025",
+        year=2025,
+        people=[
+            {
+                "name": "adult",
+                "age": 30,
+                "employment_income": 0,
+                "income_support_reported": 1.0,
+            },
+            {"name": "child1", "age": 5},
+            {"name": "child2", "age": 4},
+        ],
+        benunit_flags={
+            "take_up_seed": 0.99,
+            "on_legacy": True,
+            "reported_is": True,
+            "would_claim_uc": False,
+            "would_claim_child_benefit": True,
+            "would_claim_IS": True,
+        },
+        tags=["baseline", "legacy", "income_support"],
+        metrics=["income_support"],
+        known_failure=(
+            "Rust income support remains substantially above policyengine-uk for "
+            "a reported-claim lone-parent case."
+        ),
     ),
     build_case(
         name="scottish_child_payment_2025",
@@ -295,6 +407,7 @@ CASES = [
             "would_claim_uc": True,
         },
         country="SCOTLAND",
+        tags=["baseline", "scp"],
         metrics=["scottish_child_payment"],
     ),
     build_case(
@@ -310,6 +423,7 @@ CASES = [
             "would_claim_uc": True,
         },
         country="SCOTLAND",
+        tags=["baseline", "scp"],
         metrics=["scottish_child_payment"],
     ),
     build_case(
@@ -325,6 +439,7 @@ CASES = [
             "would_claim_uc": True,
         },
         country="SCOTLAND",
+        tags=["baseline", "scp"],
         metrics=["scottish_child_payment"],
     ),
     build_case(
@@ -333,6 +448,7 @@ CASES = [
         people=[
             {"name": "adult", "age": 70, "state_pension_reported": 5_000},
         ],
+        tags=["baseline", "pension"],
         metrics=["state_pension"],
     ),
     build_case(
@@ -345,6 +461,7 @@ CASES = [
             "reported_pc": True,
             "would_claim_pc": True,
         },
+        tags=["baseline", "pension"],
         metrics=["pension_credit"],
         known_failure=(
             "Rust pension credit remains above policyengine-uk for this low-income "
@@ -454,6 +571,12 @@ def parse_args() -> argparse.Namespace:
         help="Run only the named validation case. Can be supplied multiple times.",
     )
     parser.add_argument(
+        "--tag",
+        action="append",
+        dest="tags",
+        help="Run only cases containing all supplied tags. Can be supplied multiple times.",
+    )
+    parser.add_argument(
         "--list-cases",
         action="store_true",
         help="List available validation cases and exit.",
@@ -470,7 +593,9 @@ def main() -> int:
     if args.list_cases:
         for case in CASES:
             suffix = " [expected-failure]" if case.get("known_failure") else ""
-            print(f"{case['name']}{suffix}")
+            tags = ",".join(case.get("tags", []))
+            tag_suffix = f" [{tags}]" if tags else ""
+            print(f"{case['name']}{suffix}{tag_suffix}")
         return 0
 
     _add_policyengine_uk_to_path(args.policyengine_uk_path)
@@ -483,6 +608,19 @@ def main() -> int:
         missing = wanted.difference(case["name"] for case in selected_cases)
         if missing:
             print(f"Unknown validation case(s): {', '.join(sorted(missing))}", file=sys.stderr)
+            return 1
+    if args.tags:
+        required_tags = set(args.tags)
+        selected_cases = [
+            case
+            for case in selected_cases
+            if required_tags.issubset(set(case.get("tags", [])))
+        ]
+        if not selected_cases:
+            print(
+                f"No validation cases matched tag filter: {', '.join(sorted(required_tags))}",
+                file=sys.stderr,
+            )
             return 1
 
     failures: list[str] = []
