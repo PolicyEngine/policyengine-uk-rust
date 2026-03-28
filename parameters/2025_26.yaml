@@ -105,11 +105,11 @@ state_pension:
 pension_credit:
   # State Pension Credit Regs 2002 (SI 2002/1792) reg.6
   # As amended by SI 2025/295 art.29
-  standard_minimum_single: 227.10  # Weekly (reg.6(1)(b))
-  standard_minimum_couple: 346.60  # Weekly (reg.6(1)(a))
+  standard_minimum_single: 221.85  # Weekly (reg.6(1)(b))
+  standard_minimum_couple: 338.61  # Weekly (reg.6(1)(a))
   # Savings credit threshold: reg.7(2)
-  savings_credit_threshold_single: 198.27
-  savings_credit_threshold_couple: 314.34
+  savings_credit_threshold_single: 193.02
+  savings_credit_threshold_couple: 306.34
 
 benefit_cap:
   # Welfare Reform Act 2012 s.96; Benefit Cap (Housing Benefit and UC) Regs 2016
@@ -135,21 +135,35 @@ tax_credits:
   # Tax Credits Act 2002; SI 2002/2005 (Working Tax Credit Regs)
   # SI 2002/2007 (Child Tax Credit Regs)
   # WTC elements (annual)
-  wtc_basic_element: 2435.0
-  wtc_couple_element: 2500.0
-  wtc_lone_parent_element: 2500.0
-  wtc_30_hour_element: 1015.0
+  wtc_basic_element: 2476.0
+  wtc_couple_element: 2542.0
+  wtc_lone_parent_element: 2542.0
+  wtc_30_hour_element: 1035.781552853733
   # CTC elements (annual)
-  ctc_child_element: 3455.0
-  ctc_family_element: 545.0
-  ctc_disabled_child_element: 4170.0
-  ctc_severely_disabled_child_element: 1680.0
+  ctc_child_element: 3513.0
+  ctc_family_element: 739.8273623865201
+  ctc_disabled_child_element: 4240.0
+  ctc_severely_disabled_child_element: 1715.9052892612901
   # Income thresholds and taper
-  income_threshold: 7455.0
+  income_threshold: 8080.0
+  ctc_only_income_threshold: 20335.0
   taper_rate: 0.41
+  minimum_benefit: 26.0
   # Minimum hours for WTC
   wtc_min_hours_single: 30.0
   wtc_min_hours_couple: 24.0
+
+income_support:
+  amount_single_under25: 80.03584504155657
+  amount_single_25_plus: 101.02996738267794
+  amount_lone_parent_under18: 80.03584504155657
+  amount_lone_parent_18_plus: 101.02996738267794
+  amount_couple_both_under18: 80.03584504155657
+  amount_couple_age_gap: 101.02996738267794
+  amount_couple_both_18_plus: 158.71284721313765
+  income_disregard_single: 5.0
+  income_disregard_couple: 10.0
+  income_disregard_lone_parent: 20.0
 
 
 scottish_child_payment:

@@ -94,15 +94,29 @@ tax_credits:
   wtc_basic_element: 2435.0
   wtc_couple_element: 2500.0
   wtc_lone_parent_element: 2500.0
-  wtc_30_hour_element: 1015.0
+  wtc_30_hour_element: 1010.2208980088745
   ctc_child_element: 3455.0
-  ctc_family_element: 545.0
+  ctc_family_element: 721.570161529213
   ctc_disabled_child_element: 4170.0
-  ctc_severely_disabled_child_element: 1680.0
-  income_threshold: 7455.0
+  ctc_severely_disabled_child_element: 1673.5607787567
+  income_threshold: 7955.0
+  ctc_only_income_threshold: 19995.0
   taper_rate: 0.41
+  minimum_benefit: 26.0
   wtc_min_hours_single: 30.0
   wtc_min_hours_couple: 24.0
+
+income_support:
+  amount_single_under25: 78.06074845416569
+  amount_single_25_plus: 98.53678518789846
+  amount_lone_parent_under18: 78.06074845416569
+  amount_lone_parent_18_plus: 98.53678518789846
+  amount_couple_both_under18: 78.06074845416569
+  amount_couple_age_gap: 98.53678518789846
+  amount_couple_both_18_plus: 154.7961870873778
+  income_disregard_single: 5.0
+  income_disregard_couple: 10.0
+  income_disregard_lone_parent: 20.0
 
 
 scottish_child_payment:

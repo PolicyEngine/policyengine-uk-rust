@@ -24,6 +24,8 @@ pub struct Parameters {
     #[serde(default)]
     pub tax_credits: Option<TaxCreditsParams>,
     #[serde(default)]
+    pub income_support: Option<IncomeSupportParams>,
+    #[serde(default)]
     pub scottish_child_payment: Option<ScottishChildPaymentParams>,
     #[serde(default = "TakeUpRates::default")]
     pub take_up: TakeUpRates,
@@ -245,10 +247,38 @@ pub struct TaxCreditsParams {
     pub ctc_severely_disabled_child_element: f64,
     // Income thresholds and taper
     pub income_threshold: f64,
+    #[serde(default = "default_tc_ctc_only_income_threshold")]
+    pub ctc_only_income_threshold: f64,
     pub taper_rate: f64,
+    #[serde(default = "default_tc_minimum_benefit")]
+    pub minimum_benefit: f64,
     /// Minimum hours per week to qualify for WTC
     pub wtc_min_hours_single: f64,
     pub wtc_min_hours_couple: f64,
+}
+
+fn default_tc_ctc_only_income_threshold() -> f64 {
+    0.0
+}
+
+fn default_tc_minimum_benefit() -> f64 {
+    26.0
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IncomeSupportParams {
+    // Weekly applicable amounts
+    pub amount_single_under25: f64,
+    pub amount_single_25_plus: f64,
+    pub amount_lone_parent_under18: f64,
+    pub amount_lone_parent_18_plus: f64,
+    pub amount_couple_both_under18: f64,
+    pub amount_couple_age_gap: f64,
+    pub amount_couple_both_18_plus: f64,
+    // Weekly earnings disregards
+    pub income_disregard_single: f64,
+    pub income_disregard_couple: f64,
+    pub income_disregard_lone_parent: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

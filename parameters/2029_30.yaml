@@ -66,10 +66,10 @@ state_pension:
   old_basic_pension_weekly: 200.04
 
 pension_credit:
-  standard_minimum_single: 252.18
-  standard_minimum_couple: 384.92
-  savings_credit_threshold_single: 220.16
-  savings_credit_threshold_couple: 349.08
+  standard_minimum_single: 244.84104640938585
+  standard_minimum_couple: 373.7012698881323
+  savings_credit_threshold_single: 213.02329852575912
+  savings_credit_threshold_couple: 338.08702347104463
 
 benefit_cap:
   single_london: 15410.0
@@ -87,18 +87,32 @@ housing_benefit:
   family_premium: 18.53
 
 tax_credits:
-  wtc_basic_element: 2435.0
-  wtc_couple_element: 2500.0
-  wtc_lone_parent_element: 2500.0
-  wtc_30_hour_element: 1015.0
-  ctc_child_element: 3455.0
-  ctc_family_element: 545.0
-  ctc_disabled_child_element: 4170.0
-  ctc_severely_disabled_child_element: 1680.0
-  income_threshold: 7455.0
+  wtc_basic_element: 2732.596037456116
+  wtc_couple_element: 2805.435834900423
+  wtc_lone_parent_element: 2805.435834900423
+  wtc_30_hour_element: 1143.123007672962
+  ctc_child_element: 3877.0637639674214
+  ctc_family_element: 816.4981093937862
+  ctc_disabled_child_element: 4679.405169149407
+  ctc_severely_disabled_child_element: 1893.7302076273797
+  income_threshold: 8917.35702045453
+  ctc_only_income_threshold: 22442.383045908773
   taper_rate: 0.41
+  minimum_benefit: 26.0
   wtc_min_hours_single: 30.0
   wtc_min_hours_couple: 24.0
+
+income_support:
+  amount_single_under25: 88.33022335016526
+  amount_single_25_plus: 111.50003575695733
+  amount_lone_parent_under18: 88.33022335016526
+  amount_lone_parent_18_plus: 111.50003575695733
+  amount_couple_both_under18: 88.33022335016526
+  amount_couple_age_gap: 111.50003575695733
+  amount_couple_both_18_plus: 175.1607824668812
+  income_disregard_single: 5.0
+  income_disregard_couple: 10.0
+  income_disregard_lone_parent: 20.0
 
 
 scottish_child_payment:

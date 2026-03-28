@@ -361,10 +361,6 @@ CASES = [
         },
         tags=["baseline", "legacy", "tax_credits"],
         metrics=["child_tax_credit", "working_tax_credit"],
-        known_failure=(
-            "Rust legacy tax credits disagree materially with policyengine-uk for "
-            "a reported-claim lone-parent case."
-        ),
     ),
     build_case(
         name="legacy_income_support_lone_parent_2025",
@@ -389,10 +385,6 @@ CASES = [
         },
         tags=["baseline", "legacy", "income_support"],
         metrics=["income_support"],
-        known_failure=(
-            "Rust income support remains substantially above policyengine-uk for "
-            "a reported-claim lone-parent case."
-        ),
     ),
     build_case(
         name="scottish_child_payment_2025",
@@ -463,10 +455,6 @@ CASES = [
         },
         tags=["baseline", "pension"],
         metrics=["pension_credit"],
-        known_failure=(
-            "Rust pension credit remains above policyengine-uk for this low-income "
-            "single pensioner scenario."
-        ),
     ),
 ]
 
