@@ -14,71 +14,86 @@ use crate::engine::Simulation;
 use crate::parameters::Parameters;
 use crate::reforms::Reform;
 use crate::data::frs::load_frs;
-use crate::data::clean::{write_clean_csvs, load_clean_frs};
+use crate::data::clean::{write_clean_csvs, load_clean_frs, write_microdata};
 
 #[derive(Parser)]
 #[command(name = "policyengine-uk")]
-#[command(about = "High-performance UK tax-benefit microsimulation engine")]
+#[command(about = "UK tax-benefit microsimulation engine")]
 #[command(version)]
+#[command(after_help = "\
+MODEL RUNS (require data + year):
+  Score a policy:    policyengine-uk --clean-frs-base data/ --year 2025 --output json
+  Score with reform: policyengine-uk --clean-frs-base data/ --year 2025 --policy-json '{...}'
+  Export microdata:  policyengine-uk --clean-frs-base data/ --year 2025 --output-microdata out/
+
+DATA CREATION (one-off preprocessing):
+  Extract clean CSVs: policyengine-uk --frs raw_tab_dir/ --year 2023 --extract-frs clean/2023/
+
+PARAMETER INSPECTION:
+  Export as JSON:     policyengine-uk --year 2025 --export-params-json
+  Export as YAML:     policyengine-uk --year 2025 --export-baseline
+")]
 struct Cli {
-    /// Reform file (YAML). If omitted, runs the default PA=£20k reform.
-    #[arg(short, long)]
-    reform: Option<PathBuf>,
+    // ── Data source (pick one) ──
 
-    /// Reform as inline JSON string (alternative to --reform YAML file)
-    #[arg(long)]
-    reform_json: Option<String>,
-
-    /// Path to FRS CSV data directory (e.g. data/UKDA-9367-csv/csv/).
-    #[arg(long)]
-    frs: Option<PathBuf>,
-
-    /// Base directory containing per-year raw FRS subdirectories (frs_YYYY_YY/).
-    /// The correct subdirectory for --year is auto-detected.
-    /// Each subdirectory should contain extracted UKDS tab files.
-    #[arg(long)]
-    frs_raw: Option<PathBuf>,
-
-    /// Fiscal year start (e.g. 2029 for FY 2029/30).
-    /// Available: 2023-2029.
-    #[arg(short, long, default_value = "2025")]
-    year: u32,
-
-
-    /// Export baseline parameters to YAML (useful for writing reforms)
-    #[arg(long)]
-    export_baseline: bool,
-
-    /// Export baseline parameters as JSON
-    #[arg(long)]
-    export_params_json: bool,
-
-    /// Extract raw FRS data to clean CSVs. Requires --frs.
-    /// Writes persons.csv, benunits.csv, households.csv to the given directory.
-    #[arg(long)]
-    extract_frs: Option<PathBuf>,
-
-    /// Load from clean FRS CSVs (produced by --extract-frs) instead of raw FRS.
-    #[arg(long)]
-    clean_frs: Option<PathBuf>,
-
-    /// Base directory containing per-year clean FRS subdirectories (YYYY/).
-    /// Each subdirectory has persons.csv, benunits.csv, households.csv.
-    /// Falls back to latest available year and uprates if needed.
+    /// Base dir with per-year clean FRS subdirs (YYYY/persons.csv etc.).
+    /// Falls back to latest year + uprating for projected years.
     #[arg(long)]
     clean_frs_base: Option<PathBuf>,
 
-    /// Output format: "pretty" (default) or "json" for machine-readable output
-    #[arg(long, default_value = "pretty")]
+    /// Single clean FRS directory (persons.csv, benunits.csv, households.csv).
+    #[arg(long)]
+    clean_frs: Option<PathBuf>,
+
+    /// Base dir with per-year raw FRS tab files (frs_YYYY_YY/ dirs).
+    #[arg(long)]
+    frs_raw: Option<PathBuf>,
+
+    /// Single raw FRS tab-file directory.
+    #[arg(long)]
+    frs: Option<PathBuf>,
+
+    // ── Year ──
+
+    /// Fiscal year (e.g. 2025 for 2025/26). Range: 1994-2029.
+    #[arg(short, long, default_value = "2025")]
+    year: u32,
+
+    // ── Policy ──
+
+    /// Policy file (YAML overlay on baseline parameters).
+    #[arg(short, long)]
+    policy: Option<PathBuf>,
+
+    /// Policy as inline JSON string.
+    #[arg(long)]
+    policy_json: Option<String>,
+
+    // ── Model run output ──
+
+    /// Output format: "json" for machine-readable, "pretty" for terminal table.
+    #[arg(long, default_value = "json")]
     output: String,
 
-    /// Dump per-household microdata as CSV to stdout (weight, equivalised_net_income, gross_income, total_tax, total_benefits)
+    /// Write enhanced microdata CSVs (inputs + simulation outputs) to directory.
     #[arg(long)]
-    output_microdata: bool,
+    output_microdata: Option<PathBuf>,
 
-    /// Show per-decile breakdown
-    #[arg(long, default_value = "true")]
-    deciles: bool,
+    // ── Data creation ──
+
+    /// Extract raw FRS to clean CSVs. Requires --frs.
+    #[arg(long)]
+    extract_frs: Option<PathBuf>,
+
+    // ── Parameter inspection ──
+
+    /// Export baseline parameters as JSON.
+    #[arg(long)]
+    export_params_json: bool,
+
+    /// Export baseline parameters as YAML.
+    #[arg(long)]
+    export_baseline: bool,
 }
 
 #[derive(Serialize)]
@@ -316,21 +331,20 @@ fn main() -> anyhow::Result<()> {
         anyhow::bail!("No data source specified. Use --frs, --frs-raw, or --clean-frs.")
     };
 
-    // Load reform
-    let reform_params = if let Some(json_str) = &cli.reform_json {
+    // Load policy (if none specified, policy = baseline)
+    let policy_params = if let Some(json_str) = &cli.policy_json {
         baseline_params.apply_json_overlay(json_str)?
-    } else if let Some(path) = &cli.reform {
+    } else if let Some(path) = &cli.policy {
         let r = Reform::from_file(path, &baseline_params)?;
         r.parameters
     } else if json_mode {
-        // JSON mode with no reform = baseline vs baseline
         baseline_params.clone()
     } else {
         let r = Reform::personal_allowance_20k(&baseline_params);
         r.parameters
     };
 
-    // Run baseline
+    // Run baseline simulation
     let baseline_sim = Simulation::new(
         dataset.people.clone(),
         dataset.benunits.clone(),
@@ -339,21 +353,21 @@ fn main() -> anyhow::Result<()> {
     );
     let baseline = baseline_sim.run();
 
-    // Run reform
-    let reform_sim = Simulation::new(
+    // Run policy simulation
+    let policy_sim = Simulation::new(
         dataset.people.clone(),
         dataset.benunits.clone(),
         dataset.households.clone(),
-        reform_params.clone(),
+        policy_params.clone(),
     );
-    let reformed = reform_sim.run();
+    let reformed = policy_sim.run();
 
-    // Microdata output mode
-    if cli.output_microdata {
-        println!("weight,equivalised_net_income,gross_income,total_tax,total_benefits");
-        for hh in &dataset.households {
-            let r = &baseline.household_results[hh.id];
-            println!("{},{},{},{},{}", hh.weight, r.equivalised_net_income, r.gross_income, r.total_tax, r.total_benefits);
+    // Enhanced microdata output
+    if let Some(micro_dir) = &cli.output_microdata {
+        std::fs::create_dir_all(micro_dir)?;
+        write_microdata(&dataset, &baseline, &reformed, micro_dir)?;
+        if !json_mode {
+            println!("  {} Wrote enhanced microdata to {}", "▸".bright_cyan(), micro_dir.display());
         }
         return Ok(());
     }
@@ -667,41 +681,6 @@ fn main() -> anyhow::Result<()> {
     println!("    {} {:.1}% unchanged",
         "●".dimmed(), winners_losers.unchanged_pct);
 
-    // Decile table
-    if cli.deciles {
-        println!("\n  {}", "IMPACT BY INCOME DECILE".bright_white().bold().underline());
-        println!();
-
-        let max_abs_change = decile_impacts.iter()
-            .map(|d| d.avg_change.abs())
-            .fold(0.0f64, f64::max);
-
-        let mut decile_table = Table::new();
-        decile_table.load_preset(presets::UTF8_FULL);
-        decile_table.set_header(vec!["Decile", "Avg Baseline", "Avg Reform", "Avg Change", "% Change", ""]);
-
-        for d in &decile_impacts {
-            let bar_len = if max_abs_change > 0.0 {
-                (d.avg_change.abs() / max_abs_change * 30.0) as usize
-            } else { 0 };
-            let bar = if d.avg_change >= 0.0 {
-                format!("{}", "█".repeat(bar_len).bright_green())
-            } else {
-                format!("{}", "█".repeat(bar_len).bright_red())
-            };
-
-            decile_table.add_row(vec![
-                format!("{}", d.decile),
-                format!("£{}", format_num_f(d.avg_baseline_income)),
-                format!("£{}", format_num_f(d.avg_reform_income)),
-                format_change(d.avg_change),
-                format!("{:+.1}%", d.pct_change),
-                bar,
-            ]);
-        }
-        println!("{decile_table}");
-    }
-
     println!();
     println!("{}", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".bright_blue());
     println!();
@@ -719,18 +698,6 @@ fn format_num(n: usize) -> String {
         result.push(c);
     }
     result.chars().rev().collect()
-}
-
-fn format_num_f(n: f64) -> String {
-    format_num(n.round() as usize)
-}
-
-fn format_change(n: f64) -> String {
-    if n >= 0.0 {
-        format!("+£{}", format_num_f(n))
-    } else {
-        format!("-£{}", format_num_f(n.abs()))
-    }
 }
 
 fn format_change_bn(n: f64) -> String {

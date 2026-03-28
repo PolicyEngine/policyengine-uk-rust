@@ -93,7 +93,7 @@ def _make_fastapi_app():
             "--output", "json",
         ] + _data_args()
         if reform_json:
-            cmd += ["--reform-json", reform_json]
+            cmd += ["--policy-json", reform_json]
         try:
             result = subprocess.run(
                 cmd, capture_output=True, text=True, timeout=120,

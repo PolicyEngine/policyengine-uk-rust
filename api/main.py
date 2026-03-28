@@ -47,7 +47,7 @@ def _data_args(year: int) -> list[str]:
 def run_simulation(year: int, reform_json: Optional[str] = None) -> dict:
     cmd = [RUST_BINARY, "--year", str(year), "--output", "json"] + _data_args(year)
     if reform_json:
-        cmd += ["--reform-json", reform_json]
+        cmd += ["--policy-json", reform_json]
     try:
         result = subprocess.run(
             cmd, capture_output=True, text=True, timeout=120, cwd=ROOT_DIR
