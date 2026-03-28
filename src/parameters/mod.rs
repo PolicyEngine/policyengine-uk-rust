@@ -28,6 +28,8 @@ pub struct Parameters {
     pub growth_factors: GrowthFactors,
     #[serde(default = "TakeUpRates::default")]
     pub take_up: TakeUpRates,
+    #[serde(default = "UcMigrationRates::default")]
+    pub uc_migration: UcMigrationRates,
 }
 
 /// Take-up rates for means-tested benefits.
@@ -65,6 +67,31 @@ impl Default for TakeUpRates {
 
 impl TakeUpRates {
     fn default_new_entrant_rate() -> f64 { 0.3 }
+}
+
+/// UC managed migration rates by legacy benefit type.
+/// Fraction of legacy claimants who have been migrated to UC by the modelled year.
+/// Pensioner HB is always 0 (pensioners are ineligible for UC).
+/// Source: DWP UC managed migration statistics, extrapolated to 2025/26.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UcMigrationRates {
+    /// Working-age HB claimants migrated to UC
+    pub housing_benefit: f64,
+    /// CTC/WTC claimants migrated to UC
+    pub tax_credits: f64,
+    /// Income support claimants migrated to UC
+    pub income_support: f64,
+}
+
+impl Default for UcMigrationRates {
+    fn default() -> Self {
+        // Year-specific values are set in parameters/<year>.yaml
+        UcMigrationRates {
+            housing_benefit: 0.0,
+            tax_credits: 0.0,
+            income_support: 0.0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

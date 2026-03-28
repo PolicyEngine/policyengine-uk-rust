@@ -19,12 +19,24 @@ pub fn calculate_benunit(
 
     let ne = params.take_up.new_entrant_rate;
 
-    // UC and legacy benefits are mutually exclusive based on reported system.
-    // Within each system, apply three-way take-up: reported → full, ENR → full rate, new → new_entrant_rate.
+    // Legacy claimants are progressively migrated to UC. Migration rates are year-specific
+    // parameters (uc_migration.*). A claimant's take_up_seed determines whether they've
+    // migrated: seed < rate → on UC, seed >= rate → still on legacy.
+    // Pensioner HB is excluded from migration (pensioners ineligible for UC).
+    let m = &params.uc_migration;
+    let any_working_age = bu.person_ids.iter()
+        .filter(|&&pid| people[pid].is_adult())
+        .any(|&pid| !people[pid].is_sp_age());
+    let migrated_hb  = bu.reported_hb  && any_working_age && bu.take_up_seed < m.housing_benefit;
+    let migrated_tc  = (bu.reported_ctc || bu.reported_wtc) && bu.take_up_seed < m.tax_credits;
+    let migrated_is  = bu.reported_is  && bu.take_up_seed < m.income_support;
+    let on_uc_system = bu.on_uc || bu.is_enr_uc || migrated_hb || migrated_tc || migrated_is;
+    let reported_uc  = bu.reported_uc || migrated_hb || migrated_tc || migrated_is;
+
     let (uc, pension_credit, housing_benefit, ctc, wtc, income_support, scp);
-    if bu.on_uc || bu.is_enr_uc {
+    if on_uc_system {
         let raw_uc = calculate_universal_credit(bu, people, person_results, params);
-        let takes = takes_up_reform(bu, params.take_up.universal_credit, bu.reported_uc, bu.is_enr_uc, ne);
+        let takes = takes_up_reform(bu, params.take_up.universal_credit, reported_uc, bu.is_enr_uc, ne);
         uc = if takes { raw_uc } else { (0.0, raw_uc.1, raw_uc.2) };
         pension_credit = calculate_pension_credit(bu, people, params);
         housing_benefit = 0.0;
@@ -33,6 +45,7 @@ pub fn calculate_benunit(
         income_support = 0.0;
         scp = if takes { calculate_scottish_child_payment(bu, people, household, params) } else { 0.0 };
     } else if bu.on_legacy || bu.is_enr_hb || bu.is_enr_ctc || bu.is_enr_wtc {
+        // Not yet migrated: still on legacy system
         uc = (0.0, 0.0, 0.0);
         pension_credit = calculate_pension_credit(bu, people, params);
         let raw_hb = calculate_housing_benefit(bu, people, person_results, params);
@@ -808,7 +821,8 @@ mod tests {
             .map(|p| crate::variables::income_tax::calculate(p, &params))
             .collect();
         let result = calculate_benunit(&bu, &people, &pr, &hh, &params);
-        assert!(result.housing_benefit > 0.0, "Low earner on legacy should get HB");
+        // seed=0.85 > migration rate 0.70 → not yet migrated, still on HB
+        assert!(result.housing_benefit > 0.0, "Low earner not yet migrated should get HB");
         assert!(result.housing_benefit <= 7200.0, "HB should not exceed rent");
     }
 
@@ -838,10 +852,10 @@ mod tests {
             .map(|p| crate::variables::income_tax::calculate(p, &params))
             .collect();
         let result = calculate_benunit(&bu, &people, &pr, &hh, &params);
-        // CTC + WTC should be positive for low-income lone parent on legacy
-        assert!(result.child_tax_credit > 0.0 || result.working_tax_credit > 0.0,
-            "Low-income lone parent on legacy should receive tax credits. CTC={}, WTC={}",
-            result.child_tax_credit, result.working_tax_credit);
+        // seed=0.85 < migration rate 0.95 → migrated to UC
+        assert!(result.universal_credit > 0.0,
+            "Low-income lone parent migrated from tax credits should receive UC. UC={}",
+            result.universal_credit);
     }
 
     #[test]

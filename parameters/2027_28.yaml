@@ -106,6 +106,14 @@ scottish_child_payment:
   weekly_amount: 26.70
   max_age: 16.0
 
+uc_migration:
+  # DWP managed migration statistics, extrapolated
+  # Fraction of legacy claimants migrated to UC by this year
+  # Pensioner HB always 0 (ineligible for UC)
+  housing_benefit: 0.95  # working-age HB claimants migrated
+  tax_credits: 0.99      # CTC/WTC claimants migrated
+  income_support: 0.90   # IS claimants migrated
+
 growth_factors:
   # OBR Economic and Fiscal Outlook, March 2026
   cpi_rate: 0.01950        # 1.950% CPI inflation (FY 2027/28)
