@@ -5,11 +5,13 @@ import ParameterSlider from "@/components/ParameterSlider";
 import DecileChart from "@/components/DecileChart";
 import BudgetarySummary from "@/components/BudgetarySummary";
 import WinnersLosers from "@/components/WinnersLosers";
+import ProvisionWaterfall, { WaterfallEntry } from "@/components/ProvisionWaterfall";
 import { SLIDERS, SECTIONS, YEARS } from "@/lib/constants";
 import { palette, FF_MONO, FF_DISPLAY } from "@/lib/theme";
 import {
   fetchAllBaselines,
   fetchParameters,
+  runSimulation,
   runSimulationMultiYear,
 } from "@/lib/api";
 import { SimulationResult } from "@/lib/types";
@@ -96,6 +98,8 @@ export default function Home() {
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
   const [hasReform, setHasReform] = useState(false);
   const [selectedYear, setSelectedYear] = useState(2025);
+  const [waterfallEntries, setWaterfallEntries] = useState<WaterfallEntry[]>([]);
+  const [waterfallLoading, setWaterfallLoading] = useState(false);
 
   // Load baselines + params for primary year (2025) on mount
   useEffect(() => {
@@ -136,25 +140,65 @@ export default function Home() {
 
       if (!anyChanged) {
         setResults(baselines);
+        setWaterfallEntries([]);
         return;
       }
 
       debounceRef.current = setTimeout(() => {
         if (!baselineParams) return;
         setLoading(true);
+        setWaterfallLoading(true);
         const overlay = buildReformOverlay(
           newValues,
           baselineValues,
           baselineParams
         );
-        runSimulationMultiYear(YEARS, overlay)
-          .then((res) => {
-            setResults(res);
+
+        // Changed provisions in order
+        const changedSliders = SLIDERS.filter(
+          (s) => Math.abs(newValues[s.key] - baselineValues[s.key]) > s.step * 0.5
+        );
+
+        // Multi-year results + per-provision waterfall for selected year, in parallel
+        Promise.all([
+          runSimulationMultiYear(YEARS, overlay),
+          // Run cumulative overlays [:1], [:2], ... [:N] all in parallel
+          Promise.all(
+            changedSliders.map((_, i) => {
+              const cumOverlay = buildReformOverlay(
+                // Apply only first i+1 changed sliders
+                Object.fromEntries(
+                  SLIDERS.map((s) => {
+                    const idx = changedSliders.indexOf(s);
+                    return [s.key, idx >= 0 && idx <= i ? newValues[s.key] : baselineValues[s.key]];
+                  })
+                ),
+                baselineValues,
+                baselineParams
+              );
+              return runSimulation(selectedYear, cumOverlay);
+            })
+          ),
+        ])
+          .then(([multiRes, provisionResults]) => {
+            setResults(multiRes);
+
+            const baselineNetCost = baselines[String(selectedYear)]?.budgetary_impact.net_cost ?? 0;
+            const entries: WaterfallEntry[] = [
+              { label: "Baseline", netCost: baselineNetCost },
+              ...provisionResults.map((r, i) => ({
+                label: changedSliders[i].label,
+                netCost: r.budgetary_impact.net_cost,
+              })),
+            ];
+            setWaterfallEntries(entries);
             setLoading(false);
+            setWaterfallLoading(false);
           })
           .catch((e) => {
             console.error("Simulation error:", e);
             setLoading(false);
+            setWaterfallLoading(false);
           });
       }, 300);
     },
@@ -165,6 +209,7 @@ export default function Home() {
     setSliderValues({ ...baselineValues });
     setHasReform(false);
     setResults(baselines);
+    setWaterfallEntries([]);
   }, [baselineValues, baselines]);
 
   const numChanged = SLIDERS.filter(
@@ -453,6 +498,9 @@ export default function Home() {
                   Detail: {selectedYear}/{(selectedYear + 1).toString().slice(-2)}
                 </div>
                 <BudgetarySummary data={selectedResult.budgetary_impact} />
+                {waterfallEntries.length >= 2 && (
+                  <ProvisionWaterfall entries={waterfallEntries} loading={waterfallLoading} />
+                )}
                 <WinnersLosers data={selectedResult.winners_losers} />
                 <DecileChart data={selectedResult.decile_impacts} />
               </>
