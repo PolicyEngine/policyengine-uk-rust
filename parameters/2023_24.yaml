@@ -26,10 +26,15 @@ income_tax:
 national_insurance:
   primary_threshold_annual: 12570.0
   upper_earnings_limit_annual: 50270.0
-  main_rate: 0.12    # 12% before Jan 2024 cut (10% from Jan, but 12% for full FY avg)
+  # NI (Reduction in Rates) Act 2023: main rate cut from 12% to 10% from 6 Jan 2024.
+  # Blended annual rate: (12% × 9/12) + (10% × 3/12) = 11.5%
+  main_rate: 0.115
   additional_rate: 0.02
   secondary_threshold_annual: 9100.0
   employer_rate: 0.138
+  # Class 2 (self-employed flat rate): £3.45/week (SSCBA 1992 s.11, SI 2023/319)
+  class2_flat_rate_weekly: 3.45
+  class2_small_profits_threshold: 6725.0
   class4_lower_profits_limit: 12570.0
   class4_upper_profits_limit: 50270.0
   class4_main_rate: 0.09
