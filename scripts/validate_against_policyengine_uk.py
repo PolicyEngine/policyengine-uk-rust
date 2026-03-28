@@ -25,6 +25,12 @@ class Metric:
     tolerance: float = 2.0
 
 
+@dataclass(frozen=True)
+class CaseMetric:
+    name: str
+    reducer: str = "sum"
+
+
 METRICS: dict[str, Metric] = {
     "income_tax": Metric("person_results", "income_tax", "income_tax"),
     "national_insurance": Metric(
@@ -60,7 +66,10 @@ def build_case(
     benunit_flags: dict[str, Any] | None = None,
     housing_costs: float = 0.0,
     country: str | None = None,
-    metrics: list[str],
+    metrics: list[str | CaseMetric],
+    rust_reform: dict[str, Any] | None = None,
+    policyengine_scenario: dict[str, Any] | None = None,
+    known_failure: str | None = None,
 ) -> dict[str, Any]:
     benunit_flags = benunit_flags or {}
 
@@ -179,17 +188,28 @@ def build_case(
     return {
         "name": name,
         "year": year,
-        "metrics": metrics,
+        "known_failure": known_failure,
+        "metrics": [
+            metric if isinstance(metric, CaseMetric) else CaseMetric(metric)
+            for metric in metrics
+        ],
+        "entity_labels": {
+            "person_results": person_names,
+            "benunit_results": ["benunit"],
+            "household_results": ["household"],
+        },
         "rust_input": {
             "people": rust_people,
             "benunits": [rust_benunit],
             "households": [rust_household],
         },
+        "rust_reform": rust_reform,
         "policyengine_situation": {
             "people": pe_people,
             "benunits": {"benunit": pe_benunit},
             "households": {"household": pe_household},
         },
+        "policyengine_scenario": policyengine_scenario,
     }
 
 
@@ -217,7 +237,10 @@ CASES = [
                 "would_claim_marriage_allowance": True,
             },
         ],
-        metrics=["income_tax", "national_insurance"],
+        metrics=[
+            CaseMetric("income_tax", reducer="sequence"),
+            CaseMetric("national_insurance", reducer="sequence"),
+        ],
     ),
     build_case(
         name="universal_credit_single_2025",
@@ -229,6 +252,22 @@ CASES = [
             "would_claim_uc": True,
         },
         metrics=["universal_credit"],
+    ),
+    build_case(
+        name="income_tax_basic_rate_reform_2025",
+        year=2025,
+        people=[{"name": "person", "age": 30, "employment_income": 30_000}],
+        rust_reform={
+            "income_tax": {
+                "uk_brackets": [
+                    {"rate": 0.25, "threshold": 0.0},
+                    {"rate": 0.40, "threshold": 37700.0},
+                    {"rate": 0.45, "threshold": 125140.0},
+                ]
+            }
+        },
+        policyengine_scenario={"gov.hmrc.income_tax.rates.uk[0].rate": 0.25},
+        metrics=["income_tax"],
     ),
     build_case(
         name="child_benefit_two_children_2025",
@@ -296,6 +335,22 @@ CASES = [
         ],
         metrics=["state_pension"],
     ),
+    build_case(
+        name="pension_credit_single_2025",
+        year=2025,
+        people=[
+            {"name": "adult", "age": 75, "state_pension_reported": 5_000},
+        ],
+        benunit_flags={
+            "reported_pc": True,
+            "would_claim_pc": True,
+        },
+        metrics=["pension_credit"],
+        known_failure=(
+            "Rust pension credit remains above policyengine-uk for this low-income "
+            "single pensioner scenario."
+        ),
+    ),
 ]
 
 
@@ -303,6 +358,18 @@ def _add_policyengine_uk_to_path(explicit_path: str | None) -> None:
     candidate = explicit_path or os.environ.get("POLICYENGINE_UK_PATH")
     if candidate:
         sys.path.insert(0, candidate)
+
+
+def _sequence_labels(case: dict[str, Any], metric: Metric, length: int) -> list[str]:
+    labels = case["entity_labels"].get(metric.rust_collection, [])
+    if len(labels) == length:
+        return labels
+    return [f"item_{index}" for index in range(length)]
+
+
+def _format_sequence(values: list[float], labels: list[str]) -> str:
+    pairs = [f"{label}={value:.2f}" for label, value in zip(labels, values)]
+    return "[" + ", ".join(pairs) + "]"
 
 
 def run_rust_case(case: dict[str, Any], rust_binary: Path) -> dict[str, float]:
@@ -313,16 +380,20 @@ def run_rust_case(case: dict[str, Any], rust_binary: Path) -> dict[str, float]:
         scenario_path = Path(handle.name)
 
     try:
+        cmd = [
+            str(rust_binary),
+            "--year",
+            str(case["year"]),
+            "--scenario-json",
+            str(scenario_path),
+            "--output",
+            "json",
+        ]
+        if case.get("rust_reform") is not None:
+            cmd.extend(["--reform-json", json.dumps(case["rust_reform"])])
+
         result = subprocess.run(
-            [
-                str(rust_binary),
-                "--year",
-                str(case["year"]),
-                "--scenario-json",
-                str(scenario_path),
-                "--output",
-                "json",
-            ],
+            cmd,
             check=True,
             capture_output=True,
             text=True,
@@ -332,21 +403,35 @@ def run_rust_case(case: dict[str, Any], rust_binary: Path) -> dict[str, float]:
         scenario_path.unlink(missing_ok=True)
 
     payload = json.loads(result.stdout)
-    values: dict[str, float] = {}
-    for metric_name in case["metrics"]:
-        metric = METRICS[metric_name]
-        values[metric_name] = float(
-            sum(item[metric.rust_field] for item in payload[metric.rust_collection])
-        )
+    values: dict[str, float | list[float]] = {}
+    for case_metric in case["metrics"]:
+        metric = METRICS[case_metric.name]
+        raw_values = [
+            float(item[metric.rust_field]) for item in payload[metric.rust_collection]
+        ]
+        if case_metric.reducer == "sequence":
+            values[case_metric.name] = raw_values
+        else:
+            values[case_metric.name] = float(sum(raw_values))
     return values
 
 
-def run_policyengine_case(case: dict[str, Any], simulation_cls: Any) -> dict[str, float]:
-    sim = simulation_cls(situation=case["policyengine_situation"])
-    values: dict[str, float] = {}
-    for metric_name in case["metrics"]:
-        metric = METRICS[metric_name]
-        values[metric_name] = float(sim.calculate(metric.policyengine_variable, case["year"]).sum())
+def run_policyengine_case(
+    case: dict[str, Any], simulation_cls: Any, scenario_cls: Any
+) -> dict[str, float | list[float]]:
+    scenario = None
+    if case.get("policyengine_scenario") is not None:
+        scenario = scenario_cls(parameter_changes=case["policyengine_scenario"])
+
+    sim = simulation_cls(situation=case["policyengine_situation"], scenario=scenario)
+    values: dict[str, float | list[float]] = {}
+    for case_metric in case["metrics"]:
+        metric = METRICS[case_metric.name]
+        result = sim.calculate(metric.policyengine_variable, case["year"])
+        if case_metric.reducer == "sequence":
+            values[case_metric.name] = [float(value) for value in result]
+        else:
+            values[case_metric.name] = float(result.sum())
     return values
 
 
@@ -368,6 +453,11 @@ def parse_args() -> argparse.Namespace:
         dest="cases",
         help="Run only the named validation case. Can be supplied multiple times.",
     )
+    parser.add_argument(
+        "--list-cases",
+        action="store_true",
+        help="List available validation cases and exit.",
+    )
     return parser.parse_args()
 
 
@@ -377,8 +467,14 @@ def main() -> int:
         print(f"Rust binary not found at {args.rust_binary}", file=sys.stderr)
         return 1
 
+    if args.list_cases:
+        for case in CASES:
+            suffix = " [expected-failure]" if case.get("known_failure") else ""
+            print(f"{case['name']}{suffix}")
+        return 0
+
     _add_policyengine_uk_to_path(args.policyengine_uk_path)
-    from policyengine_uk import Simulation  # pylint: disable=import-error
+    from policyengine_uk import Scenario, Simulation  # pylint: disable=import-error
 
     selected_cases = CASES
     if args.cases:
@@ -390,30 +486,74 @@ def main() -> int:
             return 1
 
     failures: list[str] = []
+    expected_failures: list[str] = []
+    unexpected_passes: list[str] = []
     for case in selected_cases:
         rust_values = run_rust_case(case, args.rust_binary)
-        policyengine_values = run_policyengine_case(case, Simulation)
+        policyengine_values = run_policyengine_case(case, Simulation, Scenario)
         print(f"[{case['name']}]")
-        for metric_name in case["metrics"]:
-            metric = METRICS[metric_name]
-            rust_value = rust_values[metric_name]
-            policy_value = policyengine_values[metric_name]
-            diff = abs(rust_value - policy_value)
-            print(
-                f"  {metric_name}: rust={rust_value:.2f} policyengine={policy_value:.2f} diff={diff:.2f}"
-            )
-            if diff > metric.tolerance:
-                failures.append(
-                    f"{case['name']} {metric_name} diff {diff:.2f} exceeds tolerance {metric.tolerance:.2f}"
+        case_failures: list[str] = []
+        for case_metric in case["metrics"]:
+            metric = METRICS[case_metric.name]
+            rust_value = rust_values[case_metric.name]
+            policy_value = policyengine_values[case_metric.name]
+            if isinstance(rust_value, list):
+                labels = _sequence_labels(case, metric, len(rust_value))
+                if len(rust_value) != len(policy_value):
+                    case_failures.append(
+                        f"{case['name']} {case_metric.name} length mismatch {len(rust_value)} != {len(policy_value)}"
+                    )
+                    print(
+                        f"  {case_metric.name}: rust={rust_value} policyengine={policy_value} diff=length-mismatch"
+                    )
+                    continue
+                diffs = [abs(a - b) for a, b in zip(rust_value, policy_value)]
+                print(
+                    "  "
+                    f"{case_metric.name}: "
+                    f"rust={_format_sequence(rust_value, labels)} "
+                    f"policyengine={_format_sequence(policy_value, labels)} "
+                    f"diffs={[round(diff, 2) for diff in diffs]}"
                 )
+                for index, diff in enumerate(diffs):
+                    if diff > metric.tolerance:
+                        case_failures.append(
+                            f"{case['name']} {case_metric.name}[{labels[index]}] diff {diff:.2f} exceeds tolerance {metric.tolerance:.2f}"
+                        )
+            else:
+                diff = abs(rust_value - policy_value)
+                print(
+                    f"  {case_metric.name}: rust={rust_value:.2f} policyengine={policy_value:.2f} diff={diff:.2f}"
+                )
+                if diff > metric.tolerance:
+                    case_failures.append(
+                        f"{case['name']} {case_metric.name} diff {diff:.2f} exceeds tolerance {metric.tolerance:.2f}"
+                    )
 
-    if failures:
+        if case.get("known_failure"):
+            if case_failures:
+                expected_failures.append(case["name"])
+                print(f"  expected failure: {case['known_failure']}")
+            else:
+                unexpected_passes.append(
+                    f"{case['name']} unexpectedly passed; review and remove known_failure"
+                )
+        else:
+            failures.extend(case_failures)
+
+    if failures or unexpected_passes:
         print("\nValidation failed:", file=sys.stderr)
         for failure in failures:
             print(f"  - {failure}", file=sys.stderr)
+        for unexpected_pass in unexpected_passes:
+            print(f"  - {unexpected_pass}", file=sys.stderr)
         return 1
 
-    print(f"\nValidated {len(selected_cases)} case(s) against policyengine-uk.")
+    print(
+        "\nValidated "
+        f"{len(selected_cases) - len(expected_failures)} passing case(s) "
+        f"against policyengine-uk with {len(expected_failures)} expected failure(s)."
+    )
     return 0
 
 
