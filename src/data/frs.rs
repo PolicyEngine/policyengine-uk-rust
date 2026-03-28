@@ -33,6 +33,7 @@ pub fn load_frs(data_dir: &Path, fiscal_year: u32) -> anyhow::Result<Dataset> {
     ]))?;
     let benunit_table = load_table_cols(data_dir, "benunit", Some(&[
         "sernum", "benunit", "buuc", "burent",
+        "fsmbu", "fsfvbu", "fsmlkbu", "heartbu", "butvlic",
     ]))?;
     let adult_table = load_table_cols(data_dir, "adult", Some(&[
         "sernum", "benunit", "person", "sex", "age", "age80", "tothours",
@@ -44,7 +45,7 @@ pub fn load_frs(data_dir: &Path, fiscal_year: u32) -> anyhow::Result<Dataset> {
         "apamt", "apdamt", "pareamt", "aliamt",
     ]))?;
     let child_table = load_table_cols(data_dir, "child", Some(&[
-        "sernum", "benunit", "person", "sex", "age",
+        "sernum", "benunit", "person", "sex", "age", "chearns", "chrinc",
     ]))?;
 
     // Optional tables
@@ -279,6 +280,12 @@ struct BenUnitRecord {
     benunit: i64,
     claims_uc: bool,
     rent_weekly: f64,
+    // In-kind benefits (weekly DVs from FRS benunit table, for HBAI net income)
+    free_school_meals_weekly: f64,
+    free_school_fruit_veg_weekly: f64,
+    free_school_milk_weekly: f64,
+    healthy_start_vouchers_weekly: f64,
+    free_tv_licence_weekly: f64,
 }
 
 fn parse_benunits(table: &Table, era: FrsEra) -> Vec<BenUnitRecord> {
@@ -292,6 +299,11 @@ fn parse_benunits(table: &Table, era: FrsEra) -> Vec<BenUnitRecord> {
                 FrsEra::Current => get_positive_f64(row, "buuc") > 0.0,
             },
             rent_weekly: get_positive_f64(row, "burent"),
+            free_school_meals_weekly: get_f64(row, "fsmbu").max(0.0),
+            free_school_fruit_veg_weekly: get_f64(row, "fsfvbu").max(0.0),
+            free_school_milk_weekly: get_f64(row, "fsmlkbu").max(0.0),
+            healthy_start_vouchers_weekly: get_f64(row, "heartbu").max(0.0),
+            free_tv_licence_weekly: get_f64(row, "butvlic").max(0.0),
         }
     }).collect()
 }
@@ -578,31 +590,31 @@ struct PersonRecord {
     employee_pension_contributions_weekly: f64,
     personal_pension_contributions_weekly: f64,
     childcare_expenses_weekly: f64,
-    // Reported benefits (weekly)
-    child_benefit_reported_weekly: f64,
-    housing_benefit_reported_weekly: f64,
-    income_support_reported_weekly: f64,
-    pension_credit_reported_weekly: f64,
-    child_tax_credit_reported_weekly: f64,
-    working_tax_credit_reported_weekly: f64,
-    universal_credit_reported_weekly: f64,
-    dla_sc_reported_weekly: f64,
-    dla_m_reported_weekly: f64,
-    pip_dl_reported_weekly: f64,
-    pip_m_reported_weekly: f64,
-    carers_allowance_reported_weekly: f64,
-    attendance_allowance_reported_weekly: f64,
-    esa_income_reported_weekly: f64,
-    esa_contrib_reported_weekly: f64,
-    jsa_income_reported_weekly: f64,
-    jsa_contrib_reported_weekly: f64,
+    // Benefits (weekly)
+    child_benefit_weekly: f64,
+    housing_benefit_weekly: f64,
+    income_support_weekly: f64,
+    pension_credit_weekly: f64,
+    child_tax_credit_weekly: f64,
+    working_tax_credit_weekly: f64,
+    universal_credit_weekly: f64,
+    dla_care_weekly: f64,
+    dla_mobility_weekly: f64,
+    pip_daily_living_weekly: f64,
+    pip_mobility_weekly: f64,
+    carers_allowance_weekly: f64,
+    attendance_allowance_weekly: f64,
+    esa_income_weekly: f64,
+    esa_contributory_weekly: f64,
+    jsa_income_weekly: f64,
+    jsa_contributory_weekly: f64,
     // Aggregate of all unmodelled passthrough benefits (bereavement, maternity, winter fuel, etc.)
-    other_benefits_reported_weekly: f64,
+    other_benefits_weekly: f64,
     // Scottish disability payments (replace PIP/DLA in Scotland)
-    adp_dl_reported_weekly: f64,
-    adp_m_reported_weekly: f64,
-    cdp_care_reported_weekly: f64,
-    cdp_mob_reported_weekly: f64,
+    adp_daily_living_weekly: f64,
+    adp_mobility_weekly: f64,
+    cdp_care_weekly: f64,
+    cdp_mobility_weekly: f64,
     is_child: bool,
 }
 
@@ -787,31 +799,31 @@ fn parse_adults(
             employee_pension_contributions_weekly: jobs.map_or(0.0, |j| j.employee_pension_contributions_weekly),
             personal_pension_contributions_weekly: pp.map_or(0.0, |p| p.personal_pension_contributions_weekly),
             childcare_expenses_weekly: 0.0, // Would need chldcare table
-            child_benefit_reported_weekly: bens.map_or(0.0, |b| b.child_benefit),
-            housing_benefit_reported_weekly: bens.map_or(0.0, |b| b.housing_benefit),
-            income_support_reported_weekly: bens.map_or(0.0, |b| b.income_support),
-            pension_credit_reported_weekly: bens.map_or(0.0, |b| b.pension_credit),
-            child_tax_credit_reported_weekly: bens.map_or(0.0, |b| b.child_tax_credit),
-            working_tax_credit_reported_weekly: bens.map_or(0.0, |b| b.working_tax_credit),
-            universal_credit_reported_weekly: bens.map_or(0.0, |b| b.universal_credit),
-            dla_sc_reported_weekly: dla_sc,
-            dla_m_reported_weekly: dla_m,
-            pip_dl_reported_weekly: pip_dl,
-            pip_m_reported_weekly: pip_m,
-            carers_allowance_reported_weekly: bens.map_or(0.0, |b| b.carers_allowance),
-            attendance_allowance_reported_weekly: bens.map_or(0.0, |b| b.attendance_allowance),
-            esa_income_reported_weekly: bens.map_or(0.0, |b| b.esa_income),
-            esa_contrib_reported_weekly: bens.map_or(0.0, |b| b.esa_contrib),
-            jsa_income_reported_weekly: bens.map_or(0.0, |b| b.jsa_income),
-            jsa_contrib_reported_weekly: bens.map_or(0.0, |b| b.jsa_contrib),
-            other_benefits_reported_weekly: bens.map_or(0.0, |b| {
+            child_benefit_weekly: bens.map_or(0.0, |b| b.child_benefit),
+            housing_benefit_weekly: bens.map_or(0.0, |b| b.housing_benefit),
+            income_support_weekly: bens.map_or(0.0, |b| b.income_support),
+            pension_credit_weekly: bens.map_or(0.0, |b| b.pension_credit),
+            child_tax_credit_weekly: bens.map_or(0.0, |b| b.child_tax_credit),
+            working_tax_credit_weekly: bens.map_or(0.0, |b| b.working_tax_credit),
+            universal_credit_weekly: bens.map_or(0.0, |b| b.universal_credit),
+            dla_care_weekly: dla_sc,
+            dla_mobility_weekly: dla_m,
+            pip_daily_living_weekly: pip_dl,
+            pip_mobility_weekly: pip_m,
+            carers_allowance_weekly: bens.map_or(0.0, |b| b.carers_allowance),
+            attendance_allowance_weekly: bens.map_or(0.0, |b| b.attendance_allowance),
+            esa_income_weekly: bens.map_or(0.0, |b| b.esa_income),
+            esa_contributory_weekly: bens.map_or(0.0, |b| b.esa_contrib),
+            jsa_income_weekly: bens.map_or(0.0, |b| b.jsa_income),
+            jsa_contributory_weekly: bens.map_or(0.0, |b| b.jsa_contrib),
+            other_benefits_weekly: bens.map_or(0.0, |b| {
                 b.bereavement + b.maternity_allowance + b.winter_fuel
                 + b.industrial_injuries + b.sda + b.war_pension + b.other_ni_state
             }),
-            adp_dl_reported_weekly: bens.map_or(0.0, |b| b.adp_dl),
-            adp_m_reported_weekly: bens.map_or(0.0, |b| b.adp_m),
-            cdp_care_reported_weekly: bens.map_or(0.0, |b| b.cdp_care),
-            cdp_mob_reported_weekly: bens.map_or(0.0, |b| b.cdp_mob),
+            adp_daily_living_weekly: bens.map_or(0.0, |b| b.adp_dl),
+            adp_mobility_weekly: bens.map_or(0.0, |b| b.adp_m),
+            cdp_care_weekly: bens.map_or(0.0, |b| b.cdp_care),
+            cdp_mobility_weekly: bens.map_or(0.0, |b| b.cdp_mob),
             is_child: false,
         }
     }).collect()
@@ -830,7 +842,7 @@ fn parse_children(table: &Table) -> Vec<PersonRecord> {
             gender: if sex == 1 { Gender::Male } else { Gender::Female },
             is_benunit_head: false,
             is_household_head: false,
-            employment_income_weekly: 0.0,
+            employment_income_weekly: get_f64(row, "chearns").max(0.0),
             self_employment_income_weekly: 0.0,
             private_pension_income_weekly: 0.0,
             state_pension_weekly: 0.0,
@@ -838,7 +850,7 @@ fn parse_children(table: &Table) -> Vec<PersonRecord> {
             dividend_income_weekly: 0.0,
             property_income_weekly: 0.0,
             maintenance_income_weekly: 0.0,
-            miscellaneous_income_weekly: 0.0,
+            miscellaneous_income_weekly: get_f64(row, "chrinc").max(0.0),
             hours_worked_weekly: 0.0,
             dla_care_low: false, dla_care_mid: false, dla_care_high: false,
             dla_mob_low: false, dla_mob_high: false,
@@ -857,28 +869,28 @@ fn parse_children(table: &Table) -> Vec<PersonRecord> {
             employee_pension_contributions_weekly: 0.0,
             personal_pension_contributions_weekly: 0.0,
             childcare_expenses_weekly: 0.0,
-            child_benefit_reported_weekly: 0.0,
-            housing_benefit_reported_weekly: 0.0,
-            income_support_reported_weekly: 0.0,
-            pension_credit_reported_weekly: 0.0,
-            child_tax_credit_reported_weekly: 0.0,
-            working_tax_credit_reported_weekly: 0.0,
-            universal_credit_reported_weekly: 0.0,
-            dla_sc_reported_weekly: 0.0,
-            dla_m_reported_weekly: 0.0,
-            pip_dl_reported_weekly: 0.0,
-            pip_m_reported_weekly: 0.0,
-            carers_allowance_reported_weekly: 0.0,
-            attendance_allowance_reported_weekly: 0.0,
-            esa_income_reported_weekly: 0.0,
-            esa_contrib_reported_weekly: 0.0,
-            jsa_income_reported_weekly: 0.0,
-            jsa_contrib_reported_weekly: 0.0,
-            other_benefits_reported_weekly: 0.0,
-            adp_dl_reported_weekly: 0.0,
-            adp_m_reported_weekly: 0.0,
-            cdp_care_reported_weekly: 0.0,
-            cdp_mob_reported_weekly: 0.0,
+            child_benefit_weekly: 0.0,
+            housing_benefit_weekly: 0.0,
+            income_support_weekly: 0.0,
+            pension_credit_weekly: 0.0,
+            child_tax_credit_weekly: 0.0,
+            working_tax_credit_weekly: 0.0,
+            universal_credit_weekly: 0.0,
+            dla_care_weekly: 0.0,
+            dla_mobility_weekly: 0.0,
+            pip_daily_living_weekly: 0.0,
+            pip_mobility_weekly: 0.0,
+            carers_allowance_weekly: 0.0,
+            attendance_allowance_weekly: 0.0,
+            esa_income_weekly: 0.0,
+            esa_contributory_weekly: 0.0,
+            jsa_income_weekly: 0.0,
+            jsa_contributory_weekly: 0.0,
+            other_benefits_weekly: 0.0,
+            adp_daily_living_weekly: 0.0,
+            adp_mobility_weekly: 0.0,
+            cdp_care_weekly: 0.0,
+            cdp_mobility_weekly: 0.0,
             is_child: true,
         }
     }).collect()
@@ -926,6 +938,11 @@ fn assemble_dataset(
                 on_legacy: false,  // Derived below from person reported amounts
                 rent_monthly: bu.rent_weekly * WEEKS_IN_YEAR / 12.0,
                 is_lone_parent: false,
+                free_school_meals: bu.free_school_meals_weekly * WEEKS_IN_YEAR,
+                free_school_fruit_veg: bu.free_school_fruit_veg_weekly * WEEKS_IN_YEAR,
+                free_school_milk: bu.free_school_milk_weekly * WEEKS_IN_YEAR,
+                healthy_start_vouchers: bu.healthy_start_vouchers_weekly * WEEKS_IN_YEAR,
+                free_tv_licence: bu.free_tv_licence_weekly * WEEKS_IN_YEAR,
                 ..BenUnit::default()
             });
             households[hh_idx].benunit_ids.push(bu_idx);
@@ -956,7 +973,7 @@ fn assemble_dataset(
                     employment_income: pr.employment_income_weekly * WEEKS_IN_YEAR,
                     self_employment_income: (pr.self_employment_income_weekly * WEEKS_IN_YEAR).max(0.0),
                     pension_income: pr.private_pension_income_weekly * WEEKS_IN_YEAR,
-                    state_pension_reported: pr.state_pension_weekly * WEEKS_IN_YEAR,
+                    state_pension: pr.state_pension_weekly * WEEKS_IN_YEAR,
                     savings_interest_income: pr.savings_interest_weekly * WEEKS_IN_YEAR,
                     dividend_income: pr.dividend_income_weekly * WEEKS_IN_YEAR,
                     property_income: pr.property_income_weekly * WEEKS_IN_YEAR,
@@ -988,28 +1005,28 @@ fn assemble_dataset(
                     employee_pension_contributions: pr.employee_pension_contributions_weekly * WEEKS_IN_YEAR,
                     personal_pension_contributions: pr.personal_pension_contributions_weekly * WEEKS_IN_YEAR,
                     childcare_expenses: pr.childcare_expenses_weekly * WEEKS_IN_YEAR,
-                    child_benefit_reported: pr.child_benefit_reported_weekly * WEEKS_IN_YEAR,
-                    housing_benefit_reported: pr.housing_benefit_reported_weekly * WEEKS_IN_YEAR,
-                    income_support_reported: pr.income_support_reported_weekly * WEEKS_IN_YEAR,
-                    pension_credit_reported: pr.pension_credit_reported_weekly * WEEKS_IN_YEAR,
-                    child_tax_credit_reported: pr.child_tax_credit_reported_weekly * WEEKS_IN_YEAR,
-                    working_tax_credit_reported: pr.working_tax_credit_reported_weekly * WEEKS_IN_YEAR,
-                    universal_credit_reported: pr.universal_credit_reported_weekly * WEEKS_IN_YEAR,
-                    dla_sc_reported: pr.dla_sc_reported_weekly * WEEKS_IN_YEAR,
-                    dla_m_reported: pr.dla_m_reported_weekly * WEEKS_IN_YEAR,
-                    pip_dl_reported: pr.pip_dl_reported_weekly * WEEKS_IN_YEAR,
-                    pip_m_reported: pr.pip_m_reported_weekly * WEEKS_IN_YEAR,
-                    carers_allowance_reported: pr.carers_allowance_reported_weekly * WEEKS_IN_YEAR,
-                    attendance_allowance_reported: pr.attendance_allowance_reported_weekly * WEEKS_IN_YEAR,
-                    esa_income_reported: pr.esa_income_reported_weekly * WEEKS_IN_YEAR,
-                    esa_contrib_reported: pr.esa_contrib_reported_weekly * WEEKS_IN_YEAR,
-                    jsa_income_reported: pr.jsa_income_reported_weekly * WEEKS_IN_YEAR,
-                    jsa_contrib_reported: pr.jsa_contrib_reported_weekly * WEEKS_IN_YEAR,
-                    other_benefits_reported: pr.other_benefits_reported_weekly * WEEKS_IN_YEAR,
-                    adp_dl_reported: pr.adp_dl_reported_weekly * WEEKS_IN_YEAR,
-                    adp_m_reported: pr.adp_m_reported_weekly * WEEKS_IN_YEAR,
-                    cdp_care_reported: pr.cdp_care_reported_weekly * WEEKS_IN_YEAR,
-                    cdp_mob_reported: pr.cdp_mob_reported_weekly * WEEKS_IN_YEAR,
+                    child_benefit: pr.child_benefit_weekly * WEEKS_IN_YEAR,
+                    housing_benefit: pr.housing_benefit_weekly * WEEKS_IN_YEAR,
+                    income_support: pr.income_support_weekly * WEEKS_IN_YEAR,
+                    pension_credit: pr.pension_credit_weekly * WEEKS_IN_YEAR,
+                    child_tax_credit: pr.child_tax_credit_weekly * WEEKS_IN_YEAR,
+                    working_tax_credit: pr.working_tax_credit_weekly * WEEKS_IN_YEAR,
+                    universal_credit: pr.universal_credit_weekly * WEEKS_IN_YEAR,
+                    dla_care: pr.dla_care_weekly * WEEKS_IN_YEAR,
+                    dla_mobility: pr.dla_mobility_weekly * WEEKS_IN_YEAR,
+                    pip_daily_living: pr.pip_daily_living_weekly * WEEKS_IN_YEAR,
+                    pip_mobility: pr.pip_mobility_weekly * WEEKS_IN_YEAR,
+                    carers_allowance: pr.carers_allowance_weekly * WEEKS_IN_YEAR,
+                    attendance_allowance: pr.attendance_allowance_weekly * WEEKS_IN_YEAR,
+                    esa_income: pr.esa_income_weekly * WEEKS_IN_YEAR,
+                    esa_contributory: pr.esa_contributory_weekly * WEEKS_IN_YEAR,
+                    jsa_income: pr.jsa_income_weekly * WEEKS_IN_YEAR,
+                    jsa_contributory: pr.jsa_contributory_weekly * WEEKS_IN_YEAR,
+                    other_benefits: pr.other_benefits_weekly * WEEKS_IN_YEAR,
+                    adp_daily_living: pr.adp_daily_living_weekly * WEEKS_IN_YEAR,
+                    adp_mobility: pr.adp_mobility_weekly * WEEKS_IN_YEAR,
+                    cdp_care: pr.cdp_care_weekly * WEEKS_IN_YEAR,
+                    cdp_mobility: pr.cdp_mobility_weekly * WEEKS_IN_YEAR,
                     would_claim_marriage_allowance: false,
                 });
 
@@ -1027,13 +1044,13 @@ fn assemble_dataset(
 
         for &pid in &bu.person_ids {
             let p = &people[pid];
-            if p.universal_credit_reported > 0.0    { bu.on_uc = true; bu.reported_uc = true; }
-            if p.housing_benefit_reported > 0.0     { bu.on_legacy = true; bu.reported_hb = true; }
-            if p.child_tax_credit_reported > 0.0    { bu.on_legacy = true; bu.reported_ctc = true; }
-            if p.working_tax_credit_reported > 0.0  { bu.on_legacy = true; bu.reported_wtc = true; }
-            if p.income_support_reported > 0.0      { bu.on_legacy = true; bu.reported_is = true; }
-            if p.child_benefit_reported > 0.0       { bu.reported_cb = true; }
-            if p.pension_credit_reported > 0.0      { bu.reported_pc = true; }
+            if p.universal_credit > 0.0    { bu.on_uc = true; bu.reported_uc = true; }
+            if p.housing_benefit > 0.0     { bu.on_legacy = true; bu.reported_hb = true; }
+            if p.child_tax_credit > 0.0    { bu.on_legacy = true; bu.reported_ctc = true; }
+            if p.working_tax_credit > 0.0  { bu.on_legacy = true; bu.reported_wtc = true; }
+            if p.income_support > 0.0      { bu.on_legacy = true; bu.reported_is = true; }
+            if p.child_benefit > 0.0       { bu.reported_cb = true; }
+            if p.pension_credit > 0.0      { bu.reported_pc = true; }
         }
     }
 

@@ -15,7 +15,7 @@ pub fn calculate(person: &Person, params: &Parameters) -> PersonResult {
 
     // Step 3: Allocate PA across income types (earned first, then savings, then dividends)
     let earned_income = person.employment_income + person.self_employment_income
-        + person.pension_income + person.state_pension_reported
+        + person.pension_income + person.state_pension
         + person.property_income + person.maintenance_income
         + person.miscellaneous_income + person.other_income;
 

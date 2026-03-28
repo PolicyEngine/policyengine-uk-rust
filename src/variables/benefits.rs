@@ -64,8 +64,8 @@ pub fn calculate_benunit(
         wtc = if bu.reported_wtc { tc.1 } else { 0.0 };
         // Route ESA(IR) or IS based on which legacy benefit is reported.
         // ESA(IR) replaces IS for claimants with limited capability for work.
-        let has_esa_reported = bu.person_ids.iter().any(|&pid| people[pid].esa_income_reported > 0.0);
-        let has_jsa_reported = bu.person_ids.iter().any(|&pid| people[pid].jsa_income_reported > 0.0);
+        let has_esa_reported = bu.person_ids.iter().any(|&pid| people[pid].esa_income > 0.0);
+        let has_jsa_reported = bu.person_ids.iter().any(|&pid| people[pid].jsa_income > 0.0);
         let raw_is = calculate_income_support(bu, people, person_results, params);
         income_support = if bu.reported_is && !has_esa_reported { raw_is } else { 0.0 };
         esa_ir = if has_esa_reported {
@@ -104,14 +104,14 @@ pub fn calculate_benunit(
     // All exempt from the benefit cap.
     let passthrough_benefits: f64 = bu.person_ids.iter().map(|&pid| {
         let p = &people[pid];
-        p.pip_dl_reported + p.pip_m_reported
-            + p.dla_sc_reported + p.dla_m_reported
-            + p.attendance_allowance_reported
-            + p.esa_contrib_reported
-            + p.jsa_contrib_reported
-            + p.other_benefits_reported
-            + p.adp_dl_reported + p.adp_m_reported
-            + p.cdp_care_reported + p.cdp_mob_reported
+        p.pip_daily_living + p.pip_mobility
+            + p.dla_care + p.dla_mobility
+            + p.attendance_allowance
+            + p.esa_contributory
+            + p.jsa_contributory
+            + p.other_benefits
+            + p.adp_daily_living + p.adp_mobility
+            + p.cdp_care + p.cdp_mobility
     }).sum();
 
     let modelled_benefits = (pre_cap_benefits - benefit_cap_reduction).max(0.0);
@@ -343,8 +343,8 @@ fn calculate_state_pension(bu: &BenUnit, people: &[Person], params: &Parameters)
     bu.person_ids.iter()
         .map(|&pid| {
             let p = &people[pid];
-            if p.state_pension_reported > 0.0 {
-                p.state_pension_reported
+            if p.state_pension > 0.0 {
+                p.state_pension
             } else if p.is_sp_age() && p.is_adult() {
                 // Assume new state pension for post-2016 cohort (simplified)
                 if p.age < 80.0 { new_sp_annual } else { old_sp_annual }
@@ -383,7 +383,7 @@ fn calculate_pension_credit(bu: &BenUnit, people: &[Person], params: &Parameters
     let income: f64 = bu.person_ids.iter()
         .map(|&pid| {
             let p = &people[pid];
-            p.state_pension_reported
+            p.state_pension
                 + p.pension_income
                 + p.employment_income
                 + p.self_employment_income
@@ -470,7 +470,7 @@ fn calculate_housing_benefit(
         .map(|&pid| {
             let p = &people[pid];
             p.employment_income + p.self_employment_income
-                + p.pension_income + p.state_pension_reported
+                + p.pension_income + p.state_pension
                 + p.savings_interest_income + p.other_income
         })
         .sum();
@@ -559,7 +559,7 @@ fn calculate_tax_credits(
         .map(|&pid| {
             let p = &people[pid];
             p.employment_income + p.self_employment_income
-                + p.pension_income + p.state_pension_reported
+                + p.pension_income + p.state_pension
                 + p.savings_interest_income + p.dividend_income
                 + p.property_income + p.other_income
         })
@@ -616,7 +616,7 @@ fn calculate_income_support(
         .map(|&pid| {
             let p = &people[pid];
             p.employment_income + p.self_employment_income
-                + p.pension_income + p.state_pension_reported
+                + p.pension_income + p.state_pension
                 + p.savings_interest_income + p.other_income
         })
         .sum();
@@ -754,7 +754,7 @@ fn calculate_esa_income_related(
         .map(|&pid| {
             let p = &people[pid];
             p.employment_income + p.self_employment_income
-                + p.pension_income + p.state_pension_reported
+                + p.pension_income + p.state_pension
                 + p.savings_interest_income + p.other_income
         })
         .sum();
@@ -817,7 +817,7 @@ fn calculate_jsa_income_based(
         .map(|&pid| {
             let p = &people[pid];
             p.employment_income + p.self_employment_income
-                + p.pension_income + p.state_pension_reported
+                + p.pension_income + p.state_pension
                 + p.savings_interest_income + p.other_income
         })
         .sum();
@@ -857,7 +857,7 @@ fn calculate_carers_allowance(
         .map(|&pid| {
             let p = &people[pid];
             // Passthrough for reported claimants, subject to earnings test
-            let reported_ca = p.carers_allowance_reported > 0.0;
+            let reported_ca = p.carers_allowance > 0.0;
             let is_eligible_carer = p.is_carer || p.is_self_identified_carer;
             if !reported_ca && !is_eligible_carer { return 0.0; }
 
@@ -951,14 +951,14 @@ fn calculate_benefit_cap(
     // or carer's allowance or ESA support group
     let any_disability_exempt = bu.person_ids.iter().any(|&pid| {
         let p = &people[pid];
-        p.pip_dl_reported > 0.0
-            || p.pip_m_reported > 0.0
-            || p.dla_sc_reported > 0.0
-            || p.dla_m_reported > 0.0
-            || p.attendance_allowance_reported > 0.0
-            || p.carers_allowance_reported > 0.0
-            || p.esa_income_reported > 0.0
-            || p.esa_contrib_reported > 0.0
+        p.pip_daily_living > 0.0
+            || p.pip_mobility > 0.0
+            || p.dla_care > 0.0
+            || p.dla_mobility > 0.0
+            || p.attendance_allowance > 0.0
+            || p.carers_allowance > 0.0
+            || p.esa_income > 0.0
+            || p.esa_contributory > 0.0
     });
     if any_disability_exempt {
         return 0.0;
@@ -1100,7 +1100,7 @@ mod tests {
         let params = Parameters::for_year(2025).unwrap();
         let mut p = Person::default();
         p.age = 70.0;
-        p.state_pension_reported = 9000.0; // Below minimum guarantee
+        p.state_pension = 9000.0; // Below minimum guarantee
         let people = vec![p];
         let bu = BenUnit {
             id: 0, household_id: 0, person_ids: vec![0],
@@ -1526,7 +1526,7 @@ mod parameter_impact_tests {
     #[test]
     fn param_pc_standard_minimum_single() {
         let (mut params, _, _, hh) = base_person_uc();
-        let mut p = Person::default(); p.age = 68.0; p.state_pension_reported = 5000.0;
+        let mut p = Person::default(); p.age = 68.0; p.state_pension = 5000.0;
         let bu = BenUnit { id: 0, household_id: 0, person_ids: vec![0],
             take_up_seed: 0.0, reported_pc: true, ..BenUnit::default() };
         let base = calc(&params, &[p.clone()], &bu, &hh).pension_credit;
@@ -1538,7 +1538,7 @@ mod parameter_impact_tests {
     #[test]
     fn param_pc_standard_minimum_couple() {
         let (mut params, _, _, hh) = base_person_uc();
-        let mut p1 = Person::default(); p1.age = 68.0; p1.state_pension_reported = 3000.0;
+        let mut p1 = Person::default(); p1.age = 68.0; p1.state_pension = 3000.0;
         let mut p2 = Person::default(); p2.id = 1; p2.age = 67.0;
         let bu = BenUnit { id: 0, household_id: 0, person_ids: vec![0, 1],
             take_up_seed: 0.0, reported_pc: true, ..BenUnit::default() };
@@ -1551,7 +1551,7 @@ mod parameter_impact_tests {
     #[test]
     fn param_pc_savings_credit_threshold_single() {
         let (mut params, _, _, hh) = base_person_uc();
-        let mut p = Person::default(); p.age = 68.0; p.state_pension_reported = 10000.0; p.savings_interest_income = 2000.0;
+        let mut p = Person::default(); p.age = 68.0; p.state_pension = 10000.0; p.savings_interest_income = 2000.0;
         let bu = BenUnit { id: 0, household_id: 0, person_ids: vec![0],
             take_up_seed: 0.0, reported_pc: true, ..BenUnit::default() };
         let base = calc(&params, &[p.clone()], &bu, &hh).pension_credit;
@@ -1565,7 +1565,7 @@ mod parameter_impact_tests {
         let (mut params, _, _, hh) = base_person_uc();
         // SC threshold couple = £314.34/wk = ~£16.3k/yr; need income above it
         // Use income ~£18k to be above threshold but near guarantee (£346.60*52=~£18k)
-        let mut p1 = Person::default(); p1.age = 68.0; p1.state_pension_reported = 10000.0; p1.savings_interest_income = 8000.0;
+        let mut p1 = Person::default(); p1.age = 68.0; p1.state_pension = 10000.0; p1.savings_interest_income = 8000.0;
         let mut p2 = Person::default(); p2.id = 1; p2.age = 67.0;
         let bu = BenUnit { id: 0, household_id: 0, person_ids: vec![0, 1],
             take_up_seed: 0.0, reported_pc: true, ..BenUnit::default() };
@@ -1937,7 +1937,7 @@ mod parameter_impact_tests {
     fn param_take_up_pension_credit() {
         let (mut params, _, _, hh) = base_person_uc();
         params.baseline_mode = false; // test reform take-up logic
-        let mut p = Person::default(); p.age = 68.0; p.state_pension_reported = 5000.0;
+        let mut p = Person::default(); p.age = 68.0; p.state_pension = 5000.0;
         let bu = BenUnit { id: 0, household_id: 0, person_ids: vec![0],
             take_up_seed: 0.75, is_enr_pc: true, ..BenUnit::default() };
         params.take_up.pension_credit = 0.70;

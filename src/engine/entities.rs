@@ -24,7 +24,7 @@ pub struct Person {
     pub employment_income: f64,
     pub self_employment_income: f64,
     pub pension_income: f64,          // private pension income
-    pub state_pension_reported: f64,   // reported state pension receipt
+    pub state_pension: f64,
     pub savings_interest_income: f64,
     pub dividend_income: f64,
     pub property_income: f64,
@@ -72,32 +72,32 @@ pub struct Person {
     // Childcare (annual)
     pub childcare_expenses: f64,
 
-    // Reported benefit amounts (annual) — used for take-up and passthrough
-    pub child_benefit_reported: f64,
-    pub housing_benefit_reported: f64,
-    pub income_support_reported: f64,
-    pub pension_credit_reported: f64,
-    pub child_tax_credit_reported: f64,
-    pub working_tax_credit_reported: f64,
-    pub universal_credit_reported: f64,
-    pub dla_sc_reported: f64,
-    pub dla_m_reported: f64,
-    pub pip_dl_reported: f64,
-    pub pip_m_reported: f64,
-    pub carers_allowance_reported: f64,
-    pub attendance_allowance_reported: f64,
-    pub esa_income_reported: f64,
-    pub esa_contrib_reported: f64,
-    pub jsa_income_reported: f64,
-    pub jsa_contrib_reported: f64,
+    // Benefit amounts (annual) — from FRS microdata, used for take-up and passthrough
+    pub child_benefit: f64,
+    pub housing_benefit: f64,
+    pub income_support: f64,
+    pub pension_credit: f64,
+    pub child_tax_credit: f64,
+    pub working_tax_credit: f64,
+    pub universal_credit: f64,
+    pub dla_care: f64,
+    pub dla_mobility: f64,
+    pub pip_daily_living: f64,
+    pub pip_mobility: f64,
+    pub carers_allowance: f64,
+    pub attendance_allowance: f64,
+    pub esa_income: f64,
+    pub esa_contributory: f64,
+    pub jsa_income: f64,
+    pub jsa_contributory: f64,
     /// Aggregate of unmodelled passthrough benefits (bereavement, maternity, winter fuel, etc.)
-    pub other_benefits_reported: f64,
+    pub other_benefits: f64,
     /// Scottish disability replacements (ADP replaces PIP for Scottish adults)
-    pub adp_dl_reported: f64,
-    pub adp_m_reported: f64,
+    pub adp_daily_living: f64,
+    pub adp_mobility: f64,
     /// Scottish child disability (CDP replaces DLA for Scottish children)
-    pub cdp_care_reported: f64,
-    pub cdp_mob_reported: f64,
+    pub cdp_care: f64,
+    pub cdp_mobility: f64,
 
     // Take-up flags
     pub would_claim_marriage_allowance: bool,
@@ -114,7 +114,7 @@ impl Default for Person {
             employment_income: 0.0,
             self_employment_income: 0.0,
             pension_income: 0.0,
-            state_pension_reported: 0.0,
+            state_pension: 0.0,
             savings_interest_income: 0.0,
             dividend_income: 0.0,
             property_income: 0.0,
@@ -146,28 +146,28 @@ impl Default for Person {
             employee_pension_contributions: 0.0,
             personal_pension_contributions: 0.0,
             childcare_expenses: 0.0,
-            child_benefit_reported: 0.0,
-            housing_benefit_reported: 0.0,
-            income_support_reported: 0.0,
-            pension_credit_reported: 0.0,
-            child_tax_credit_reported: 0.0,
-            working_tax_credit_reported: 0.0,
-            universal_credit_reported: 0.0,
-            dla_sc_reported: 0.0,
-            dla_m_reported: 0.0,
-            pip_dl_reported: 0.0,
-            pip_m_reported: 0.0,
-            carers_allowance_reported: 0.0,
-            attendance_allowance_reported: 0.0,
-            esa_income_reported: 0.0,
-            esa_contrib_reported: 0.0,
-            jsa_income_reported: 0.0,
-            jsa_contrib_reported: 0.0,
-            other_benefits_reported: 0.0,
-            adp_dl_reported: 0.0,
-            adp_m_reported: 0.0,
-            cdp_care_reported: 0.0,
-            cdp_mob_reported: 0.0,
+            child_benefit: 0.0,
+            housing_benefit: 0.0,
+            income_support: 0.0,
+            pension_credit: 0.0,
+            child_tax_credit: 0.0,
+            working_tax_credit: 0.0,
+            universal_credit: 0.0,
+            dla_care: 0.0,
+            dla_mobility: 0.0,
+            pip_daily_living: 0.0,
+            pip_mobility: 0.0,
+            carers_allowance: 0.0,
+            attendance_allowance: 0.0,
+            esa_income: 0.0,
+            esa_contributory: 0.0,
+            jsa_income: 0.0,
+            jsa_contributory: 0.0,
+            other_benefits: 0.0,
+            adp_daily_living: 0.0,
+            adp_mobility: 0.0,
+            cdp_care: 0.0,
+            cdp_mobility: 0.0,
             would_claim_marriage_allowance: false,
         }
     }
@@ -179,7 +179,7 @@ impl Person {
         self.employment_income
             + self.self_employment_income
             + self.pension_income
-            + self.state_pension_reported
+            + self.state_pension
             + self.savings_interest_income
             + self.dividend_income
             + self.property_income
@@ -240,6 +240,13 @@ pub struct BenUnit {
     pub is_enr_cb: bool,
     pub is_enr_ctc: bool,
     pub is_enr_wtc: bool,
+
+    // In-kind benefits (annual, from FRS DVs — included in HBAI net income)
+    pub free_school_meals: f64,      // FSMBU
+    pub free_school_fruit_veg: f64,  // FSFVBU
+    pub free_school_milk: f64,       // FSMLKBU
+    pub healthy_start_vouchers: f64, // HEARTBU
+    pub free_tv_licence: f64,        // BUTVLIC
 }
 
 impl BenUnit {

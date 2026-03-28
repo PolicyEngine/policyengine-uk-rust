@@ -130,7 +130,23 @@ impl Simulation {
             let state_pension: f64 = hh.benunit_ids.iter()
                 .map(|&bid| benunit_results[bid].state_pension)
                 .sum();
-            let net_income = gross - total_tax + total_benefits - state_pension;
+
+            // Pension contributions are deducted from net income (as in FRS NINDINC/HBAI)
+            let pension_contributions: f64 = hh.person_ids.iter()
+                .map(|&pid| self.people[pid].employee_pension_contributions + self.people[pid].personal_pension_contributions)
+                .sum();
+
+            // In-kind benefits included in HBAI net income
+            let in_kind_benefits: f64 = hh.benunit_ids.iter()
+                .map(|&bid| {
+                    let bu = &self.benunits[bid];
+                    bu.free_school_meals + bu.free_school_fruit_veg + bu.free_school_milk
+                        + bu.healthy_start_vouchers + bu.free_tv_licence
+                })
+                .sum();
+
+            let net_income = gross - total_tax - pension_contributions
+                + total_benefits - state_pension + in_kind_benefits;
 
             // Modified OECD equivalisation scale (used by HBAI):
             // First adult: 0.67, additional adults (14+): 0.33, children (<14): 0.20
