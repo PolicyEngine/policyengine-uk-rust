@@ -85,7 +85,6 @@ universal_credit:
   work_allowance_lower: 411.0    # With housing costs (monthly)
   child_limit: 2
   # Housing cost contributions: Sch.4 para.14(1) — £93.02/month
-  housing_cost_contribution: 93.02
 
 child_benefit:
   # Child Benefit (Rates) Regs 2006 (SI 2006/965) reg.2

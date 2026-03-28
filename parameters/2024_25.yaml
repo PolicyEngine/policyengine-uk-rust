@@ -52,7 +52,6 @@ universal_credit:
   work_allowance_higher: 673.0
   work_allowance_lower: 404.0
   child_limit: 2
-  housing_cost_contribution: 91.47
 
 child_benefit:
   # SI 2024/247 — Child Benefit (Rates) Regs as amended

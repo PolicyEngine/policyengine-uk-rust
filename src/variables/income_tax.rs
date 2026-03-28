@@ -520,3 +520,336 @@ mod tests {
             "Higher rate taxpayer should not receive marriage allowance");
     }
 }
+
+#[cfg(test)]
+mod parameter_impact_tests {
+    use super::*;
+    use crate::parameters::Parameters;
+
+    fn calc(p: &Person, params: &Parameters) -> PersonResult {
+        calculate(p, params)
+    }
+
+    fn basic_earner() -> Person {
+        let mut p = Person::default();
+        p.age = 35.0;
+        p.employment_income = 30000.0;
+        p.hours_worked = 37.5 * 52.0;
+        p
+    }
+
+    fn higher_earner() -> Person {
+        let mut p = Person::default();
+        p.age = 35.0;
+        p.employment_income = 60000.0;
+        p.hours_worked = 37.5 * 52.0;
+        p
+    }
+
+    fn se_earner() -> Person {
+        let mut p = Person::default();
+        p.age = 35.0;
+        p.self_employment_income = 40000.0;
+        p.hours_worked = 37.5 * 52.0;
+        p
+    }
+
+    // ── Income Tax ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn param_it_personal_allowance() {
+        let mut params = Parameters::for_year(2025).unwrap();
+        let p = basic_earner();
+        let base = calc(&p, &params).income_tax;
+        params.income_tax.personal_allowance += 1000.0;
+        let reformed = calc(&p, &params).income_tax;
+        assert!(reformed < base, "Raising PA should reduce income tax");
+    }
+
+    #[test]
+    fn param_it_pa_taper_threshold() {
+        let mut params = Parameters::for_year(2025).unwrap();
+        // Need earner in taper zone (income > 100k)
+        let mut p = Person::default(); p.age = 35.0; p.employment_income = 110000.0;
+        let base = calc(&p, &params).income_tax;
+        params.income_tax.pa_taper_threshold += 5000.0;
+        let reformed = calc(&p, &params).income_tax;
+        assert!(reformed < base, "Raising PA taper threshold should reduce tax for high earner");
+    }
+
+    #[test]
+    fn param_it_pa_taper_rate() {
+        let mut params = Parameters::for_year(2025).unwrap();
+        let mut p = Person::default(); p.age = 35.0; p.employment_income = 110000.0;
+        let base = calc(&p, &params).income_tax;
+        params.income_tax.pa_taper_rate += 0.10;
+        let reformed = calc(&p, &params).income_tax;
+        assert!(reformed > base, "Increasing PA taper rate should increase tax for high earner");
+    }
+
+    #[test]
+    fn param_it_uk_brackets_rate() {
+        let mut params = Parameters::for_year(2025).unwrap();
+        let p = basic_earner();
+        let base = calc(&p, &params).income_tax;
+        // Increase basic rate
+        if let Some(br) = params.income_tax.uk_brackets.iter_mut().find(|b| (b.rate - 0.20).abs() < 0.01) {
+            br.rate += 0.05;
+        }
+        let reformed = calc(&p, &params).income_tax;
+        assert!(reformed > base, "Raising basic rate should increase income tax");
+    }
+
+    #[test]
+    fn param_it_uk_brackets_threshold() {
+        let mut params = Parameters::for_year(2025).unwrap();
+        let p = higher_earner();
+        let base = calc(&p, &params).income_tax;
+        // Raise higher-rate threshold
+        if let Some(br) = params.income_tax.uk_brackets.iter_mut().find(|b| (b.rate - 0.40).abs() < 0.01) {
+            br.threshold += 5000.0;
+        }
+        let reformed = calc(&p, &params).income_tax;
+        assert!(reformed < base, "Raising higher-rate threshold should reduce tax for higher earner");
+    }
+
+    #[test]
+    fn param_it_scottish_brackets() {
+        let mut params = Parameters::for_year(2025).unwrap();
+        let mut p = basic_earner();
+        p.is_in_scotland = true;
+        let base = calc(&p, &params).income_tax;
+        if let Some(br) = params.income_tax.scottish_brackets.iter_mut().find(|b| b.rate > 0.15 && b.rate < 0.25) {
+            br.rate += 0.05;
+        }
+        let reformed = calc(&p, &params).income_tax;
+        assert!(reformed > base, "Raising Scottish intermediate rate should increase tax for Scottish taxpayer");
+    }
+
+    #[test]
+    fn param_it_dividend_allowance() {
+        let mut params = Parameters::for_year(2025).unwrap();
+        // Need employment income to use up PA, then dividends above allowance (£500)
+        let mut p = Person::default(); p.age = 35.0; p.employment_income = 30000.0; p.dividend_income = 2000.0;
+        let base = calc(&p, &params).income_tax;
+        params.income_tax.dividend_allowance += 500.0;
+        let reformed = calc(&p, &params).income_tax;
+        assert!(reformed < base, "Raising dividend allowance should reduce tax on dividends");
+    }
+
+    #[test]
+    fn param_it_dividend_basic_rate() {
+        let mut params = Parameters::for_year(2025).unwrap();
+        let mut p = Person::default(); p.age = 35.0; p.employment_income = 20000.0; p.dividend_income = 5000.0;
+        let base = calc(&p, &params).income_tax;
+        params.income_tax.dividend_basic_rate += 0.05;
+        let reformed = calc(&p, &params).income_tax;
+        assert!(reformed > base, "Raising dividend basic rate should increase tax on dividends");
+    }
+
+    #[test]
+    fn param_it_dividend_higher_rate() {
+        let mut params = Parameters::for_year(2025).unwrap();
+        // Need earner in higher rate with dividends
+        let mut p = Person::default(); p.age = 35.0; p.employment_income = 60000.0; p.dividend_income = 5000.0;
+        let base = calc(&p, &params).income_tax;
+        params.income_tax.dividend_higher_rate += 0.05;
+        let reformed = calc(&p, &params).income_tax;
+        assert!(reformed > base, "Raising dividend higher rate should increase tax");
+    }
+
+    #[test]
+    fn param_it_dividend_additional_rate() {
+        let mut params = Parameters::for_year(2025).unwrap();
+        // Need earner in additional rate (>150k)
+        let mut p = Person::default(); p.age = 35.0; p.employment_income = 160000.0; p.dividend_income = 5000.0;
+        let base = calc(&p, &params).income_tax;
+        params.income_tax.dividend_additional_rate += 0.05;
+        let reformed = calc(&p, &params).income_tax;
+        assert!(reformed > base, "Raising dividend additional rate should increase tax");
+    }
+
+    #[test]
+    fn param_it_savings_starter_rate_band() {
+        let mut params = Parameters::for_year(2025).unwrap();
+        // earned_taxable = 13000 - 12570 = 430 (below starter band of 5000)
+        // savings_taxable = 8000 (above starter band + PSA), so starter band matters
+        let mut p = Person::default(); p.age = 35.0; p.employment_income = 13000.0; p.savings_interest_income = 8000.0;
+        let base = calc(&p, &params).income_tax;
+        params.income_tax.savings_starter_rate_band += 1000.0;
+        let reformed = calc(&p, &params).income_tax;
+        assert!(reformed < base, "Raising savings starter rate band should reduce tax on savings income");
+    }
+
+    #[test]
+    fn param_it_marriage_allowance_max_fraction() {
+        let mut params = Parameters::for_year(2025).unwrap();
+        let mut pa = Person::default(); pa.age = 35.0; pa.employment_income = 5000.0; pa.would_claim_marriage_allowance = true;
+        let mut pb = Person::default(); pb.id = 1; pb.age = 35.0; pb.employment_income = 30000.0; pb.would_claim_marriage_allowance = true;
+        let bu = crate::engine::entities::BenUnit {
+            id: 0, household_id: 0, person_ids: vec![0, 1], ..Default::default()
+        };
+        let people = vec![pa.clone(), pb.clone()];
+        let mut results_base: Vec<PersonResult> = people.iter().map(|p| calculate(p, &params)).collect();
+        apply_marriage_allowance(&bu, &people, &mut results_base, &params);
+        let base_tax = results_base[1].income_tax;
+
+        params.income_tax.marriage_allowance_max_fraction = 0.15;
+        let mut results_reformed: Vec<PersonResult> = people.iter().map(|p| calculate(p, &params)).collect();
+        apply_marriage_allowance(&bu, &people, &mut results_reformed, &params);
+        assert!(results_reformed[1].income_tax < base_tax,
+            "Raising MA fraction should reduce recipient's tax");
+    }
+
+    #[test]
+    fn param_it_marriage_allowance_rounding() {
+        let mut params = Parameters::for_year(2025).unwrap();
+        let mut pa = Person::default(); pa.age = 35.0; pa.employment_income = 5000.0; pa.would_claim_marriage_allowance = true;
+        let mut pb = Person::default(); pb.id = 1; pb.age = 35.0; pb.employment_income = 30000.0; pb.would_claim_marriage_allowance = true;
+        let bu = crate::engine::entities::BenUnit {
+            id: 0, household_id: 0, person_ids: vec![0, 1], ..Default::default()
+        };
+        let people = vec![pa.clone(), pb.clone()];
+        let mut results_r1: Vec<PersonResult> = people.iter().map(|p| calculate(p, &params)).collect();
+        apply_marriage_allowance(&bu, &people, &mut results_r1, &params);
+
+        params.income_tax.marriage_allowance_rounding = 1.0; // finer rounding → slightly different amount
+        let mut results_r2: Vec<PersonResult> = people.iter().map(|p| calculate(p, &params)).collect();
+        apply_marriage_allowance(&bu, &people, &mut results_r2, &params);
+        // With rounding=10 vs rounding=1, the transferred amount differs (1257 vs 1257 exactly)
+        // This may or may not differ at integer PA; check that rounding field is at least used
+        // by verifying rounding=1000 gives a different result
+        params.income_tax.marriage_allowance_rounding = 1000.0;
+        let mut results_r3: Vec<PersonResult> = people.iter().map(|p| calculate(p, &params)).collect();
+        apply_marriage_allowance(&bu, &people, &mut results_r3, &params);
+        assert!(results_r1[1].income_tax != results_r3[1].income_tax
+            || results_r1[0].income_tax != results_r3[0].income_tax,
+            "Changing MA rounding should affect allowance amount");
+    }
+
+    // ── National Insurance ────────────────────────────────────────────────────
+
+    #[test]
+    fn param_ni_primary_threshold() {
+        let mut params = Parameters::for_year(2025).unwrap();
+        let p = basic_earner();
+        let base = calc(&p, &params).national_insurance;
+        params.national_insurance.primary_threshold_annual += 1000.0;
+        let reformed = calc(&p, &params).national_insurance;
+        assert!(reformed < base, "Raising NI primary threshold should reduce employee NI");
+    }
+
+    #[test]
+    fn param_ni_upper_earnings_limit() {
+        let mut params = Parameters::for_year(2025).unwrap();
+        let p = higher_earner();
+        let base = calc(&p, &params).national_insurance;
+        params.national_insurance.upper_earnings_limit_annual += 5000.0;
+        let reformed = calc(&p, &params).national_insurance;
+        assert!(reformed > base, "Raising UEL should increase NI for higher earner (more at main rate)");
+    }
+
+    #[test]
+    fn param_ni_main_rate() {
+        let mut params = Parameters::for_year(2025).unwrap();
+        let p = basic_earner();
+        let base = calc(&p, &params).national_insurance;
+        params.national_insurance.main_rate += 0.02;
+        let reformed = calc(&p, &params).national_insurance;
+        assert!(reformed > base, "Raising NI main rate should increase employee NI");
+    }
+
+    #[test]
+    fn param_ni_additional_rate() {
+        let mut params = Parameters::for_year(2025).unwrap();
+        // Need earner above UEL (£50270)
+        let mut p = Person::default(); p.age = 35.0; p.employment_income = 80000.0;
+        let base = calc(&p, &params).national_insurance;
+        params.national_insurance.additional_rate += 0.02;
+        let reformed = calc(&p, &params).national_insurance;
+        assert!(reformed > base, "Raising NI additional rate should increase NI above UEL");
+    }
+
+    #[test]
+    fn param_ni_secondary_threshold() {
+        let mut params = Parameters::for_year(2025).unwrap();
+        let p = basic_earner();
+        let base = calc(&p, &params).employer_ni;
+        params.national_insurance.secondary_threshold_annual += 1000.0;
+        let reformed = calc(&p, &params).employer_ni;
+        assert!(reformed < base, "Raising secondary threshold should reduce employer NI");
+    }
+
+    #[test]
+    fn param_ni_employer_rate() {
+        let mut params = Parameters::for_year(2025).unwrap();
+        let p = basic_earner();
+        let base = calc(&p, &params).employer_ni;
+        params.national_insurance.employer_rate += 0.02;
+        let reformed = calc(&p, &params).employer_ni;
+        assert!(reformed > base, "Raising employer rate should increase employer NI");
+    }
+
+    #[test]
+    fn param_ni_class2_flat_rate() {
+        let mut params = Parameters::for_year(2025).unwrap();
+        let p = se_earner();
+        let base = calc(&p, &params).national_insurance;
+        params.national_insurance.class2_flat_rate_weekly += 1.0;
+        let reformed = calc(&p, &params).national_insurance;
+        assert!(reformed > base, "Raising Class 2 flat rate should increase NI for self-employed");
+    }
+
+    #[test]
+    fn param_ni_class2_small_profits_threshold() {
+        let mut params = Parameters::for_year(2025).unwrap();
+        // Person with SE income just above SPT
+        let mut p = Person::default(); p.age = 35.0; p.self_employment_income = 7000.0;
+        let base = calc(&p, &params).national_insurance;
+        // Raise SPT above person's income → no more Class 2
+        params.national_insurance.class2_small_profits_threshold = 8000.0;
+        let reformed = calc(&p, &params).national_insurance;
+        assert!(reformed < base, "Raising SPT above income should remove Class 2 liability");
+    }
+
+    #[test]
+    fn param_ni_class4_lower_profits_limit() {
+        let mut params = Parameters::for_year(2025).unwrap();
+        let p = se_earner();
+        let base = calc(&p, &params).national_insurance;
+        params.national_insurance.class4_lower_profits_limit += 1000.0;
+        let reformed = calc(&p, &params).national_insurance;
+        assert!(reformed < base, "Raising Class 4 lower limit should reduce NI for self-employed");
+    }
+
+    #[test]
+    fn param_ni_class4_upper_profits_limit() {
+        let mut params = Parameters::for_year(2025).unwrap();
+        // Need SE earner above upper limit (~£50270)
+        let mut p = Person::default(); p.age = 35.0; p.self_employment_income = 80000.0;
+        let base = calc(&p, &params).national_insurance;
+        params.national_insurance.class4_upper_profits_limit += 5000.0;
+        let reformed = calc(&p, &params).national_insurance;
+        assert!(reformed > base, "Raising Class 4 upper limit should increase NI above it (more at main rate)");
+    }
+
+    #[test]
+    fn param_ni_class4_main_rate() {
+        let mut params = Parameters::for_year(2025).unwrap();
+        let p = se_earner();
+        let base = calc(&p, &params).national_insurance;
+        params.national_insurance.class4_main_rate += 0.02;
+        let reformed = calc(&p, &params).national_insurance;
+        assert!(reformed > base, "Raising Class 4 main rate should increase NI for self-employed");
+    }
+
+    #[test]
+    fn param_ni_class4_additional_rate() {
+        let mut params = Parameters::for_year(2025).unwrap();
+        let mut p = Person::default(); p.age = 35.0; p.self_employment_income = 80000.0;
+        let base = calc(&p, &params).national_insurance;
+        params.national_insurance.class4_additional_rate += 0.02;
+        let reformed = calc(&p, &params).national_insurance;
+        assert!(reformed > base, "Raising Class 4 additional rate should increase NI above upper limit");
+    }
+}

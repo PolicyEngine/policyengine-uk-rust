@@ -54,7 +54,6 @@ universal_credit:
   work_allowance_higher: 707.0
   work_allowance_lower: 425.0
   child_limit: 2
-  housing_cost_contribution: 96.18
 
 child_benefit:
   eldest_weekly: 26.94    # Uprated by CPI

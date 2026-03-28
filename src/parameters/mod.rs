@@ -25,7 +25,6 @@ pub struct Parameters {
     pub tax_credits: Option<TaxCreditsParams>,
     #[serde(default)]
     pub scottish_child_payment: Option<ScottishChildPaymentParams>,
-    pub growth_factors: GrowthFactors,
     #[serde(default = "TakeUpRates::default")]
     pub take_up: TakeUpRates,
     #[serde(default = "UcMigrationRates::default")]
@@ -33,19 +32,19 @@ pub struct Parameters {
 }
 
 /// Take-up rates for means-tested benefits.
-/// Each rate is the fraction of eligible families that actually claim.
+///
+/// Legacy benefits (HB, CTC, WTC, IS) are received only by reported claimants —
+/// no new entrants to the legacy system under current policy. Their take-up
+/// rates are therefore not modelled here.
+///
 /// Source: DWP Income-Related Benefits Estimates of Take-Up.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TakeUpRates {
     pub universal_credit: f64,
     pub child_benefit: f64,
     pub pension_credit: f64,
-    pub housing_benefit: f64,
-    pub child_tax_credit: f64,
-    pub working_tax_credit: f64,
-    pub income_support: f64,
     /// Take-up rate for genuinely new entrants (not ENRs) when a reform expands
-    /// eligibility. Models partial behavioural response to new entitlement.
+    /// UC eligibility. Models partial behavioural response to new entitlement.
     #[serde(default = "TakeUpRates::default_new_entrant_rate")]
     pub new_entrant_rate: f64,
 }
@@ -56,10 +55,6 @@ impl Default for TakeUpRates {
             universal_credit: 0.80,
             child_benefit: 0.93,
             pension_credit: 0.63,
-            housing_benefit: 0.80,
-            child_tax_credit: 0.83,
-            working_tax_credit: 0.67,
-            income_support: 0.85,
             new_entrant_rate: 0.3,
         }
     }
@@ -172,7 +167,6 @@ pub struct UniversalCreditParams {
     pub work_allowance_higher: f64,
     pub work_allowance_lower: f64,
     pub child_limit: usize,
-    pub housing_cost_contribution: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -248,13 +242,6 @@ pub struct ScottishChildPaymentParams {
     pub weekly_amount: f64,
     /// Maximum age of child
     pub max_age: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GrowthFactors {
-    pub cpi_rate: f64,
-    pub gdp_deflator: f64,
-    pub earnings_growth: f64,
 }
 
 /// Convert a fiscal year start year (e.g. 2029) to the YAML filename format

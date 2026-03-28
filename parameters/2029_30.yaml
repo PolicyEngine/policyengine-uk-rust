@@ -53,7 +53,6 @@ universal_credit:
   work_allowance_higher: 750.0
   work_allowance_lower: 452.0
   child_limit: 2
-  housing_cost_contribution: 102.12
 
 child_benefit:
   eldest_weekly: 28.58

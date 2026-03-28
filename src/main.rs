@@ -635,8 +635,8 @@ mod obr_validation {
         let cb = weighted_bu_sum!(child_benefit);
         let sp = weighted_bu_sum!(state_pension);
         let pc = weighted_bu_sum!(pension_credit);
-        let hb = weighted_bu_sum!(housing_benefit);
-        let tc = weighted_bu_sum!(child_tax_credit) + weighted_bu_sum!(working_tax_credit);
+        let _hb = weighted_bu_sum!(housing_benefit);
+        let _tc = weighted_bu_sum!(child_tax_credit) + weighted_bu_sum!(working_tax_credit);
         // Caseloads
         let it_payers = person_caseload!(income_tax);
         let uc_claimants = bu_caseload!(universal_credit);
