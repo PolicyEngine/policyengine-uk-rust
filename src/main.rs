@@ -62,6 +62,12 @@ struct Cli {
     #[arg(long)]
     clean_frs: Option<PathBuf>,
 
+    /// Base directory containing per-year clean FRS subdirectories (YYYY/).
+    /// Each subdirectory has persons.csv, benunits.csv, households.csv.
+    /// Falls back to latest available year and uprates if needed.
+    #[arg(long)]
+    clean_frs_base: Option<PathBuf>,
+
     /// Output format: "pretty" (default) or "json" for machine-readable output
     #[arg(long, default_value = "pretty")]
     output: String,
@@ -256,7 +262,27 @@ fn main() -> anyhow::Result<()> {
     }
 
     // Load dataset
-    let dataset = if let Some(clean_path) = &cli.clean_frs {
+    let dataset = if let Some(base) = &cli.clean_frs_base {
+        // Per-year clean FRS directories: base/YYYY/
+        let year_dir = base.join(cli.year.to_string());
+        if year_dir.is_dir() {
+            if !json_mode { println!("  {} Loading clean FRS {}/{}...", "▸".bright_cyan(), cli.year, (cli.year + 1) % 100); }
+            load_clean_frs(&year_dir)?
+        } else {
+            // Find latest available year and uprate
+            let latest = (1994..=cli.year).rev()
+                .find(|y| base.join(y.to_string()).is_dir())
+                .ok_or_else(|| anyhow::anyhow!("No clean FRS data found in {}", base.display()))?;
+            if !json_mode {
+                println!("  {} Loading clean FRS {}/{} and uprating to {}/{}...",
+                    "▸".bright_cyan(), latest, (latest + 1) % 100,
+                    cli.year, (cli.year + 1) % 100);
+            }
+            let mut ds = load_clean_frs(&base.join(latest.to_string()))?;
+            ds.uprate_to(cli.year);
+            ds
+        }
+    } else if let Some(clean_path) = &cli.clean_frs {
         if !json_mode { println!("  {} Loading clean FRS from {}...", "▸".bright_cyan(), clean_path.display()); }
         load_clean_frs(clean_path)?
     } else if let Some(frs_path) = &cli.frs {

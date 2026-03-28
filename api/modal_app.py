@@ -3,8 +3,8 @@ Modal deployment for PolicyEngine UK microsimulation API.
 
 Architecture:
   - Rust binary is compiled at image build time (baked into the image layer).
-  - A Modal Volume (`policyengine-uk-frs`) holds the clean FRS microdata CSVs.
-    Upload once with: python api/upload_frs.py <path-to-frs-clean-dir>
+  - Modal Volume (`policyengine-uk-frs`) holds per-year clean FRS CSVs (1994/-2023/).
+    Upload with: python api/upload_frs.py data/frs_clean_all
   - FastAPI app is served via modal.asgi_app().
 
 Deploy:
@@ -12,18 +12,15 @@ Deploy:
 
 Serve locally (with hot-reload):
     modal serve api/modal_app.py
-
-Upload FRS data to the volume:
-    python api/upload_frs.py data/frs_clean
 """
 
 import modal
 
 # ---------------------------------------------------------------------------
-# Volume for FRS clean microdata (persons.csv / benunits.csv / households.csv)
+# Volumes
 # ---------------------------------------------------------------------------
 frs_volume = modal.Volume.from_name("policyengine-uk-frs", create_if_missing=True)
-FRS_MOUNT_PATH = "/data/frs_clean"
+FRS_MOUNT = "/data/frs_clean"
 
 # ---------------------------------------------------------------------------
 # Image — Debian base, install Rust toolchain, clone repo, compile binary
@@ -38,7 +35,6 @@ image = (
     )
     .pip_install("fastapi>=0.115", "uvicorn[standard]>=0.30", "pydantic>=2.0")
     # Copy the repo source into the image (exclude FRS data — it stays on the Volume)
-    # The .dockerignore / ignore list ensures data/frs_clean never enters the image.
     .add_local_dir(".", remote_path="/app", copy=True,
                    ignore=["data/", "target/", ".git/", "app/node_modules/", "app/.next/"])
     .run_commands(
@@ -57,7 +53,7 @@ app = modal.App("policyengine-uk", image=image)
 
 
 # ---------------------------------------------------------------------------
-# FastAPI application (identical logic to api/main.py but paths adjusted)
+# FastAPI application
 # ---------------------------------------------------------------------------
 def _make_fastapi_app():
     import json
@@ -70,9 +66,8 @@ def _make_fastapi_app():
     from pydantic import BaseModel
 
     RUST_BINARY = "policyengine-uk"
-    CLEAN_FRS_DIR = FRS_MOUNT_PATH
-    PARAMETERS_DIR = "/app/parameters"
-    AVAILABLE_YEARS = [2023, 2024, 2025, 2026, 2027, 2028, 2029]
+    FRS_BASE_DIR = FRS_MOUNT
+    AVAILABLE_YEARS = list(range(1994, 2030))
 
     fastapi_app = FastAPI(title="PolicyEngine UK API")
 
@@ -87,8 +82,8 @@ def _make_fastapi_app():
     params_cache: dict[int, dict] = {}
 
     def _data_args() -> list[str]:
-        if os.path.isdir(CLEAN_FRS_DIR) and os.listdir(CLEAN_FRS_DIR):
-            return ["--clean-frs", CLEAN_FRS_DIR]
+        if os.path.isdir(FRS_BASE_DIR) and os.listdir(FRS_BASE_DIR):
+            return ["--clean-frs-base", FRS_BASE_DIR]
         return []
 
     def run_simulation(year: int, reform_json: Optional[str] = None) -> dict:
@@ -133,7 +128,7 @@ def _make_fastapi_app():
     REFORM_SECTIONS = [
         "income_tax", "national_insurance", "universal_credit",
         "child_benefit", "benefit_cap", "housing_benefit",
-        "tax_credits", "scottish_child_payment",
+        "tax_credits", "council_tax_reduction", "scottish_child_payment",
         "pension_credit", "state_pension",
     ]
 
@@ -146,6 +141,7 @@ def _make_fastapi_app():
         benefit_cap: Optional[dict[str, Any]] = None
         housing_benefit: Optional[dict[str, Any]] = None
         tax_credits: Optional[dict[str, Any]] = None
+        council_tax_reduction: Optional[dict[str, Any]] = None
         scottish_child_payment: Optional[dict[str, Any]] = None
         pension_credit: Optional[dict[str, Any]] = None
         state_pension: Optional[dict[str, Any]] = None
@@ -159,6 +155,7 @@ def _make_fastapi_app():
         benefit_cap: Optional[dict[str, Any]] = None
         housing_benefit: Optional[dict[str, Any]] = None
         tax_credits: Optional[dict[str, Any]] = None
+        council_tax_reduction: Optional[dict[str, Any]] = None
         scottish_child_payment: Optional[dict[str, Any]] = None
         pension_credit: Optional[dict[str, Any]] = None
         state_pension: Optional[dict[str, Any]] = None
@@ -219,19 +216,19 @@ def _make_fastapi_app():
         return {
             "status": "ok",
             "binary": bool(shutil.which("policyengine-uk")),
-            "frs_data": os.path.isdir(CLEAN_FRS_DIR) and bool(os.listdir(CLEAN_FRS_DIR)),
-            "frs_path": CLEAN_FRS_DIR,
+            "frs_data": os.path.isdir(FRS_BASE_DIR) and bool(os.listdir(FRS_BASE_DIR)),
+            "cached_years": sorted(baseline_cache.keys()),
         }
 
     return fastapi_app
 
 
 @app.function(
-    volumes={FRS_MOUNT_PATH: frs_volume},
-    # Startup caches all 7 year baselines — give it enough RAM
-    memory=4096,
+    volumes={FRS_MOUNT: frs_volume},
+    # Startup caches 36 year baselines — needs time and memory
+    memory=8192,
     cpu=4,
-    timeout=300,
+    timeout=600,
     # EU West (Ireland) for lower latency from UK callers
     region="eu-west-1",
 )
