@@ -79,6 +79,9 @@ fn write_persons(dataset: &Dataset, output_dir: &Path) -> anyhow::Result<()> {
         "carers_allowance_reported", "attendance_allowance_reported",
         "esa_income_reported", "esa_contributory_reported",
         "jsa_income_reported", "jsa_contributory_reported",
+        "other_benefits_reported",
+        "adp_dl_reported", "adp_m_reported",
+        "cdp_care_reported", "cdp_mob_reported",
         // Flags
         "would_claim_marriage_allowance",
     ])?;
@@ -128,6 +131,11 @@ fn write_persons(dataset: &Dataset, output_dir: &Path) -> anyhow::Result<()> {
             format!("{:.2}", p.esa_contrib_reported),
             format!("{:.2}", p.jsa_income_reported),
             format!("{:.2}", p.jsa_contrib_reported),
+            format!("{:.2}", p.other_benefits_reported),
+            format!("{:.2}", p.adp_dl_reported),
+            format!("{:.2}", p.adp_m_reported),
+            format!("{:.2}", p.cdp_care_reported),
+            format!("{:.2}", p.cdp_mob_reported),
             p.would_claim_marriage_allowance.to_string(),
         ])?;
     }
@@ -329,6 +337,11 @@ fn load_persons_csv(data_dir: &Path) -> anyhow::Result<Vec<Person>> {
         let esa_contrib_reported = parse_f64(next());
         let jsa_income_reported = parse_f64(next());
         let jsa_contrib_reported = parse_f64(next());
+        let other_benefits_reported = parse_f64(next());
+        let adp_dl_reported = parse_f64(next());
+        let adp_m_reported = parse_f64(next());
+        let cdp_care_reported = parse_f64(next());
+        let cdp_mob_reported = parse_f64(next());
         let would_claim_marriage_allowance = parse_bool(next());
 
         people.push(Person {
@@ -340,7 +353,14 @@ fn load_persons_csv(data_dir: &Path) -> anyhow::Result<Vec<Person>> {
             property_income, maintenance_income,
             miscellaneous_income, other_income,
             is_in_scotland, hours_worked,
+            dla_care_low: false, dla_care_mid: false, dla_care_high: false,
+            dla_mob_low: false, dla_mob_high: false,
+            pip_dl_std: false, pip_dl_enh: false,
+            pip_mob_std: false, pip_mob_enh: false,
+            aa_low: false, aa_high: false,
             is_disabled, is_enhanced_disabled, is_severely_disabled, is_carer,
+            limitill: false, esa_group: 0, emp_status: 0,
+            looking_for_work: false, is_self_identified_carer: false,
             employee_pension_contributions, personal_pension_contributions,
             childcare_expenses,
             child_benefit_reported, housing_benefit_reported,
@@ -352,6 +372,9 @@ fn load_persons_csv(data_dir: &Path) -> anyhow::Result<Vec<Person>> {
             carers_allowance_reported, attendance_allowance_reported,
             esa_income_reported, esa_contrib_reported,
             jsa_income_reported, jsa_contrib_reported,
+            other_benefits_reported,
+            adp_dl_reported, adp_m_reported,
+            cdp_care_reported, cdp_mob_reported,
             would_claim_marriage_allowance,
         });
     }

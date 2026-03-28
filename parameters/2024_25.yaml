@@ -109,6 +109,32 @@ scottish_child_payment:
   weekly_amount: 26.70
   max_age: 16.0
 
+disability_premiums:
+  # Income Support (General) Regs 1987 (SI 1987/1967) Sch.2; uprated by SI 2024/242 art.14
+  disability_premium_single: 42.50
+  disability_premium_couple: 60.60
+  enhanced_disability_premium_single: 27.90
+  enhanced_disability_premium_couple: 39.85
+  severe_disability_premium: 81.50
+  carer_premium: 46.00
+
+income_related_benefits:
+  # ESA: SI 2008/794 Sch.4; uprated by SI 2024/242 art.18
+  esa_allowance_single_under25: 71.70
+  esa_allowance_single_25_plus: 90.50
+  esa_allowance_couple: 142.25
+  esa_wrag_component: 35.95
+  esa_support_component: 48.95
+  # JSA: SI 1996/207 Sch.1; uprated by SI 2024/242 art.16
+  jsa_allowance_single_under25: 71.70
+  jsa_allowance_single_25_plus: 90.50
+  jsa_allowance_couple: 142.25
+  # CA: SSCBA 1992 s.70; uprated by SI 2024/242 art.12: £81.90/week
+  carers_allowance_weekly: 81.90
+  ca_earnings_disregard_weekly: 151.00
+  ca_min_hours_caring: 35.0
+  ca_care_recipient_min_age: 16.0
+
 uc_migration:
   # DWP managed migration statistics, extrapolated
   # Fraction of legacy claimants migrated to UC by this year

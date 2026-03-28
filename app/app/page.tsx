@@ -6,7 +6,8 @@ import DecileChart from "@/components/DecileChart";
 import BudgetarySummary from "@/components/BudgetarySummary";
 import WinnersLosers from "@/components/WinnersLosers";
 import ProvisionWaterfall, { WaterfallEntry } from "@/components/ProvisionWaterfall";
-import { SLIDERS, SECTIONS, YEARS } from "@/lib/constants";
+import BaselineSlide from "@/components/BaselineSlide";
+import { SLIDERS, SECTIONS, YEARS, BASELINE_YEARS } from "@/lib/constants";
 import { palette, FF_MONO, FF_DISPLAY } from "@/lib/theme";
 import {
   fetchAllBaselines,
@@ -98,6 +99,7 @@ export default function Home() {
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
   const [hasReform, setHasReform] = useState(false);
   const [selectedYear, setSelectedYear] = useState(2025);
+  const [activeTab, setActiveTab] = useState(0);
   const [waterfallEntries, setWaterfallEntries] = useState<WaterfallEntry[]>([]);
   const [waterfallLoading, setWaterfallLoading] = useState(false);
 
@@ -238,14 +240,15 @@ export default function Home() {
           background: palette.bgApp,
           borderBottom: `1px solid ${palette.border}`,
           display: "flex",
-          alignItems: "center",
+          alignItems: "stretch",
           padding: "0 8px",
-          justifyContent: "space-between",
         }}
       >
         <div
           style={{
             padding: "0 20px",
+            flexShrink: 0,
+            borderRight: `1px solid ${palette.border}`,
             display: "flex",
             alignItems: "center",
             gap: 8,
@@ -265,7 +268,34 @@ export default function Home() {
           </span>
         </div>
 
-        {hasReform && (
+        <div style={{ flex: 1, display: "flex", alignItems: "stretch" }}>
+          {["Baseline Forecasts", "Policy Calculator"].map((title, i) => {
+            const isActive = activeTab === i;
+            return (
+              <button
+                key={i}
+                onClick={() => setActiveTab(i)}
+                style={{
+                  fontFamily: FF_MONO,
+                  fontSize: 13,
+                  color: isActive ? palette.textPrimary : palette.textDimmed,
+                  background: "transparent",
+                  border: "none",
+                  borderBottom: isActive ? `3px solid ${PRIMARY}` : "3px solid transparent",
+                  borderTop: "3px solid transparent",
+                  padding: "0 20px",
+                  height: HEADER_HEIGHT,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {i + 1}. {title}
+              </button>
+            );
+          })}
+        </div>
+
+        {activeTab === 1 && hasReform && (
           <div style={{ display: "flex", alignItems: "center", paddingRight: 12 }}>
             <button
               onClick={resetAll}
@@ -305,10 +335,23 @@ export default function Home() {
         />
       )}
 
-      {/* Body */}
+      {/* Tab 1: Baseline Forecasts */}
       <div
         style={{
-          display: "flex",
+          display: activeTab === 0 ? "flex" : "none",
+          height: `calc(100vh - ${HEADER_HEIGHT}px)`,
+          overflow: "hidden",
+          background: palette.bgApp,
+          padding: "16px 20px",
+        }}
+      >
+        <BaselineSlide baselines={baselines} years={BASELINE_YEARS} />
+      </div>
+
+      {/* Tab 2: Policy Calculator */}
+      <div
+        style={{
+          display: activeTab === 1 ? "flex" : "none",
           height: `calc(100vh - ${HEADER_HEIGHT}px)`,
           overflow: "hidden",
           background: palette.bgApp,

@@ -1,0 +1,148 @@
+# UK Tax-Benefit Parameters for Fiscal Year 2021/22
+# Sources: Finance Act 2021, SI 2021/162 (Benefits Up-rating Order 2021)
+# Major: PA/thresholds frozen until 2027/28 (FA 2021 s.5); COVID UC uplift ended Oct 2021;
+#        UC taper cut from 63% to 55% and work allowances increased by £500 from 24 Nov 2021;
+#        NI thresholds: PT £184/week, UEL £967/week
+# HMRC rates: gov.uk/guidance/rates-and-thresholds-for-employers-2021-to-2022
+# DWP rates: gov.uk/government/publications/benefit-and-pension-rates-2022-to-2023
+
+fiscal_year: "2021/22"
+
+income_tax:
+  personal_allowance: 12570.0       # FA 2021 s.5 freeze
+  pa_taper_threshold: 100000.0
+  pa_taper_rate: 0.5
+  marriage_allowance_fraction: 0.10
+  uk_brackets:
+    - { rate: 0.20, threshold: 0.0 }
+    - { rate: 0.40, threshold: 37700.0 }    # HMRC employer guidance 2021/22
+    - { rate: 0.45, threshold: 150000.0 }
+  scottish_brackets:
+    - { rate: 0.19, threshold: 0.0 }        # Starter; HMRC employer guidance 2021/22
+    - { rate: 0.20, threshold: 2097.0 }     # Basic
+    - { rate: 0.21, threshold: 12726.0 }    # Intermediate
+    - { rate: 0.41, threshold: 31092.0 }    # Higher
+    - { rate: 0.46, threshold: 150000.0 }   # Top
+  dividend_allowance: 2000.0        # HMRC Table A1
+  dividend_basic_rate: 0.075
+  dividend_higher_rate: 0.325
+  dividend_additional_rate: 0.381
+  savings_starter_rate_band: 5000.0
+
+national_insurance:
+  primary_threshold_annual: 9568.0    # £184/week; HMRC employer guidance 2021/22
+  upper_earnings_limit_annual: 50270.0  # £967/week; HMRC Table A4
+  main_rate: 0.12
+  additional_rate: 0.02
+  secondary_threshold_annual: 8840.0  # £170/week; HMRC employer guidance 2021/22
+  employer_rate: 0.138
+  class2_flat_rate_weekly: 3.05       # HMRC Table A4
+  class2_small_profits_threshold: 6515.0  # HMRC Table A4
+  class4_lower_profits_limit: 9620.0  # HMRC Table A4
+  class4_upper_profits_limit: 50270.0 # HMRC Table A4
+  class4_main_rate: 0.09
+  class4_additional_rate: 0.02
+
+universal_credit:
+  # SI 2021/162; COVID uplift removed from Oct 2021
+  # Standard allowances below are the base rates (without COVID uplift)
+  # UC taper changed from 63% to 55% from 24 November 2021; blended rate used
+  standard_allowance_single_under25: 257.33   # DWP 2021/22 base rates
+  standard_allowance_single_over25: 324.84
+  standard_allowance_couple_under25: 403.93
+  standard_allowance_couple_over25: 509.91
+  child_element_first: 282.50     # DWP 2021/22 rates
+  child_element_subsequent: 237.08
+  disabled_child_lower: 128.89    # DWP 2021/22 rates
+  disabled_child_higher: 402.41
+  lcwra_element: 343.63
+  carer_element: 163.73
+  # Blended taper: 63% for ~8 months (Apr-Nov), 55% for ~4 months (Nov-Mar)
+  # Annualised: (0.63 * 8/12) + (0.55 * 4/12) = 0.4200 + 0.1833 = 0.6033
+  # However for microsimulation we use the end-of-year rate
+  taper_rate: 0.55               # Reduced to 55% from 24 Nov 2021
+  work_allowance_higher: 557.0   # Increased from £515 to £557 from 24 Nov 2021
+  work_allowance_lower: 335.0    # Increased from £293 to £335 from 24 Nov 2021
+  child_limit: 2
+
+child_benefit:
+  eldest_weekly: 21.15            # SI 2021/162
+  additional_weekly: 14.00
+  hicbc_threshold: 50000.0
+  hicbc_taper_end: 60000.0
+
+state_pension:
+  new_state_pension_weekly: 179.60  # DWP 2021/22 rates
+  old_basic_pension_weekly: 137.60
+
+pension_credit:
+  standard_minimum_single: 177.10   # DWP 2021/22 rates
+  standard_minimum_couple: 270.30
+  savings_credit_threshold_single: 153.70
+  savings_credit_threshold_couple: 244.12
+
+benefit_cap:
+  single_london: 15410.0
+  single_outside_london: 13400.0
+  non_single_london: 23000.0
+  non_single_outside_london: 20000.0
+  earnings_exemption_threshold: 7400.0
+
+housing_benefit:
+  withdrawal_rate: 0.65
+  personal_allowance_single_under25: 59.20   # DWP 2021/22 rates
+  personal_allowance_single_25_plus: 74.70
+  personal_allowance_couple: 117.40
+  child_allowance: 68.60
+  family_premium: 17.65
+
+tax_credits:
+  wtc_basic_element: 2005.0   # SI 2021/162
+  wtc_couple_element: 2060.0
+  wtc_lone_parent_element: 2060.0
+  wtc_30_hour_element: 830.0
+  ctc_child_element: 2845.0
+  ctc_family_element: 545.0
+  ctc_disabled_child_element: 3435.0
+  ctc_severely_disabled_child_element: 1390.0
+  income_threshold: 6565.0
+  taper_rate: 0.41
+  wtc_min_hours_single: 30.0
+  wtc_min_hours_couple: 24.0
+
+scottish_child_payment:
+  weekly_amount: 10.0   # £10/week, under-6s; extended to under-16 later
+  max_age: 6.0
+
+disability_premiums:
+  # DWP 2021/22 rates (from HB section of benefit rates page)
+  disability_premium_single: 35.10
+  disability_premium_couple: 50.05
+  enhanced_disability_premium_single: 17.20
+  enhanced_disability_premium_couple: 24.60
+  severe_disability_premium: 67.30
+  carer_premium: 37.70
+
+income_related_benefits:
+  esa_allowance_single_under25: 59.20   # DWP 2021/22 rates
+  esa_allowance_single_25_plus: 74.70
+  esa_allowance_couple: 117.40
+  esa_wrag_component: 29.70
+  esa_support_component: 39.40
+  jsa_allowance_single_under25: 59.20
+  jsa_allowance_single_25_plus: 74.70
+  jsa_allowance_couple: 117.40
+  carers_allowance_weekly: 67.60
+  ca_earnings_disregard_weekly: 128.0
+  ca_min_hours_caring: 35.0
+  ca_care_recipient_min_age: 16.0
+
+uc_migration:
+  housing_benefit: 0.12
+  tax_credits: 0.20
+  income_support: 0.12
+
+growth_factors:
+  cpi_rate: 0.03073          # CPI Sept 2021: 3.073%
+  gdp_deflator: 0.01592
+  earnings_growth: 0.04979

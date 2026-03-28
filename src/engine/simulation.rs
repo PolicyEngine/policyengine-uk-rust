@@ -30,8 +30,13 @@ pub struct BenUnitResult {
     pub child_tax_credit: f64,
     pub working_tax_credit: f64,
     pub income_support: f64,
+    pub esa_income_related: f64,
+    pub jsa_income_based: f64,
+    pub carers_allowance: f64,
     pub scottish_child_payment: f64,
     pub benefit_cap_reduction: f64,
+    /// Passthrough reported benefits not modelled (PIP, DLA, AA, ESA-C, JSA-C)
+    pub passthrough_benefits: f64,
     pub total_benefits: f64,
     pub uc_max_amount: f64,
     pub uc_income_reduction: f64,
@@ -120,7 +125,12 @@ impl Simulation {
                 .map(|&bid| benunit_results[bid].total_benefits)
                 .sum();
 
-            let net_income = gross - total_tax + total_benefits;
+            // State pension is already in gross (via Person::total_income) so exclude
+            // it from benefits when computing net income to avoid double-counting.
+            let state_pension: f64 = hh.benunit_ids.iter()
+                .map(|&bid| benunit_results[bid].state_pension)
+                .sum();
+            let net_income = gross - total_tax + total_benefits - state_pension;
 
             // Modified OECD equivalisation scale (used by HBAI):
             // First adult: 0.67, additional adults (14+): 0.33, children (<14): 0.20

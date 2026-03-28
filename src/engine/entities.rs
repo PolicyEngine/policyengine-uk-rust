@@ -36,11 +36,34 @@ pub struct Person {
     pub is_in_scotland: bool,
     pub hours_worked: f64,             // annual hours
 
-    // Disability/carer status
-    pub is_disabled: bool,
-    pub is_enhanced_disabled: bool,
-    pub is_severely_disabled: bool,
-    pub is_carer: bool,
+    // Disability/carer status — granular rate-band flags derived from FRS benefit amounts
+    // DLA care component (SSCBA 1992 Sch.2 para.2 as amended)
+    pub dla_care_low: bool,     // lowest rate
+    pub dla_care_mid: bool,     // middle rate
+    pub dla_care_high: bool,    // highest rate
+    // DLA mobility component (SSCBA 1992 Sch.2 para.3)
+    pub dla_mob_low: bool,
+    pub dla_mob_high: bool,
+    // PIP daily living component (WRA 2012 s.79 / PIP Regs 2013 SI 2013/377)
+    pub pip_dl_std: bool,
+    pub pip_dl_enh: bool,
+    // PIP mobility component (WRA 2012 s.79)
+    pub pip_mob_std: bool,
+    pub pip_mob_enh: bool,
+    // Attendance Allowance (SSCBA 1992 s.64)
+    pub aa_low: bool,
+    pub aa_high: bool,
+    // Convenience aggregates (kept for backwards compat with UC/IS/HB logic)
+    pub is_disabled: bool,          // any PIP/DLA/AA receipt
+    pub is_enhanced_disabled: bool, // DLA care high OR PIP DL enhanced (disabled child higher rate)
+    pub is_severely_disabled: bool, // PIP DL enhanced or DLA care high (SDP proxy)
+    pub is_carer: bool,             // CA receipt
+    // Employment/health status from FRS (for ESA/JSA eligibility)
+    pub limitill: bool,     // LIMITILL: has limiting long-standing illness
+    pub esa_group: i64,     // ESAGRP: 1=support, 2=WRAG, 3=assessment, 0=none/unknown
+    pub emp_status: i64,    // EMPSTATB: 1=employed, 2=self-employed, 3=unemployed, 4=inactive
+    pub looking_for_work: bool,     // LOOKWK: actively looking for work
+    pub is_self_identified_carer: bool, // CARER1: identifies as unpaid carer
 
     // Pension contributions (annual)
     pub employee_pension_contributions: f64,
@@ -67,6 +90,14 @@ pub struct Person {
     pub esa_contrib_reported: f64,
     pub jsa_income_reported: f64,
     pub jsa_contrib_reported: f64,
+    /// Aggregate of unmodelled passthrough benefits (bereavement, maternity, winter fuel, etc.)
+    pub other_benefits_reported: f64,
+    /// Scottish disability replacements (ADP replaces PIP for Scottish adults)
+    pub adp_dl_reported: f64,
+    pub adp_m_reported: f64,
+    /// Scottish child disability (CDP replaces DLA for Scottish children)
+    pub cdp_care_reported: f64,
+    pub cdp_mob_reported: f64,
 
     // Take-up flags
     pub would_claim_marriage_allowance: bool,
@@ -92,10 +123,26 @@ impl Default for Person {
             other_income: 0.0,
             is_in_scotland: false,
             hours_worked: 0.0,
+            dla_care_low: false,
+            dla_care_mid: false,
+            dla_care_high: false,
+            dla_mob_low: false,
+            dla_mob_high: false,
+            pip_dl_std: false,
+            pip_dl_enh: false,
+            pip_mob_std: false,
+            pip_mob_enh: false,
+            aa_low: false,
+            aa_high: false,
             is_disabled: false,
             is_enhanced_disabled: false,
             is_severely_disabled: false,
             is_carer: false,
+            limitill: false,
+            esa_group: 0,
+            emp_status: 0,
+            looking_for_work: false,
+            is_self_identified_carer: false,
             employee_pension_contributions: 0.0,
             personal_pension_contributions: 0.0,
             childcare_expenses: 0.0,
@@ -116,6 +163,11 @@ impl Default for Person {
             esa_contrib_reported: 0.0,
             jsa_income_reported: 0.0,
             jsa_contrib_reported: 0.0,
+            other_benefits_reported: 0.0,
+            adp_dl_reported: 0.0,
+            adp_m_reported: 0.0,
+            cdp_care_reported: 0.0,
+            cdp_mob_reported: 0.0,
             would_claim_marriage_allowance: false,
         }
     }

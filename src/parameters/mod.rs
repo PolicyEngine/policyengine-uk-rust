@@ -29,6 +29,21 @@ pub struct Parameters {
     pub take_up: TakeUpRates,
     #[serde(default = "UcMigrationRates::default")]
     pub uc_migration: UcMigrationRates,
+    /// Disability premiums for IS/HB/ESA applicable amounts.
+    /// Source: Income Support (General) Regs 1987 (SI 1987/1967) Sch.2
+    #[serde(default)]
+    pub disability_premiums: Option<DisabilityPremiumParams>,
+    /// Income-related benefits: ESA(IR), JSA(IB), Carers Allowance.
+    #[serde(default)]
+    pub income_related_benefits: Option<IncomeRelatedBenefitParams>,
+    /// Baseline mode: if true, benefits are only awarded to reported claimants.
+    /// Take-up rates and ENR logic are disabled. Set to false for reform simulations.
+    #[serde(default = "Parameters::default_baseline_mode", skip_serializing)]
+    pub baseline_mode: bool,
+}
+
+impl Parameters {
+    fn default_baseline_mode() -> bool { true }
 }
 
 /// Take-up rates for means-tested benefits.
@@ -245,6 +260,71 @@ pub struct ScottishChildPaymentParams {
     pub max_age: f64,
 }
 
+/// Disability premiums added to IS/HB/ESA applicable amounts.
+///
+/// Source: Income Support (General) Regs 1987 (SI 1987/1967) Sch.2 paras 11-14,
+/// as uprated annually by the Social Security Benefits Up-rating Orders.
+/// All amounts are weekly.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DisabilityPremiumParams {
+    /// Disability Premium (DP): person has lower-rate PIP/DLA or is in WRAG.
+    /// Sch.2 para.11: £42.50/wk (single), £60.60/wk (couple) in 2025/26.
+    pub disability_premium_single: f64,
+    pub disability_premium_couple: f64,
+    /// Enhanced Disability Premium (EDP): highest-rate DLA care or enhanced PIP DL.
+    /// Sch.2 para.13: £27.90/wk (single), £39.85/wk (couple) in 2025/26.
+    pub enhanced_disability_premium_single: f64,
+    pub enhanced_disability_premium_couple: f64,
+    /// Severe Disability Premium (SDP): enhanced PIP DL/highest DLA care, lives alone,
+    /// no carer receiving CA. Sch.2 para.14: £81.50/wk in 2025/26.
+    pub severe_disability_premium: f64,
+    /// Carer Premium: for persons receiving CA. Sch.2 para.14D: £46.00/wk in 2025/26.
+    pub carer_premium: f64,
+}
+
+/// Income-related benefits: ESA(IR), JSA(IB), Carers Allowance.
+///
+/// ESA(IR) is structurally Income Support + a work-related component.
+/// JSA(IB) is structurally Income Support conditioned on availability for work.
+///
+/// Sources:
+///   - Welfare Reform Act 2007 c.5 s.2-4 (ESA)
+///   - Employment and Support Allowance Regs 2008 (SI 2008/794)
+///   - Jobseekers Act 1995 c.18 s.4-5 (JSA)
+///   - Social Security Contributions and Benefits Act 1992 s.70 (CA)
+///   - SS (Carers Allowance) Regs 2002 (SI 2002/2690)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IncomeRelatedBenefitParams {
+    /// ESA personal allowances (weekly) — same as IS personal allowances.
+    /// ESA Regs 2008 reg.67 / Sch.4.
+    pub esa_allowance_single_under25: f64,
+    pub esa_allowance_single_25_plus: f64,
+    pub esa_allowance_couple: f64,
+    /// ESA work-related activity component (WRAG): SI 2008/794 reg.67 Sch.4 col.2.
+    /// £35.95/wk in 2025/26.
+    pub esa_wrag_component: f64,
+    /// ESA support component (support group): SI 2008/794 reg.67 Sch.4 col.2.
+    /// £48.95/wk in 2025/26.
+    pub esa_support_component: f64,
+    /// JSA(IB) personal allowances (weekly) — same as IS.
+    /// Jobseeker's Allowance Regs 1996 (SI 1996/207) Sch.1.
+    pub jsa_allowance_single_under25: f64,
+    pub jsa_allowance_single_25_plus: f64,
+    pub jsa_allowance_couple: f64,
+    /// Carers Allowance: weekly flat rate.
+    /// SSCBA 1992 s.70(1); SS (CA) Regs 2002 reg.4.
+    /// £81.90/wk in 2025/26.
+    pub carers_allowance_weekly: f64,
+    /// CA earnings disregard: SS (CA) Regs 2002 reg.8.
+    /// £151.00/wk net earnings after deductions in 2025/26.
+    pub ca_earnings_disregard_weekly: f64,
+    /// Minimum hours of caring per week to qualify for CA.
+    /// SSCBA 1992 s.70(1)(b): 35 hours/week.
+    pub ca_min_hours_caring: f64,
+    /// Minimum age of care recipient for CA: 16.
+    pub ca_care_recipient_min_age: f64,
+}
+
 /// Convert a fiscal year start year (e.g. 2029) to the YAML filename format
 fn fiscal_year_filename(year: u32) -> String {
     format!("{}_{:02}.yaml", year, (year + 1) % 100)
@@ -315,7 +395,8 @@ impl Parameters {
     /// Available fiscal years (hardcoded list of embedded parameter files).
     #[allow(dead_code)]
     pub fn available_years() -> Vec<u32> {
-        vec![2023, 2024, 2025, 2026, 2027, 2028, 2029]
+        // 1994/95 through 2029/30
+        (1994..=2029).collect()
     }
 }
 
@@ -354,6 +435,14 @@ mod tests {
         let params = Parameters::for_year(2029).unwrap();
         assert_eq!(params.fiscal_year, "2029/30");
         assert!(params.income_tax.personal_allowance > 12570.0); // Should be uprated
+    }
+
+    #[test]
+    fn test_load_all_years() {
+        for year in 1994..=2029 {
+            let params = Parameters::for_year(year);
+            assert!(params.is_ok(), "Failed to load parameters for {}/{}", year, year + 1);
+        }
     }
 
     #[test]

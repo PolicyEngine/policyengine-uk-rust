@@ -1,0 +1,131 @@
+# UK Tax-Benefit Parameters for Fiscal Year 2009/10
+# Sources: Finance Act 2009, SI 2009/497
+
+fiscal_year: "2009/10"
+
+income_tax:
+  personal_allowance: 6475.0
+  pa_taper_threshold: 100000000.0
+  pa_taper_rate: 0.0
+  uk_brackets:
+    - { rate: 0.20, threshold: 0.0 }
+    - { rate: 0.40, threshold: 37400.0 }
+  scottish_brackets:
+    - { rate: 0.20, threshold: 0.0 }
+    - { rate: 0.40, threshold: 37400.0 }
+  dividend_allowance: 0.0
+  dividend_basic_rate: 0.10
+  dividend_higher_rate: 0.325
+  dividend_additional_rate: 0.0
+  savings_starter_rate_band: 2440.0
+
+national_insurance:
+  primary_threshold_annual: 5720.0   # £110/week
+  upper_earnings_limit_annual: 43888.0  # £844/week
+  main_rate: 0.11
+  additional_rate: 0.01
+  secondary_threshold_annual: 5720.0
+  employer_rate: 0.128
+  class2_flat_rate_weekly: 2.40
+  class2_small_profits_threshold: 5075.0
+  class4_lower_profits_limit: 5715.0
+  class4_upper_profits_limit: 43875.0
+  class4_main_rate: 0.08
+  class4_additional_rate: 0.01
+
+child_benefit:
+  eldest_weekly: 20.00
+  additional_weekly: 13.20
+  hicbc_threshold: 100000000.0
+  hicbc_taper_end: 100000000.0
+
+state_pension:
+  new_state_pension_weekly: 0.0
+  old_basic_pension_weekly: 95.25
+
+pension_credit:
+  standard_minimum_single: 130.00
+  standard_minimum_couple: 198.45
+  savings_credit_threshold_single: 96.00
+  savings_credit_threshold_couple: 153.40
+
+benefit_cap:
+  single_london: 0.0
+  single_outside_london: 0.0
+  non_single_london: 0.0
+  non_single_outside_london: 0.0
+  earnings_exemption_threshold: 0.0
+
+housing_benefit:
+  withdrawal_rate: 0.65
+  personal_allowance_single_under25: 50.95
+  personal_allowance_single_25_plus: 64.30
+  personal_allowance_couple: 100.95
+  child_allowance: 56.11
+  family_premium: 17.30
+
+tax_credits:
+  wtc_basic_element: 1890.0
+  wtc_couple_element: 1860.0
+  wtc_lone_parent_element: 1860.0
+  wtc_30_hour_element: 775.0
+  ctc_child_element: 2235.0
+  ctc_family_element: 545.0
+  ctc_disabled_child_element: 2670.0
+  ctc_severely_disabled_child_element: 1075.0
+  income_threshold: 6420.0
+  taper_rate: 0.39
+  wtc_min_hours_single: 30.0
+  wtc_min_hours_couple: 16.0
+
+scottish_child_payment:
+  weekly_amount: 0.0
+  max_age: 0.0
+
+disability_premiums:
+  disability_premium_single: 27.50
+  disability_premium_couple: 39.25
+  enhanced_disability_premium_single: 13.65
+  enhanced_disability_premium_couple: 19.70
+  severe_disability_premium: 50.35
+  carer_premium: 17.75
+
+income_related_benefits:
+  esa_allowance_single_under25: 50.95
+  esa_allowance_single_25_plus: 64.30
+  esa_allowance_couple: 100.95
+  esa_wrag_component: 25.50
+  esa_support_component: 30.85
+  jsa_allowance_single_under25: 50.95
+  jsa_allowance_single_25_plus: 64.30
+  jsa_allowance_couple: 100.95
+  carers_allowance_weekly: 53.10
+  ca_earnings_disregard_weekly: 95.0
+  ca_min_hours_caring: 35.0
+  ca_care_recipient_min_age: 16.0
+
+universal_credit:
+  standard_allowance_single_under25: 0.0
+  standard_allowance_single_over25: 0.0
+  standard_allowance_couple_under25: 0.0
+  standard_allowance_couple_over25: 0.0
+  child_element_first: 0.0
+  child_element_subsequent: 0.0
+  disabled_child_lower: 0.0
+  disabled_child_higher: 0.0
+  lcwra_element: 0.0
+  carer_element: 0.0
+  taper_rate: 0.0
+  work_allowance_higher: 0.0
+  work_allowance_lower: 0.0
+  child_limit: 0
+
+uc_migration:
+  housing_benefit: 0.0
+  tax_credits: 0.0
+  income_support: 0.0
+
+growth_factors:
+  cpi_rate: 0.022
+  gdp_deflator: 0.016
+  earnings_growth: 0.016

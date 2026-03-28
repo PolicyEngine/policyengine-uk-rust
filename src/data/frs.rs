@@ -21,25 +21,57 @@ const WEEKS_IN_YEAR: f64 = 365.25 / 7.0;
 /// Also supports .csv extension as fallback.
 ///
 /// FRS income variables are WEEKLY — we annualise by multiplying by WEEKS_IN_YEAR.
-pub fn load_frs(data_dir: &Path) -> anyhow::Result<Dataset> {
-    // Load all required tables
-    let household_table = load_table(data_dir, "househol")?;
-    let benunit_table = load_table(data_dir, "benunit")?;
-    let adult_table = load_table(data_dir, "adult")?;
-    let child_table = load_table(data_dir, "child")?;
+/// Load FRS data for a given fiscal year. `fiscal_year` is the start year (e.g. 2023 for 2023/24).
+/// Variable names are resolved explicitly based on the FRS era for that year.
+pub fn load_frs(data_dir: &Path, fiscal_year: u32) -> anyhow::Result<Dataset> {
+    let era = era_for_year(fiscal_year);
 
-    // Optional tables — gracefully handle missing
-    let accounts_table = load_table(data_dir, "accounts").ok();
-    let benefits_table = load_table(data_dir, "benefits").ok();
-    let job_table = load_table(data_dir, "job").ok();
-    let pension_table = load_table(data_dir, "pension").ok();
-    let penprov_table = load_table(data_dir, "penprov").ok();
+    // Load tables with only the columns we need (raw FRS has 400+ cols per table)
+    let household_table = load_table_cols(data_dir, "househol", Some(&[
+        "sernum", "gross3", "gross4", "stdregn", "gvtregn", "gvtregno",
+        "ctannual", "hhrent", "subrent", "cvpay",
+    ]))?;
+    let benunit_table = load_table_cols(data_dir, "benunit", Some(&[
+        "sernum", "benunit", "buuc", "burent",
+    ]))?;
+    let adult_table = load_table_cols(data_dir, "adult", Some(&[
+        "sernum", "benunit", "person", "sex", "age", "age80", "tothours",
+        "uperson", "hrpid", "limitill", "esagrp", "empstatb", "lookwk", "carer1",
+        "inearns", "seincam2", "inpeninc", "royyr1", "dividgro",
+        "mntus1", "mntus2", "mntusam1", "mntusam2", "mntamt1", "mntamt2",
+        "allow1", "allow2", "allow3", "allow4",
+        "allpay1", "allpay2", "allpay3", "allpay4",
+        "apamt", "apdamt", "pareamt", "aliamt",
+    ]))?;
+    let child_table = load_table_cols(data_dir, "child", Some(&[
+        "sernum", "benunit", "person", "sex", "age",
+    ]))?;
+
+    // Optional tables
+    let accounts_table = load_table_cols(data_dir, "accounts", Some(&[
+        "sernum", "person", "accint", "account", "acctax", "invtax",
+    ])).ok();
+    let benefits_table = load_table_cols(data_dir, "benefits", Some(&[
+        "sernum", "person", "benefit", "benamt", "benpd", "var2",
+    ])).ok();
+    let job_table = load_table_cols(data_dir, "job", Some(&[
+        "sernum", "person", "deduc1",
+    ])).ok();
+    let pension_table = load_table_cols(data_dir, "pension", Some(&[
+        "sernum", "person", "penpay", "ptamt", "ptinc", "poamt", "poinc", "penoth",
+    ])).ok();
+    let penprov_table = load_table_cols(data_dir, "penprov", Some(&[
+        "sernum", "person", "stemppen", "penamt",
+    ])).ok();
+    let oddjob_table = load_table_cols(data_dir, "oddjob", Some(&[
+        "sernum", "person", "ojamt",
+    ])).ok();
 
     // Phase 1: Build household records
-    let hh_data = parse_households(&household_table);
+    let hh_data = parse_households(&household_table, era);
 
     // Phase 2: Build benefit unit records
-    let bu_data = parse_benunits(&benunit_table);
+    let bu_data = parse_benunits(&benunit_table, era);
 
     // Phase 3: Build person-level aggregates from sub-tables
     let account_agg = accounts_table.as_ref().map(|t| aggregate_accounts(t));
@@ -47,9 +79,15 @@ pub fn load_frs(data_dir: &Path) -> anyhow::Result<Dataset> {
     let job_agg = job_table.as_ref().map(|t| aggregate_jobs(t));
     let pension_agg = pension_table.as_ref().map(|t| aggregate_pensions(t));
     let penprov_agg = penprov_table.as_ref().map(|t| aggregate_penprov(t));
+    let oddjob_agg = oddjob_table.as_ref().map(|t| aggregate_oddjobs(t));
+
+    // Build HH-level property income map (subrent + cvpay, assigned to HRP in parse_adults)
+    let hh_property_map: HashMap<i64, f64> = hh_data.iter()
+        .map(|hh| (hh.sernum, hh.subrent_weekly + hh.cvpay_weekly))
+        .collect();
 
     // Phase 4: Build adult records
-    let adult_records = parse_adults(&adult_table, &account_agg, &benefit_agg, &job_agg, &pension_agg, &penprov_agg);
+    let adult_records = parse_adults(&adult_table, &account_agg, &benefit_agg, &job_agg, &pension_agg, &penprov_agg, &oddjob_agg, &hh_property_map, era);
 
     // Phase 5: Build child records
     let child_records = parse_children(&child_table);
@@ -62,8 +100,7 @@ pub fn load_frs(data_dir: &Path) -> anyhow::Result<Dataset> {
 
 type Table = Vec<HashMap<String, String>>;
 
-fn load_table(data_dir: &Path, name: &str) -> anyhow::Result<Table> {
-    // Try .tab first (UKDS format), then .csv
+fn load_table_cols(data_dir: &Path, name: &str, needed: Option<&[&str]>) -> anyhow::Result<Table> {
     let tab_path = data_dir.join(format!("{}.tab", name));
     let csv_path = data_dir.join(format!("{}.csv", name));
 
@@ -80,13 +117,21 @@ fn load_table(data_dir: &Path, name: &str) -> anyhow::Result<Table> {
         .from_path(&path)?;
 
     let headers: Vec<String> = rdr.headers()?.iter().map(|h| h.to_lowercase()).collect();
-    let mut table = Vec::new();
 
+    // Build index of which columns to keep
+    let keep: Vec<bool> = match needed {
+        Some(cols) => headers.iter().map(|h| cols.contains(&h.as_str())).collect(),
+        None => vec![true; headers.len()],
+    };
+
+    let mut table = Vec::new();
     for result in rdr.records() {
         let record = result?;
         let row: HashMap<String, String> = headers.iter()
             .zip(record.iter())
-            .map(|(h, v)| (h.clone(), v.to_string()))
+            .zip(keep.iter())
+            .filter(|(_, &k)| k)
+            .map(|((h, v), _)| (h.clone(), v.to_string()))
             .collect();
         table.push(row);
     }
@@ -110,6 +155,63 @@ fn get_positive_f64(row: &HashMap<String, String>, key: &str) -> f64 {
     get_f64(row, key).max(0.0)
 }
 
+/// FRS variable naming era, determined by fiscal year.
+/// Variable names and available columns changed across FRS releases.
+///
+/// Verified against actual UKDS tab files for each year:
+///   - Weight: GROSS3 (1994–2001), GROSS4 (2002+)
+///   - Region: STDREGN (1994–2001), GVTREGN (2002+)
+///   - Age:    AGE only (1994–2001), AGE80 (2002+)
+///   - HRP:    UPERSON only (1994–2001), HRPID (2002+)
+///   - ESA:    ESAGRP (2008+)
+///   - UC:     BUUC (2022+)
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum FrsEra {
+    /// 1994/95–2001/02: STDREGN region, GROSS3 weight, AGE (not top-coded),
+    /// no HRPID, no ESA, no UC
+    Early,     // fiscal year 1994–2001
+    /// 2002/03–2007/08: GVTREGN region, GROSS4 weight, AGE80, HRPID, no ESA
+    Mid,       // fiscal year 2002–2007
+    /// 2008/09–2021/22: as Mid plus ESAGRP, LIMITILL, CARER1
+    Late,      // fiscal year 2008–2021
+    /// 2022/23+: as Late plus BUUC, GVTREGNO
+    Current,   // fiscal year 2022+
+}
+
+fn era_for_year(fiscal_year: u32) -> FrsEra {
+    match fiscal_year {
+        ..=2001 => FrsEra::Early,
+        2002..=2007 => FrsEra::Mid,
+        2008..=2021 => FrsEra::Late,
+        _ => FrsEra::Current,
+    }
+}
+
+/// Region from STDREGN coding (1994/95–2001/02 FRS).
+fn region_from_stdregn(code: i64) -> Region {
+    match code {
+        1 => Region::NorthEast,     // North
+        2 => Region::Yorkshire,     // Yorkshire & Humberside
+        3 => Region::NorthWest,     // North West / Merseyside
+        4 => Region::EastMidlands,
+        5 => Region::WestMidlands,
+        6 => Region::EastOfEngland, // East Anglia / Eastern
+        7 => Region::London,        // Greater London / Inner London
+        8 => Region::SouthEast,     // South East / Outer London
+        9 => Region::SouthWest,
+        10 => Region::Wales,
+        11 => Region::Scotland,
+        12 => Region::NorthernIreland,
+        _ => Region::London,
+    }
+}
+
+/// Region from GVTREGN coding (2002/03–2021/22 FRS).
+/// Same numeric coding as GVTREGNO but column name differs.
+fn region_from_gvtregn(code: i64) -> Region {
+    region_from_gvtregno(code)
+}
+
 // ── Household parsing ────────────────────────────────────────────────────
 
 struct HouseholdRecord {
@@ -118,6 +220,10 @@ struct HouseholdRecord {
     region: Region,
     rent_weekly: f64,
     council_tax_annual: f64,
+    /// Sub-tenant rent received (SUBRENT, weekly) — assigned to HRP
+    subrent_weekly: f64,
+    /// Boarders/lodgers income net of HB (CVPAY, weekly) — assigned to HRP
+    cvpay_weekly: f64,
 }
 
 fn region_from_gvtregno(code: i64) -> Region {
@@ -138,15 +244,29 @@ fn region_from_gvtregno(code: i64) -> Region {
     }
 }
 
-fn parse_households(table: &Table) -> Vec<HouseholdRecord> {
+fn parse_households(table: &Table, era: FrsEra) -> Vec<HouseholdRecord> {
     table.iter().map(|row| {
         let ct = get_f64(row, "ctannual");
+
+        let weight = match era {
+            FrsEra::Early => get_f64(row, "gross3"),
+            FrsEra::Mid | FrsEra::Late | FrsEra::Current => get_f64(row, "gross4"),
+        };
+
+        let region = match era {
+            FrsEra::Early => region_from_stdregn(get_i64(row, "stdregn")),
+            FrsEra::Mid | FrsEra::Late => region_from_gvtregn(get_i64(row, "gvtregn")),
+            FrsEra::Current => region_from_gvtregno(get_i64(row, "gvtregno")),
+        };
+
         HouseholdRecord {
             sernum: get_i64(row, "sernum"),
-            weight: get_f64(row, "gross4"),
-            region: region_from_gvtregno(get_i64(row, "gvtregno")),
+            weight,
+            region,
             rent_weekly: get_positive_f64(row, "hhrent"),
             council_tax_annual: if ct > 0.0 { ct } else { 1800.0 },
+            subrent_weekly: get_positive_f64(row, "subrent"),
+            cvpay_weekly: get_positive_f64(row, "cvpay"),
         }
     }).collect()
 }
@@ -161,12 +281,16 @@ struct BenUnitRecord {
     rent_weekly: f64,
 }
 
-fn parse_benunits(table: &Table) -> Vec<BenUnitRecord> {
+fn parse_benunits(table: &Table, era: FrsEra) -> Vec<BenUnitRecord> {
     table.iter().map(|row| {
         BenUnitRecord {
             sernum: get_i64(row, "sernum"),
             benunit: get_i64(row, "benunit"),
-            claims_uc: get_positive_f64(row, "buuc") > 0.0,
+            // BUUC only exists from ~2013 when UC was introduced
+            claims_uc: match era {
+                FrsEra::Early | FrsEra::Mid | FrsEra::Late => false,
+                FrsEra::Current => get_positive_f64(row, "buuc") > 0.0,
+            },
             rent_weekly: get_positive_f64(row, "burent"),
         }
     }).collect()
@@ -198,20 +322,52 @@ fn aggregate_accounts(table: &Table) -> HashMap<PersonKey, AccountAgg> {
 
         let entry = map.entry(person_key(sernum, person)).or_default();
 
-        // Savings accounts: types 1, 3, 5, 27, 28
+        // All account types feed into savings interest (ININV per FRS income tree):
+        //   1=current, 3=NS&I investment, 5=savings, 27=basic, 28=credit union → gross up 1.25 if acctax==1
+        //   2=NS&I Direct Saver → deduct £70/yr weekly exemption
+        //   6=gilts → gross up 1.25 if invtax==1
+        //   7=unit trusts, 8=stocks/shares/bonds → ININV (not dividends; director divs loaded via DIVIDGRO)
+        //   9=PEP, 21=ISA, 24=peer-to-peer → non-taxable, no gross-up
+        // Note: types 7 & 8 are NOT dividend income here — DIVIDGRO from adult.tab covers director
+        // dividends separately. Mixing them caused double-counting.
         if [1, 3, 5, 27, 28].contains(&account_type) {
             let gross = if acctax == 1 { accint * 1.25 } else { accint };
             entry.savings_interest_weekly += gross.max(0.0);
-        }
-
-        // Dividend-bearing: type 6 (GGES), 7, 8 (stocks/shares/UITs)
-        if account_type == 6 || account_type == 7 || account_type == 8 {
+        } else if account_type == 2 {
+            // NS&I Direct Saver: deduct £70/yr = £70/52 weekly exemption per UKMOD
+            entry.savings_interest_weekly += (accint - 70.0 / 52.0).max(0.0);
+        } else if [9, 21, 24].contains(&account_type) {
+            // PEP, ISA, Peer-to-peer: non-taxable — included in savings, no gross-up
+            entry.savings_interest_weekly += accint.max(0.0);
+        } else if account_type == 6 {
+            // Gilts: taxable interest, gross up if invtax==1
             let gross = if invtax == 1 { accint * 1.25 } else { accint };
-            entry.dividend_income_weekly += gross.max(0.0);
+            entry.savings_interest_weekly += gross.max(0.0);
+        } else if [7, 8].contains(&account_type) {
+            // Unit trusts / stocks & shares: investment return, part of ININV
+            entry.savings_interest_weekly += accint.max(0.0);
         }
     }
     map
 }
+
+#[derive(Default)]
+struct OddjobAgg {
+    oddjob_weekly: f64,
+}
+
+/// INRINC component: odd job income (OJAMT, weekly) from oddjob table.
+fn aggregate_oddjobs(table: &Table) -> HashMap<PersonKey, OddjobAgg> {
+    let mut map: HashMap<PersonKey, OddjobAgg> = HashMap::new();
+    for row in table {
+        let sernum = get_i64(row, "sernum");
+        let person = get_i64(row, "person");
+        let amt = get_positive_f64(row, "ojamt");
+        map.entry(person_key(sernum, person)).or_default().oddjob_weekly += amt;
+    }
+    map
+}
+
 
 /// Benefit codes from FRS benefits table
 #[derive(Default)]
@@ -234,6 +390,20 @@ struct BenefitAgg {
     esa_contrib: f64,
     jsa_income: f64,
     jsa_contrib: f64,
+    // Passthrough benefits we don't model but need in net income
+    bereavement: f64,          // code 6: Bereavement Support Payment / Widowed Parent's Allowance
+    maternity_allowance: f64,  // code 21: Maternity Allowance
+    winter_fuel: f64,          // code 62: Winter Fuel Payments
+    industrial_injuries: f64,  // code 15: Industrial Injuries Disablement Benefit
+    sda: f64,                  // code 10: Severe Disablement Allowance
+    war_pension: f64,          // codes 8,9: Armed Forces Compensation / War Widow's Pension
+    other_ni_state: f64,       // code 30: any other NI or State benefit
+    // Scottish disability replacements (equivalent to PIP/DLA)
+    adp_dl: f64,               // code 117: Adult Disability Payment (Daily Living) Scotland
+    adp_m: f64,                // code 118: Adult Disability Payment (Mobility) Scotland
+    cdp_care: f64,             // code 121: Child Disability Payment (Care) Scotland
+    cdp_mob: f64,              // code 122: Child Disability Payment (Mobility) Scotland
+    scp: f64,                  // code 112: Scottish Child Payment
 }
 
 fn aggregate_benefits(table: &Table) -> HashMap<PersonKey, BenefitAgg> {
@@ -242,8 +412,15 @@ fn aggregate_benefits(table: &Table) -> HashMap<PersonKey, BenefitAgg> {
         let sernum = get_i64(row, "sernum");
         let person = get_i64(row, "person");
         let benefit = get_i64(row, "benefit");
-        let benamt = get_positive_f64(row, "benamt");
+        let benpd = get_i64(row, "benpd");
+        let benamt_raw = get_positive_f64(row, "benamt");
         let var2 = get_i64(row, "var2");
+        // BENAMT is a weekly equivalent for regular benefits (benpd 1-52).
+        // For benpd=0/90/95/97 (lump sums, one-offs), treat as annual and convert to weekly.
+        let benamt = match benpd {
+            0 | 90 | 95 | 97 => benamt_raw / 52.0,
+            _ => benamt_raw,
+        };
 
         let entry = map.entry(person_key(sernum, person)).or_default();
         match benefit {
@@ -271,6 +448,19 @@ fn aggregate_benefits(table: &Table) -> HashMap<PersonKey, BenefitAgg> {
                 if var2 == 1 || var2 == 3 { entry.esa_contrib += benamt; }
                 if var2 == 2 || var2 == 4 { entry.esa_income += benamt; }
             }
+            // Passthrough benefits
+            6 => entry.bereavement += benamt,
+            21 => entry.maternity_allowance += benamt,
+            62 => entry.winter_fuel += benamt,
+            15 => entry.industrial_injuries += benamt,
+            10 => entry.sda += benamt,
+            8 | 9 => entry.war_pension += benamt,
+            30 => entry.other_ni_state += benamt,
+            117 => entry.adp_dl += benamt,
+            118 => entry.adp_m += benamt,
+            121 => entry.cdp_care += benamt,
+            122 => entry.cdp_mob += benamt,
+            112 => entry.scp += benamt,
             _ => {}
         }
     }
@@ -363,12 +553,28 @@ struct PersonRecord {
     dividend_income_weekly: f64,
     property_income_weekly: f64,
     maintenance_income_weekly: f64,
-    miscellaneous_income_weekly: f64,
+    miscellaneous_income_weekly: f64, // oddjob + sub-tenant rent
     hours_worked_weekly: f64,
+    dla_care_low: bool,
+    dla_care_mid: bool,
+    dla_care_high: bool,
+    dla_mob_low: bool,
+    dla_mob_high: bool,
+    pip_dl_std: bool,
+    pip_dl_enh: bool,
+    pip_mob_std: bool,
+    pip_mob_enh: bool,
+    aa_low: bool,
+    aa_high: bool,
     is_disabled: bool,
     is_enhanced_disabled: bool,
     is_severely_disabled: bool,
     is_carer: bool,
+    limitill: bool,
+    esa_group: i64,
+    emp_status: i64,
+    looking_for_work: bool,
+    is_self_identified_carer: bool,
     employee_pension_contributions_weekly: f64,
     personal_pension_contributions_weekly: f64,
     childcare_expenses_weekly: f64,
@@ -390,6 +596,13 @@ struct PersonRecord {
     esa_contrib_reported_weekly: f64,
     jsa_income_reported_weekly: f64,
     jsa_contrib_reported_weekly: f64,
+    // Aggregate of all unmodelled passthrough benefits (bereavement, maternity, winter fuel, etc.)
+    other_benefits_reported_weekly: f64,
+    // Scottish disability payments (replace PIP/DLA in Scotland)
+    adp_dl_reported_weekly: f64,
+    adp_m_reported_weekly: f64,
+    cdp_care_reported_weekly: f64,
+    cdp_mob_reported_weekly: f64,
     is_child: bool,
 }
 
@@ -400,6 +613,9 @@ fn parse_adults(
     job_agg: &Option<HashMap<PersonKey, JobAgg>>,
     pension_agg: &Option<HashMap<PersonKey, PensionAgg>>,
     penprov_agg: &Option<HashMap<PersonKey, PenprovAgg>>,
+    oddjob_agg: &Option<HashMap<PersonKey, OddjobAgg>>,
+    hh_property_map: &HashMap<i64, f64>,
+    era: FrsEra,
 ) -> Vec<PersonRecord> {
     table.iter().map(|row| {
         let sernum = get_i64(row, "sernum");
@@ -411,38 +627,134 @@ fn parse_adults(
         let jobs = job_agg.as_ref().and_then(|m| m.get(&key));
         let pens = pension_agg.as_ref().and_then(|m| m.get(&key));
         let pp = penprov_agg.as_ref().and_then(|m| m.get(&key));
+        let oj = oddjob_agg.as_ref().and_then(|m| m.get(&key));
 
         let sex = get_i64(row, "sex");
         let hours = get_f64(row, "tothours").max(0.0);
 
-        // Disability: DLA/PIP receipt indicates disability
+        // Disability: classify PIP/DLA/AA into rate bands by comparing weekly amounts.
+        // Rate-band midpoints for FRS 2023/24 (SI 2023/285 — Uprating Order 2023).
+        // DLA care: low £26.90, mid £71.70, high £107.40
+        // DLA mob:  low £26.90, high £75.75
+        // PIP DL:   standard £68.10, enhanced £101.75
+        // PIP mob:  standard £26.90, enhanced £75.75
+        // AA:       lower £68.10, higher £101.75
+        // We use midpoints between adjacent rates as split thresholds.
         let dla_sc = bens.map_or(0.0, |b| b.dla_sc);
         let dla_m = bens.map_or(0.0, |b| b.dla_m);
         let pip_dl = bens.map_or(0.0, |b| b.pip_dl);
         let pip_m = bens.map_or(0.0, |b| b.pip_m);
-        let is_disabled = (dla_sc + dla_m + pip_m + pip_dl) > 0.0;
+        let aa = bens.map_or(0.0, |b| b.attendance_allowance);
 
-        // Property income: cvpay + royyr1
-        let property = get_positive_f64(row, "cvpay") + get_positive_f64(row, "royyr1");
+        // DLA care bands: low (<mid), mid (mid..high), high (>=high)
+        let dla_care_low  = dla_sc > 0.0 && dla_sc < 49.30;  // midpoint(26.90, 71.70)
+        let dla_care_mid  = dla_sc >= 49.30 && dla_sc < 89.55; // midpoint(71.70, 107.40)
+        let dla_care_high = dla_sc >= 89.55;
 
-        // Maintenance income
+        // DLA mobility bands: low (<high), high (>=high)
+        let dla_mob_low  = dla_m > 0.0 && dla_m < 51.32; // midpoint(26.90, 75.75)
+        let dla_mob_high = dla_m >= 51.32;
+
+        // PIP DL bands: standard (<enhanced), enhanced (>=enhanced)
+        let pip_dl_std = pip_dl > 0.0 && pip_dl < 84.93; // midpoint(68.10, 101.75)
+        let pip_dl_enh = pip_dl >= 84.93;
+
+        // PIP mobility bands
+        let pip_mob_std = pip_m > 0.0 && pip_m < 51.32; // midpoint(26.90, 75.75)
+        let pip_mob_enh = pip_m >= 51.32;
+
+        // AA bands: lower (<higher), higher (>=higher)
+        let aa_low  = aa > 0.0 && aa < 84.93; // midpoint(68.10, 101.75)
+        let aa_high = aa >= 84.93;
+
+        let is_disabled = (dla_sc + dla_m + pip_m + pip_dl + aa) > 0.0;
+        // Enhanced disabled = highest DLA care or enhanced PIP DL (used for UC disabled child higher rate)
+        let is_enhanced_disabled = dla_care_high || pip_dl_enh;
+        // Severely disabled proxy for SDP: enhanced PIP DL or highest DLA care
+        let is_severely_disabled = pip_dl_enh || dla_care_high;
+
+        // Employment / health status from adult.tab
+        // LIMITILL: only available from ~2004/05 onwards
+        let limitill = match era {
+            FrsEra::Early => false,
+            _ => get_i64(row, "limitill") == 1,
+        };
+        // ESAGRP: only from 2008/09 (ESA introduced)
+        let esa_group = match era {
+            FrsEra::Early | FrsEra::Mid => 0,
+            _ => get_i64(row, "esagrp"),
+        };
+        let emp_status = get_i64(row, "empstatb");
+        // LOOKWK: available in early and mid eras, renamed/removed in some later years
+        let looking_for_work = get_i64(row, "lookwk") == 1;
+        // CARER1: only available from ~2009/10 onwards
+        let is_self_identified_carer = match era {
+            FrsEra::Early | FrsEra::Mid => false,
+            _ => get_i64(row, "carer1") == 1,
+        };
+
+        // HRP flag: HRPID from 2002/03; UPERSON (benunit head) used as proxy before that
+        let is_hrp = match era {
+            FrsEra::Early => get_i64(row, "uperson") == 1 && get_i64(row, "benunit") == 1,
+            _ => get_i64(row, "hrpid") == 1,
+        };
+        let royyr1 = get_positive_f64(row, "royyr1");
+        let hh_prop = if is_hrp { hh_property_map.get(&sernum).copied().unwrap_or(0.0) } else { 0.0 };
+        let property = royyr1 + hh_prop;
+
+        // Maintenance received: MNTAMT1 (paid direct) + MNTAMT2 (via DWP).
+        // If the usual amount differs (mntus1/2 == 2), use MNTUSAM1/2 instead.
+        // Per UKMOD 07_Income.do logic. MRAMT from maint.tab is not used (mntamt already from adult.tab).
         let mntus1 = get_i64(row, "mntus1");
-        let maint = if mntus1 == 2 {
+        let mntus2 = get_i64(row, "mntus2");
+        let m1 = if mntus1 == 2 {
             get_positive_f64(row, "mntusam1")
         } else {
             get_positive_f64(row, "mntamt1")
         };
-        let maint2 = get_positive_f64(row, "mntamt2");
+        let m2 = if mntus2 == 2 {
+            get_positive_f64(row, "mntusam2")
+        } else {
+            get_positive_f64(row, "mntamt2")
+        };
+        let maintenance = m1 + m2;
+
+        // Miscellaneous: odd job income + private transfers (UKMOD yptot components).
+        // Per UKMOD 07_Income.do: allpay1/3/4 (friend/foster/adoption allowances),
+        // apamt/apdamt (absent partner), pareamt (parental contrib), aliamt (maintenance for self).
+        // These are all weekly amounts from adult.tab.
+        let allow1 = get_i64(row, "allow1") == 1;
+        let allow2 = get_i64(row, "allow2") == 1;
+        let allow3 = get_i64(row, "allow3") == 1;
+        let allow4 = get_i64(row, "allow4") == 1;
+        let yptot = (if allow1 { get_positive_f64(row, "allpay1") } else { 0.0 })
+            + (if allow2 { get_positive_f64(row, "allpay2") } else { 0.0 })
+            + (if allow3 { get_positive_f64(row, "allpay3") } else { 0.0 })
+            + (if allow4 { get_positive_f64(row, "allpay4") } else { 0.0 })
+            + get_positive_f64(row, "apamt")
+            + get_positive_f64(row, "apdamt")
+            + get_positive_f64(row, "pareamt")
+            + get_positive_f64(row, "aliamt");
+        let misc = oj.map_or(0.0, |o| o.oddjob_weekly) + yptot;
+
+        // Age: AGE80 (top-coded at 80) available from 2002/03; use AGE before that
+        let age = match era {
+            FrsEra::Early => get_f64(row, "age"),
+            _ => get_f64(row, "age80"),
+        };
+
+        // Employment income: INEARNS is gross weekly earnings (all eras)
+        let employment_income_weekly = get_positive_f64(row, "inearns");
 
         PersonRecord {
             sernum,
             benunit: get_i64(row, "benunit"),
             person: person_id,
-            age: get_f64(row, "age80"),
+            age,
             gender: if sex == 1 { Gender::Male } else { Gender::Female },
             is_benunit_head: get_i64(row, "uperson") == 1,
-            is_household_head: get_i64(row, "hrpid") == 1,
-            employment_income_weekly: get_positive_f64(row, "inearns"),
+            is_household_head: is_hrp,
+            employment_income_weekly,
             self_employment_income_weekly: get_positive_f64(row, "seincam2"),
             private_pension_income_weekly: pens.map_or(
                 get_positive_f64(row, "inpeninc"),
@@ -450,18 +762,28 @@ fn parse_adults(
             ),
             state_pension_weekly: bens.map_or(0.0, |b| b.state_pension),
             savings_interest_weekly: acct.map_or(0.0, |a| a.savings_interest_weekly),
-            dividend_income_weekly: acct.map_or(
-                get_positive_f64(row, "dividgro"),
-                |a| a.dividend_income_weekly,
-            ),
+            // DIVIDGRO is director dividend income (weekly), taxed at dividend rates.
+            // It is NOT in ININV (account-based investment) but is part of INRINC.
+            dividend_income_weekly: acct.map_or(0.0, |a| a.dividend_income_weekly)
+                + get_positive_f64(row, "dividgro"),
             property_income_weekly: property,
-            maintenance_income_weekly: maint + maint2,
-            miscellaneous_income_weekly: 0.0,
+            maintenance_income_weekly: maintenance,
+            miscellaneous_income_weekly: misc,
             hours_worked_weekly: hours,
+            dla_care_low, dla_care_mid, dla_care_high,
+            dla_mob_low, dla_mob_high,
+            pip_dl_std, pip_dl_enh,
+            pip_mob_std, pip_mob_enh,
+            aa_low, aa_high,
             is_disabled,
-            is_enhanced_disabled: dla_sc > 100.0, // rough proxy for higher rate
-            is_severely_disabled: pip_dl > 100.0,  // rough proxy for enhanced rate
+            is_enhanced_disabled,
+            is_severely_disabled,
             is_carer: bens.map_or(false, |b| b.carers_allowance > 0.0),
+            limitill,
+            esa_group,
+            emp_status,
+            looking_for_work,
+            is_self_identified_carer,
             employee_pension_contributions_weekly: jobs.map_or(0.0, |j| j.employee_pension_contributions_weekly),
             personal_pension_contributions_weekly: pp.map_or(0.0, |p| p.personal_pension_contributions_weekly),
             childcare_expenses_weekly: 0.0, // Would need chldcare table
@@ -482,6 +804,14 @@ fn parse_adults(
             esa_contrib_reported_weekly: bens.map_or(0.0, |b| b.esa_contrib),
             jsa_income_reported_weekly: bens.map_or(0.0, |b| b.jsa_income),
             jsa_contrib_reported_weekly: bens.map_or(0.0, |b| b.jsa_contrib),
+            other_benefits_reported_weekly: bens.map_or(0.0, |b| {
+                b.bereavement + b.maternity_allowance + b.winter_fuel
+                + b.industrial_injuries + b.sda + b.war_pension + b.other_ni_state
+            }),
+            adp_dl_reported_weekly: bens.map_or(0.0, |b| b.adp_dl),
+            adp_m_reported_weekly: bens.map_or(0.0, |b| b.adp_m),
+            cdp_care_reported_weekly: bens.map_or(0.0, |b| b.cdp_care),
+            cdp_mob_reported_weekly: bens.map_or(0.0, |b| b.cdp_mob),
             is_child: false,
         }
     }).collect()
@@ -510,10 +840,20 @@ fn parse_children(table: &Table) -> Vec<PersonRecord> {
             maintenance_income_weekly: 0.0,
             miscellaneous_income_weekly: 0.0,
             hours_worked_weekly: 0.0,
+            dla_care_low: false, dla_care_mid: false, dla_care_high: false,
+            dla_mob_low: false, dla_mob_high: false,
+            pip_dl_std: false, pip_dl_enh: false,
+            pip_mob_std: false, pip_mob_enh: false,
+            aa_low: false, aa_high: false,
             is_disabled: false,
             is_enhanced_disabled: false,
             is_severely_disabled: false,
             is_carer: false,
+            limitill: false,
+            esa_group: 0,
+            emp_status: 0,
+            looking_for_work: false,
+            is_self_identified_carer: false,
             employee_pension_contributions_weekly: 0.0,
             personal_pension_contributions_weekly: 0.0,
             childcare_expenses_weekly: 0.0,
@@ -534,6 +874,11 @@ fn parse_children(table: &Table) -> Vec<PersonRecord> {
             esa_contrib_reported_weekly: 0.0,
             jsa_income_reported_weekly: 0.0,
             jsa_contrib_reported_weekly: 0.0,
+            other_benefits_reported_weekly: 0.0,
+            adp_dl_reported_weekly: 0.0,
+            adp_m_reported_weekly: 0.0,
+            cdp_care_reported_weekly: 0.0,
+            cdp_mob_reported_weekly: 0.0,
             is_child: true,
         }
     }).collect()
@@ -620,10 +965,26 @@ fn assemble_dataset(
                     other_income: 0.0,
                     is_in_scotland: is_scotland,
                     hours_worked: pr.hours_worked_weekly * 52.0,
+                    dla_care_low: pr.dla_care_low,
+                    dla_care_mid: pr.dla_care_mid,
+                    dla_care_high: pr.dla_care_high,
+                    dla_mob_low: pr.dla_mob_low,
+                    dla_mob_high: pr.dla_mob_high,
+                    pip_dl_std: pr.pip_dl_std,
+                    pip_dl_enh: pr.pip_dl_enh,
+                    pip_mob_std: pr.pip_mob_std,
+                    pip_mob_enh: pr.pip_mob_enh,
+                    aa_low: pr.aa_low,
+                    aa_high: pr.aa_high,
                     is_disabled: pr.is_disabled,
                     is_enhanced_disabled: pr.is_enhanced_disabled,
                     is_severely_disabled: pr.is_severely_disabled,
                     is_carer: pr.is_carer,
+                    limitill: pr.limitill,
+                    esa_group: pr.esa_group,
+                    emp_status: pr.emp_status,
+                    looking_for_work: pr.looking_for_work,
+                    is_self_identified_carer: pr.is_self_identified_carer,
                     employee_pension_contributions: pr.employee_pension_contributions_weekly * WEEKS_IN_YEAR,
                     personal_pension_contributions: pr.personal_pension_contributions_weekly * WEEKS_IN_YEAR,
                     childcare_expenses: pr.childcare_expenses_weekly * WEEKS_IN_YEAR,
@@ -644,6 +1005,11 @@ fn assemble_dataset(
                     esa_contrib_reported: pr.esa_contrib_reported_weekly * WEEKS_IN_YEAR,
                     jsa_income_reported: pr.jsa_income_reported_weekly * WEEKS_IN_YEAR,
                     jsa_contrib_reported: pr.jsa_contrib_reported_weekly * WEEKS_IN_YEAR,
+                    other_benefits_reported: pr.other_benefits_reported_weekly * WEEKS_IN_YEAR,
+                    adp_dl_reported: pr.adp_dl_reported_weekly * WEEKS_IN_YEAR,
+                    adp_m_reported: pr.adp_m_reported_weekly * WEEKS_IN_YEAR,
+                    cdp_care_reported: pr.cdp_care_reported_weekly * WEEKS_IN_YEAR,
+                    cdp_mob_reported: pr.cdp_mob_reported_weekly * WEEKS_IN_YEAR,
                     would_claim_marriage_allowance: false,
                 });
 

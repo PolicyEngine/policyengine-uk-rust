@@ -2,6 +2,9 @@ import { SliderConfig } from "./types";
 
 export const YEARS = [2025, 2026, 2027, 2028, 2029];
 
+// All years for baseline forecasts (1994/95 through 2029/30)
+export const BASELINE_YEARS = Array.from({ length: 36 }, (_, i) => 1994 + i);
+
 export const SLIDERS: SliderConfig[] = [
   // ── Income Tax ──────────────────────────────────────────────
   {

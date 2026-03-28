@@ -1,0 +1,136 @@
+# UK Tax-Benefit Parameters for Fiscal Year 2001/02
+# Sources: Finance Act 2000, SI 2001/207 (Up-rating No.2 Order 2000), HMRC Table A.1/A.2/A.4
+
+fiscal_year: "2001/02"
+
+income_tax:
+  personal_allowance: 4535.0
+  pa_taper_threshold: 100000000.0  # No PA taper before 2010/11
+  pa_taper_rate: 0.0
+  uk_brackets:
+    - { rate: 0.10, threshold: 0.0 }
+    - { rate: 0.22, threshold: 1880.0 }
+    - { rate: 0.40, threshold: 29400.0 }
+  scottish_brackets:  # Scotland used UK rates until 2017/18
+    - { rate: 0.10, threshold: 0.0 }
+    - { rate: 0.22, threshold: 1880.0 }
+    - { rate: 0.40, threshold: 29400.0 }
+  dividend_allowance: 0.0  # Did not exist before 2016/17
+  dividend_basic_rate: 0.1
+  dividend_higher_rate: 0.325
+  dividend_additional_rate: 0.0
+  savings_starter_rate_band: 0.0  # Did not exist before 2015/16
+
+national_insurance:
+  primary_threshold_annual: 4524.0   # 87/week
+  upper_earnings_limit_annual: 29900.0  # 575/week
+  main_rate: 0.1
+  additional_rate: 0.0  # No additional rate above UEL until 2003/04
+  secondary_threshold_annual: 4524.0   # 87/week
+  employer_rate: 0.119
+  class2_flat_rate_weekly: 2.0
+  class2_small_profits_threshold: 3955.0
+  class4_lower_profits_limit: 4535.0
+  class4_upper_profits_limit: 29900.0
+  class4_main_rate: 0.07
+  class4_additional_rate: 0.0
+
+universal_credit:  # Did not exist until 2013/14
+  standard_allowance_single_under25: 0.0
+  standard_allowance_single_over25: 0.0
+  standard_allowance_couple_under25: 0.0
+  standard_allowance_couple_over25: 0.0
+  child_element_first: 0.0
+  child_element_subsequent: 0.0
+  disabled_child_lower: 0.0
+  disabled_child_higher: 0.0
+  lcwra_element: 0.0
+  carer_element: 0.0
+  taper_rate: 0.0
+  work_allowance_higher: 0.0
+  work_allowance_lower: 0.0
+  child_limit: 0
+
+child_benefit:
+  eldest_weekly: 15.5
+  additional_weekly: 10.35
+  hicbc_threshold: 999999.0  # HICBC did not exist before 2013/14
+  hicbc_taper_end: 999999.0
+
+state_pension:
+  new_state_pension_weekly: 0.0  # Did not exist until 2016/17
+  old_basic_pension_weekly: 72.5
+
+pension_credit:  # Did not exist until 2003/04 (MIG predecessor not modelled)
+  standard_minimum_single: 0.0
+  standard_minimum_couple: 0.0
+  savings_credit_threshold_single: 0.0
+  savings_credit_threshold_couple: 0.0
+
+benefit_cap:  # Did not exist until 2013/14
+  single_london: 0.0
+  single_outside_london: 0.0
+  non_single_london: 0.0
+  non_single_outside_london: 0.0
+  earnings_exemption_threshold: 0.0
+
+housing_benefit:
+  withdrawal_rate: 0.65
+  personal_allowance_single_under25: 42.0
+  personal_allowance_single_25_plus: 53.05
+  personal_allowance_couple: 83.25
+  child_allowance: 26.6
+  family_premium: 14.5
+
+tax_credits:
+  # WFTC (SI 2001/1141 Tax Credits Up-rating Order 2001)
+  # WFTC taper rate: 55%; applicable amount: reg 47; min 16 hrs/wk
+  wtc_basic_element: 2808.00       # Adult credit: £54.00/wk × 52 (SI 2001/1141 Sch.1 item 1)
+  wtc_couple_element: 0.0          # No separate couple element in WFTC
+  wtc_lone_parent_element: 0.0     # No separate lone parent element in WFTC
+  wtc_30_hour_element: 595.40      # 30-hour element: £11.45/wk × 52 (Sch.1 item 2)
+  ctc_child_element: 1352.00       # Child under 16: £26.00/wk × 52 (Sch.1 item 4)
+  ctc_family_element: 0.0          # Family element did not exist in WFTC
+  ctc_disabled_child_element: 1560.00  # £30.00/wk × 52 (SI 2001/367; Sch.1 item 6(a))
+  ctc_severely_disabled_child_element: 2134.60  # £41.05/wk × 52 (Sch.1 item 6(b))
+  income_threshold: 4830.80        # Applicable amount: £92.90/wk × 52 (SI 2001/1141 art.3(b))
+  taper_rate: 0.55                 # WFTC taper rate: 55%
+  wtc_min_hours_single: 16.0       # WFTC required 16 hours/wk
+  wtc_min_hours_couple: 16.0
+
+scottish_child_payment:  # Did not exist until 2021/22
+  weekly_amount: 0.0
+  max_age: 0.0
+
+disability_premiums:
+  # IS (General) Regs 1987 Sch.2 Pt.IV; uprated by SI 2001 uprating order
+  disability_premium_single: 22.6
+  disability_premium_couple: 32.25
+  enhanced_disability_premium_single: 11.05
+  enhanced_disability_premium_couple: 16.0
+  severe_disability_premium: 41.55
+  carer_premium: 24.4
+
+income_related_benefits:
+  esa_allowance_single_under25: 0.0  # ESA did not exist until 2008/09
+  esa_allowance_single_25_plus: 0.0
+  esa_allowance_couple: 0.0
+  esa_wrag_component: 0.0
+  esa_support_component: 0.0
+  jsa_allowance_single_under25: 42.0
+  jsa_allowance_single_25_plus: 53.05
+  jsa_allowance_couple: 83.25
+  carers_allowance_weekly: 41.75
+  ca_earnings_disregard_weekly: 50.0
+  ca_min_hours_caring: 35.0
+  ca_care_recipient_min_age: 16.0
+
+uc_migration:
+  housing_benefit: 0.0
+  tax_credits: 0.0
+  income_support: 0.0
+
+growth_factors:
+  cpi_rate: 0.0
+  gdp_deflator: 0.0
+  earnings_growth: 0.0

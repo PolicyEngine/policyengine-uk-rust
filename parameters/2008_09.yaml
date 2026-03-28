@@ -1,0 +1,133 @@
+# UK Tax-Benefit Parameters for Fiscal Year 2008/09
+# Sources: Finance Act 2008, SI 2008/3003
+# Major: 10% starting rate abolished (except savings); basic rate cut to 20%; ESA introduced
+
+fiscal_year: "2008/09"
+
+income_tax:
+  personal_allowance: 6035.0     # Big increase to compensate for 10p band removal
+  pa_taper_threshold: 100000000.0
+  pa_taper_rate: 0.0
+  uk_brackets:
+    - { rate: 0.20, threshold: 0.0 }       # 10% starting rate abolished; basic rate cut to 20%
+    - { rate: 0.40, threshold: 34800.0 }
+  scottish_brackets:
+    - { rate: 0.20, threshold: 0.0 }
+    - { rate: 0.40, threshold: 34800.0 }
+  dividend_allowance: 0.0
+  dividend_basic_rate: 0.10
+  dividend_higher_rate: 0.325
+  dividend_additional_rate: 0.0
+  savings_starter_rate_band: 2320.0  # 10% savings rate retained
+
+national_insurance:
+  primary_threshold_annual: 5435.0   # £105/week
+  upper_earnings_limit_annual: 40040.0  # £770/week
+  main_rate: 0.11
+  additional_rate: 0.01
+  secondary_threshold_annual: 5435.0
+  employer_rate: 0.128
+  class2_flat_rate_weekly: 2.30
+  class2_small_profits_threshold: 4825.0
+  class4_lower_profits_limit: 5435.0
+  class4_upper_profits_limit: 40040.0
+  class4_main_rate: 0.08
+  class4_additional_rate: 0.01
+
+child_benefit:
+  eldest_weekly: 18.80
+  additional_weekly: 12.55
+  hicbc_threshold: 100000000.0
+  hicbc_taper_end: 100000000.0
+
+state_pension:
+  new_state_pension_weekly: 0.0
+  old_basic_pension_weekly: 90.70
+
+pension_credit:
+  standard_minimum_single: 124.05
+  standard_minimum_couple: 189.35
+  savings_credit_threshold_single: 91.20
+  savings_credit_threshold_couple: 145.80
+
+benefit_cap:
+  single_london: 0.0
+  single_outside_london: 0.0
+  non_single_london: 0.0
+  non_single_outside_london: 0.0
+  earnings_exemption_threshold: 0.0
+
+housing_benefit:
+  withdrawal_rate: 0.65
+  personal_allowance_single_under25: 47.75
+  personal_allowance_single_25_plus: 60.50
+  personal_allowance_couple: 94.95
+  child_allowance: 52.59
+  family_premium: 17.30
+
+tax_credits:
+  wtc_basic_element: 1730.0     # No uprating for 2008/09 (same as 2007/08, SI 2007/828)
+  wtc_couple_element: 1700.0    # No uprating for 2008/09 (same as 2007/08)
+  wtc_lone_parent_element: 1700.0  # No uprating for 2008/09 (same as 2007/08)
+  wtc_30_hour_element: 705.0    # No uprating for 2008/09 (same as 2007/08)
+  ctc_child_element: 2085.0
+  ctc_family_element: 545.0
+  ctc_disabled_child_element: 2670.0
+  ctc_severely_disabled_child_element: 1075.0
+  income_threshold: 6420.0
+  taper_rate: 0.39
+  wtc_min_hours_single: 30.0
+  wtc_min_hours_couple: 16.0
+
+scottish_child_payment:
+  weekly_amount: 0.0
+  max_age: 0.0
+
+disability_premiums:
+  disability_premium_single: 26.35
+  disability_premium_couple: 37.60
+  enhanced_disability_premium_single: 13.15
+  enhanced_disability_premium_couple: 18.85
+  severe_disability_premium: 47.15
+  carer_premium: 16.95
+
+income_related_benefits:
+  # ESA introduced October 2008 (Welfare Reform Act 2007)
+  esa_allowance_single_under25: 47.75
+  esa_allowance_single_25_plus: 60.50
+  esa_allowance_couple: 94.95
+  esa_wrag_component: 24.50
+  esa_support_component: 30.85
+  jsa_allowance_single_under25: 47.75
+  jsa_allowance_single_25_plus: 60.50
+  jsa_allowance_couple: 94.95
+  carers_allowance_weekly: 50.55
+  ca_earnings_disregard_weekly: 95.0
+  ca_min_hours_caring: 35.0
+  ca_care_recipient_min_age: 16.0
+
+universal_credit:
+  standard_allowance_single_under25: 0.0
+  standard_allowance_single_over25: 0.0
+  standard_allowance_couple_under25: 0.0
+  standard_allowance_couple_over25: 0.0
+  child_element_first: 0.0
+  child_element_subsequent: 0.0
+  disabled_child_lower: 0.0
+  disabled_child_higher: 0.0
+  lcwra_element: 0.0
+  carer_element: 0.0
+  taper_rate: 0.0
+  work_allowance_higher: 0.0
+  work_allowance_lower: 0.0
+  child_limit: 0
+
+uc_migration:
+  housing_benefit: 0.0
+  tax_credits: 0.0
+  income_support: 0.0
+
+growth_factors:
+  cpi_rate: 0.036
+  gdp_deflator: 0.029
+  earnings_growth: 0.035

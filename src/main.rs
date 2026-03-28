@@ -13,7 +13,6 @@ use std::path::PathBuf;
 use crate::engine::Simulation;
 use crate::parameters::Parameters;
 use crate::reforms::Reform;
-use crate::data::synthetic::generate_synthetic_frs;
 use crate::data::frs::load_frs;
 use crate::data::clean::{write_clean_csvs, load_clean_frs};
 
@@ -31,18 +30,20 @@ struct Cli {
     reform_json: Option<String>,
 
     /// Path to FRS CSV data directory (e.g. data/UKDA-9367-csv/csv/).
-    /// If omitted, uses synthetic data.
     #[arg(long)]
     frs: Option<PathBuf>,
+
+    /// Base directory containing per-year raw FRS subdirectories (frs_YYYY_YY/).
+    /// The correct subdirectory for --year is auto-detected.
+    /// Each subdirectory should contain extracted UKDS tab files.
+    #[arg(long)]
+    frs_raw: Option<PathBuf>,
 
     /// Fiscal year start (e.g. 2029 for FY 2029/30).
     /// Available: 2023-2029.
     #[arg(short, long, default_value = "2025")]
     year: u32,
 
-    /// Number of synthetic households (more = slower but more precise)
-    #[arg(short = 'n', long, default_value = "20000")]
-    households: usize,
 
     /// Export baseline parameters to YAML (useful for writing reforms)
     #[arg(long)]
@@ -78,10 +79,42 @@ struct Cli {
 struct JsonOutput {
     fiscal_year: String,
     budgetary_impact: BudgetaryImpact,
+    income_breakdown: IncomeBreakdown,
     program_breakdown: ProgramBreakdown,
     caseloads: Caseloads,
     decile_impacts: Vec<DecileImpact>,
     winners_losers: WinnersLosers,
+    /// Weighted mean HBAI equivalised net income BHC across all households.
+    avg_hbai_net_income: f64,
+    /// CPI index (2025/26 = 100) for deflating nominal values to real terms.
+    cpi_index: f64,
+}
+
+/// CPI index by fiscal year (2025/26 = 100).
+/// Sources: ONS CPI annual average (historical), OBR EFO March 2026 (forecast).
+/// Each value is the annual average CPI index for that fiscal year.
+fn cpi_index_for_year(year: u32) -> f64 {
+    // ONS CPI Index (2015=100) annual averages, mapped to fiscal years.
+    // Historical values from ONS series D7BT; forecasts from OBR EFO March 2026.
+    // All rebased to 2025/26 = 100.
+    let table: &[(u32, f64)] = &[
+        (1994, 55.5), (1995, 56.9), (1996, 58.3), (1997, 59.5),
+        (1998, 61.0), (1999, 61.7), (2000, 62.7), (2001, 63.6),
+        (2002, 64.7), (2003, 65.7), (2004, 66.8), (2005, 68.1),
+        (2006, 69.8), (2007, 71.5), (2008, 74.1), (2009, 75.5),
+        (2010, 78.0), (2011, 81.5), (2012, 83.6), (2013, 85.6),
+        (2014, 86.5), (2015, 86.5), (2016, 87.5), (2017, 89.9),
+        (2018, 92.1), (2019, 93.8), (2020, 94.6), (2021, 97.5),
+        (2022, 107.3), (2023, 113.4), (2024, 116.1),
+        (2025, 120.1), (2026, 122.5), (2027, 124.9),
+        (2028, 127.4), (2029, 130.0),
+    ];
+    // Rebase so 2025/26 = 100
+    let base = 120.1;
+    table.iter()
+        .find(|(y, _)| *y == year)
+        .map(|(_, v)| v / base * 100.0)
+        .unwrap_or(100.0)
 }
 
 #[derive(Serialize)]
@@ -93,6 +126,17 @@ struct BudgetaryImpact {
     reform_benefits: f64,
     benefit_spending_change: f64,
     net_cost: f64,
+}
+
+#[derive(Serialize)]
+struct IncomeBreakdown {
+    employment_income: f64,
+    self_employment_income: f64,
+    pension_income: f64,
+    savings_interest_income: f64,
+    dividend_income: f64,
+    property_income: f64,
+    other_income: f64,
 }
 
 #[derive(Serialize)]
@@ -108,8 +152,12 @@ struct ProgramBreakdown {
     child_tax_credit: f64,
     working_tax_credit: f64,
     income_support: f64,
+    esa_income_related: f64,
+    jsa_income_based: f64,
+    carers_allowance: f64,
     scottish_child_payment: f64,
     benefit_cap_reduction: f64,
+    passthrough_benefits: f64,
 }
 
 #[derive(Serialize)]
@@ -125,6 +173,9 @@ struct Caseloads {
     child_tax_credit: f64,
     working_tax_credit: f64,
     income_support: f64,
+    esa_income_related: f64,
+    jsa_income_based: f64,
+    carers_allowance: f64,
     scottish_child_payment: f64,
     benefit_cap_affected: f64,
 }
@@ -145,6 +196,32 @@ struct WinnersLosers {
     unchanged_pct: f64,
     avg_gain: f64,
     avg_loss: f64,
+}
+
+/// Find the tab-file directory for a given fiscal year within the frs_raw base.
+/// Handles UKDS structure: frs_raw/frs_YYYY_YY/UKDA-XXXX-tab/tab/
+fn find_frs_tab_dir(base: &std::path::Path, year: u32) -> anyhow::Result<PathBuf> {
+    let dirname = format!("frs_{}_{:02}", year, (year + 1) % 100);
+    let year_dir = base.join(&dirname);
+    if !year_dir.is_dir() {
+        anyhow::bail!("FRS directory not found: {}", year_dir.display());
+    }
+    // Look for UKDA-XXXX-tab/tab/ inside the year directory
+    for entry in std::fs::read_dir(&year_dir)? {
+        let entry = entry?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with("UKDA-") && name.ends_with("-tab") {
+            let tab_dir = entry.path().join("tab");
+            if tab_dir.is_dir() {
+                return Ok(tab_dir);
+            }
+        }
+    }
+    // Fallback: tab files might be directly in the year directory
+    if year_dir.join("househol.tab").exists() || year_dir.join("adult.tab").exists() {
+        return Ok(year_dir);
+    }
+    anyhow::bail!("No tab directory found in {}", year_dir.display())
 }
 
 fn main() -> anyhow::Result<()> {
@@ -170,7 +247,7 @@ fn main() -> anyhow::Result<()> {
         let frs_path = cli.frs.as_ref()
             .ok_or_else(|| anyhow::anyhow!("--extract-frs requires --frs <raw-frs-dir>"))?;
         eprintln!("Loading raw FRS from {}...", frs_path.display());
-        let mut dataset = load_frs(frs_path)?;
+        let mut dataset = load_frs(frs_path, cli.year)?;
         eprintln!("Loaded {} households, {} people", dataset.households.len(), dataset.people.len());
         eprintln!("Computing ENR flags from baseline {}...", cli.year);
         write_clean_csvs(&mut dataset, &baseline_params, output_dir)?;
@@ -184,10 +261,33 @@ fn main() -> anyhow::Result<()> {
         load_clean_frs(clean_path)?
     } else if let Some(frs_path) = &cli.frs {
         if !json_mode { println!("  {} Loading FRS microdata from {}...", "▸".bright_cyan(), frs_path.display()); }
-        load_frs(frs_path)?
+        load_frs(frs_path, cli.year)?
+    } else if let Some(raw_base) = &cli.frs_raw {
+        // Try to find this year's FRS; if not found, load latest available and uprate
+        let tab_dir_result = find_frs_tab_dir(raw_base, cli.year);
+        match tab_dir_result {
+            Ok(tab_dir) => {
+                if !json_mode { println!("  {} Loading raw FRS from {}...", "▸".bright_cyan(), tab_dir.display()); }
+                load_frs(&tab_dir, cli.year)?
+            }
+            Err(_) => {
+                // Find the latest available FRS year and uprate
+                let latest_frs_year = (1994..=cli.year).rev()
+                    .find(|y| find_frs_tab_dir(raw_base, *y).is_ok())
+                    .ok_or_else(|| anyhow::anyhow!("No FRS data found in {}", raw_base.display()))?;
+                let tab_dir = find_frs_tab_dir(raw_base, latest_frs_year)?;
+                if !json_mode {
+                    println!("  {} Loading FRS {}/{} and uprating to {}/{}...",
+                        "▸".bright_cyan(), latest_frs_year, (latest_frs_year + 1) % 100,
+                        cli.year, (cli.year + 1) % 100);
+                }
+                let mut ds = load_frs(&tab_dir, latest_frs_year)?;
+                ds.uprate_to(cli.year);
+                ds
+            }
+        }
     } else {
-        if !json_mode { println!("  {} Generating synthetic population...", "▸".bright_cyan()); }
-        generate_synthetic_frs(cli.year)
+        anyhow::bail!("No data source specified. Use --frs, --frs-raw, or --clean-frs.")
     };
 
     // Load reform
@@ -312,7 +412,16 @@ fn main() -> anyhow::Result<()> {
 
     // Program-level breakdown and caseloads (weighted totals from reform)
     let benunits = &dataset.benunits;
-    let (program_breakdown, caseloads) = {
+    let people = &dataset.people;
+    let (income_breakdown, program_breakdown, caseloads) = {
+        // Income aggregates
+        let mut total_employment = 0.0f64;
+        let mut total_self_employment = 0.0f64;
+        let mut total_pension = 0.0f64;
+        let mut total_savings = 0.0f64;
+        let mut total_dividend = 0.0f64;
+        let mut total_property = 0.0f64;
+        let mut total_other = 0.0f64;
         // Tax spending and caseloads
         let mut income_tax = 0.0f64;
         let mut employee_ni = 0.0f64;
@@ -322,6 +431,14 @@ fn main() -> anyhow::Result<()> {
         let mut eni_payers = 0.0f64;
         for hh in households {
             for &pid in &hh.person_ids {
+                let person = &people[pid];
+                total_employment += hh.weight * person.employment_income;
+                total_self_employment += hh.weight * person.self_employment_income;
+                total_pension += hh.weight * person.pension_income;
+                total_savings += hh.weight * person.savings_interest_income;
+                total_dividend += hh.weight * person.dividend_income;
+                total_property += hh.weight * person.property_income;
+                total_other += hh.weight * (person.maintenance_income + person.miscellaneous_income + person.other_income);
                 let pr = &reformed.person_results[pid];
                 income_tax += hh.weight * pr.income_tax;
                 employee_ni += hh.weight * pr.national_insurance;
@@ -340,8 +457,12 @@ fn main() -> anyhow::Result<()> {
         let mut ctc = 0.0f64;
         let mut wtc = 0.0f64;
         let mut is_val = 0.0f64;
+        let mut esa_ir = 0.0f64;
+        let mut jsa_ib = 0.0f64;
+        let mut ca = 0.0f64;
         let mut scp = 0.0f64;
         let mut cap = 0.0f64;
+        let mut passthrough = 0.0f64;
         let mut cl_uc = 0.0f64;
         let mut cl_cb = 0.0f64;
         let mut cl_sp = 0.0f64;
@@ -350,6 +471,9 @@ fn main() -> anyhow::Result<()> {
         let mut cl_ctc = 0.0f64;
         let mut cl_wtc = 0.0f64;
         let mut cl_is = 0.0f64;
+        let mut cl_esa = 0.0f64;
+        let mut cl_jsa = 0.0f64;
+        let mut cl_ca = 0.0f64;
         let mut cl_scp = 0.0f64;
         let mut cl_cap = 0.0f64;
         for bu in benunits {
@@ -363,8 +487,12 @@ fn main() -> anyhow::Result<()> {
             ctc += w * br.child_tax_credit;
             wtc += w * br.working_tax_credit;
             is_val += w * br.income_support;
+            esa_ir += w * br.esa_income_related;
+            jsa_ib += w * br.jsa_income_based;
+            ca += w * br.carers_allowance;
             scp += w * br.scottish_child_payment;
             cap += w * br.benefit_cap_reduction;
+            passthrough += w * br.passthrough_benefits;
             if br.universal_credit > 0.0 { cl_uc += w; }
             if br.child_benefit > 0.0 { cl_cb += w; }
             if br.state_pension > 0.0 { cl_sp += w; }
@@ -373,10 +501,21 @@ fn main() -> anyhow::Result<()> {
             if br.child_tax_credit > 0.0 { cl_ctc += w; }
             if br.working_tax_credit > 0.0 { cl_wtc += w; }
             if br.income_support > 0.0 { cl_is += w; }
+            if br.esa_income_related > 0.0 { cl_esa += w; }
+            if br.jsa_income_based > 0.0 { cl_jsa += w; }
+            if br.carers_allowance > 0.0 { cl_ca += w; }
             if br.scottish_child_payment > 0.0 { cl_scp += w; }
             if br.benefit_cap_reduction > 0.0 { cl_cap += w; }
         }
-        (ProgramBreakdown {
+        (IncomeBreakdown {
+            employment_income: total_employment,
+            self_employment_income: total_self_employment,
+            pension_income: total_pension,
+            savings_interest_income: total_savings,
+            dividend_income: total_dividend,
+            property_income: total_property,
+            other_income: total_other,
+        }, ProgramBreakdown {
             income_tax,
             employee_ni,
             employer_ni,
@@ -388,8 +527,12 @@ fn main() -> anyhow::Result<()> {
             child_tax_credit: ctc,
             working_tax_credit: wtc,
             income_support: is_val,
+            esa_income_related: esa_ir,
+            jsa_income_based: jsa_ib,
+            carers_allowance: ca,
             scottish_child_payment: scp,
             benefit_cap_reduction: cap,
+            passthrough_benefits: passthrough,
         }, Caseloads {
             income_tax_payers: it_payers,
             ni_payers,
@@ -402,10 +545,22 @@ fn main() -> anyhow::Result<()> {
             child_tax_credit: cl_ctc,
             working_tax_credit: cl_wtc,
             income_support: cl_is,
+            esa_income_related: cl_esa,
+            jsa_income_based: cl_jsa,
+            carers_allowance: cl_ca,
             scottish_child_payment: cl_scp,
             benefit_cap_affected: cl_cap,
         })
     };
+
+    // Weighted mean HBAI equivalised net income (baseline)
+    let total_weight: f64 = households.iter().map(|h| h.weight).sum();
+    let avg_hbai_net_income = if total_weight > 0.0 {
+        let weighted_sum: f64 = households.iter()
+            .map(|h| h.weight * baseline.household_results[h.id].equivalised_net_income)
+            .sum();
+        (weighted_sum / total_weight).round()
+    } else { 0.0 };
 
     // JSON output mode
     if json_mode {
@@ -420,10 +575,13 @@ fn main() -> anyhow::Result<()> {
                 benefit_spending_change: benefit_change,
                 net_cost,
             },
+            income_breakdown,
             program_breakdown,
             caseloads,
             decile_impacts,
             winners_losers,
+            avg_hbai_net_income,
+            cpi_index: cpi_index_for_year(cli.year),
         };
         println!("{}", serde_json::to_string(&output)?);
         return Ok(());
@@ -695,5 +853,87 @@ mod obr_validation {
         // Child benefit claimants: ~6m families
         assert!(cb_claimants > 4e6 && cb_claimants < 9e6,
             "CB claimants {:.1}m outside [4m, 9m]", cb_claimants / 1e6);
+    }
+}
+
+#[cfg(test)]
+mod historical_frs_tests {
+    use crate::data::frs::load_frs;
+    use crate::engine::Simulation;
+    use crate::parameters::Parameters;
+    use std::path::Path;
+
+    /// Test that representative historical FRS years load and simulate correctly.
+    /// Tests one year per era: Early (1994), Mid (2003), Late (2013), Current (2023).
+    /// Skips if frs_raw not present.
+    #[test]
+    fn all_historical_years_run() {
+        let raw_base = Path::new("data/frs_raw");
+        if !raw_base.exists() {
+            eprintln!("Skipping historical FRS test: data/frs_raw not found");
+            return;
+        }
+
+        // One representative year per FrsEra
+        for year in [1994u32, 2003, 2013, 2023] {
+            let suffix = format!("frs_{}_{:02}", year, (year + 1) % 100);
+            let year_dir = raw_base.join(&suffix);
+            if !year_dir.exists() {
+                eprintln!("Skipping {}/{}: directory not found", year, year + 1);
+                continue;
+            }
+
+            let tab_dir = find_tab_dir(&year_dir);
+            let tab_dir = match tab_dir {
+                Some(d) => d,
+                None => {
+                    eprintln!("Skipping {}/{}: no tab directory found", year, year + 1);
+                    continue;
+                }
+            };
+
+            let dataset = load_frs(&tab_dir, year)
+                .unwrap_or_else(|e| panic!("Failed to load FRS {}/{}: {}", year, year + 1, e));
+
+            assert!(!dataset.households.is_empty(),
+                "FRS {}/{} loaded 0 households", year, year + 1);
+            assert!(!dataset.people.is_empty(),
+                "FRS {}/{} loaded 0 people", year, year + 1);
+
+            let params = Parameters::for_year(year)
+                .unwrap_or_else(|e| panic!("Failed to load params {}/{}: {}", year, year + 1, e));
+
+            let sim = Simulation::new(
+                dataset.people.clone(), dataset.benunits.clone(),
+                dataset.households.clone(), params,
+            );
+            let results = sim.run();
+
+            // Basic sanity: income tax should be positive
+            let it: f64 = dataset.households.iter()
+                .flat_map(|h| h.person_ids.iter()
+                    .map(|&p| h.weight * results.person_results[p].income_tax))
+                .sum();
+            assert!(it > 10e9,
+                "FRS {}/{}: income tax £{:.0}bn suspiciously low", year, year + 1, it / 1e9);
+
+            eprintln!("  {}/{}: OK ({} HH, IT=£{:.0}bn)",
+                year, year + 1, dataset.households.len(), it / 1e9);
+        }
+    }
+
+    fn find_tab_dir(year_dir: &Path) -> Option<std::path::PathBuf> {
+        for entry in std::fs::read_dir(year_dir).ok()? {
+            let entry = entry.ok()?;
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with("UKDA-") && name.ends_with("-tab") {
+                let tab = entry.path().join("tab");
+                if tab.is_dir() { return Some(tab); }
+            }
+        }
+        if year_dir.join("househol.tab").exists() {
+            return Some(year_dir.to_path_buf());
+        }
+        None
     }
 }

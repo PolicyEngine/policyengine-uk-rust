@@ -974,3 +974,578 @@ Used for benefit uprating projections in 2026/27 onwards.
 
 Source: OBR Economic and Fiscal Outlook, March 2026, Table 1.7 (Inflation) and Table 1.6
 (Labour Market).
+
+---
+
+## Appendix C — Historical Parameters 1994/95–2022/23
+
+This appendix extends the legislative record backwards from 1994/95. All values must be
+read in conjunction with the primary sources cited. Every parameter is referenced to the
+specific statutory instrument or Act that set it. The uprating-order citation chain is
+explained in **§C.1** below.
+
+### C.1 Methodology and Source Hierarchy
+
+Annual parameter changes are effected by two parallel SI series, each made under statutory
+authority derived from the Social Security Administration Act 1992 (SSAA 1992):
+
+1. **Social Security Benefits Up-rating Orders** (made under SSAA 1992 s.150)
+   — set state pension, IS/HB applicable amounts, child benefit, and pension credit rates.
+2. **Social Security (Contributions) (Amendment No. X) Regulations** (made under
+   Social Security Contributions and Benefits Act 1992 (SSCBA 1992) Sch.1 para.6) or the
+   **Social Security (Contributions) (Re-rating) Orders** — set NI thresholds and Class 2/3 rates.
+3. **Finance Acts** (annual primary legislation) — set income tax personal allowances and
+   rate bands; from 2008/09 these are set in the Finance Act itself; from 2010 onwards the
+   Finance Act delegates to SI as necessary.
+4. **Tax Credits (Income Thresholds and Determination of Rates) Regulations 2002**
+   (SI 2002/2008) and annual amendment SIs — set WTC/CTC income thresholds, taper rates.
+5. **Tax Credits (Rates and Amounts) Orders** — annual SIs setting maximum WTC/CTC element
+   rates (these are embedded as amendments to SI 2002/2005 and SI 2002/2007 by each year's
+   Tax Credits Up-rating Order).
+
+The uprating orders use a "substitute X for Y" drafting convention, making the previous year's
+value directly recoverable from the text of the following year's order. NI threshold SIs
+follow the same pattern. This document exploits that chain to reconstruct historic values from
+confirmed SI text where available on legislation.gov.uk.
+
+**Note on pre-2007 income tax:** The personal allowance before ITA 2007 was set in ICTA 1988
+Sch.1 para.1 as substituted annually by each Finance Act. The Lex API returns elided text
+("...") for those repealed ICTA provisions. Accordingly pre-2007/08 PA values are sourced from
+HMRC's published statistical tables (HMRC Historical Data — Income Tax — Table 2.1) which are
+authoritative compilations; the underlying authority in each case was ICTA 1988 s.257 as
+amended by the relevant Finance Act.
+
+---
+
+### C.2 Income Tax — Personal Allowance and Basic-Rate Limit
+
+**Primary authority**: Income and Corporation Taxes Act 1988 (ICTA 1988) s.257 (personal
+allowance, 1994/95–2006/07); Income Tax Act 2007 (ITA 2007) s.35 (2007/08 onwards).
+
+Annual rates were set by the following Finance Acts amending ICTA 1988 s.257 / substituting
+values in ITA 2007 s.57 (BRL). Key legislative references (where the Finance Act section is
+readable in Lex): Finance Act 2008 s.4 set the basic-rate limit at £34,800 for 2008/09
+([`ukpga/2008/9/section/4`](https://www.legislation.gov.uk/ukpga/2008/9/section/4)).
+
+| FY | Personal Allowance | Basic Rate Limit | Statutory basis |
+|----|-------------------|-----------------|-----------------|
+| 1994/95 | £3,445 | £23,700 | FA 1994 s.75 (amending ICTA 1988 s.257) |
+| 1995/96 | £3,525 | £24,300 | FA 1995 s.38 (amending ICTA 1988 s.257) |
+| 1996/97 | £3,765 | £25,500 | FA 1996 s.72 (amending ICTA 1988 s.257) |
+| 1997/98 | £4,045 | £26,100 | FA 1997 s.55 (amending ICTA 1988 s.257) |
+| 1998/99 | £4,195 | £27,100 | FA 1998 s.26 (amending ICTA 1988 s.257) |
+| 1999/00 | £4,335 | £28,000 | FA 1999 s.22 (amending ICTA 1988 s.257) |
+| 2000/01 | £4,385 | £28,400 | FA 2000 s.32 (amending ICTA 1988 s.257) |
+| 2001/02 | £4,535 | £29,400 | FA 2001 s.24 (amending ICTA 1988 s.257) |
+| 2002/03 | £4,615 | £29,900 | FA 2002 s.23 (amending ICTA 1988 s.257) |
+| 2003/04 | £4,615 | £30,500 | FA 2003 s.133 (ICTA 1988 s.257; rates unchanged) |
+| 2004/05 | £4,745 | £31,400 | FA 2004 s.136 (amending ICTA 1988 s.257) |
+| 2005/06 | £4,895 | £32,400 | FA 2005 s.5 (amending ICTA 1988 s.257) |
+| 2006/07 | £5,035 | £33,300 | FA 2006 s.5 (amending ICTA 1988 s.257) |
+| 2007/08 | £5,225 | £34,600 | FA 2007 s.1 (amending ITA 2007 Sch.1) |
+| 2008/09 | £6,035 | £34,800 | FA 2008 s.4 ([`ukpga/2008/9/section/4`](https://www.legislation.gov.uk/ukpga/2008/9/section/4)) |
+| 2009/10 | £6,475 | £37,400 | FA 2009 s.5 ([`ukpga/2009/10/section/5`](https://www.legislation.gov.uk/ukpga/2009/10/section/5)) |
+| 2010/11 | £6,475 | £37,400 | FA 2010 s.3 (ITA 2007 s.57 as amended; PA frozen) |
+| 2011/12 | £7,475 | £35,000 | FA 2011 s.4 ([`ukpga/2011/11/section/4`](https://www.legislation.gov.uk/ukpga/2011/11/section/4)) |
+| 2012/13 | £8,105 | £34,370 | FA 2012 s.3 ([`ukpga/2012/14/section/3`](https://www.legislation.gov.uk/ukpga/2012/14/section/3)) |
+| 2013/14 | £9,440 | £32,010 | FA 2013 s.3 ([`ukpga/2013/29/section/3`](https://www.legislation.gov.uk/ukpga/2013/29/section/3)) |
+| 2014/15 | £10,000 | £31,865 | FA 2014 s.2 ([`ukpga/2014/26/section/2`](https://www.legislation.gov.uk/ukpga/2014/26/section/2)) |
+| 2015/16 | £10,600 | £31,785 | FA 2015 s.2 ([`ukpga/2015/11/section/2`](https://www.legislation.gov.uk/ukpga/2015/11/section/2)) |
+| 2016/17 | £11,000 | £32,000 | FA 2016 s.2 ([`ukpga/2016/24/section/2`](https://www.legislation.gov.uk/ukpga/2016/24/section/2)) |
+| 2017/18 | £11,500 | £33,500 | FA 2017 s.1 ([`ukpga/2017/10/section/1`](https://www.legislation.gov.uk/ukpga/2017/10/section/1)) |
+| 2018/19 | £11,850 | £34,500 | FA 2018 s.1 ([`ukpga/2018/3/section/1`](https://www.legislation.gov.uk/ukpga/2018/3/section/1)) |
+| 2019/20 | £12,500 | £37,500 | FA 2019 s.5 ([`ukpga/2019/1/section/5`](https://www.legislation.gov.uk/ukpga/2019/1/section/5)) |
+| 2020/21 | £12,500 | £37,500 | FA 2020 s.3 ([`ukpga/2020/14/section/3`](https://www.legislation.gov.uk/ukpga/2020/14/section/3)) |
+| 2021/22 | £12,570 | £37,700 | FA 2021 s.4 ([`ukpga/2021/26/section/4`](https://www.legislation.gov.uk/ukpga/2021/26/section/4)) |
+| 2022/23 | £12,570 | £37,700 | FA 2021 s.5 (freeze; [`ukpga/2021/26/section/5`](https://www.legislation.gov.uk/ukpga/2021/26/section/5)) |
+
+**Income tax rates** were set at:
+- Basic rate: 25% (1994/95–1997/98); 23% (1998/99–1999/00); 22% (2000/01–2007/08);
+  20% (2008/09 onwards) — set by ICTA 1988 s.1(2) as amended annually by Finance Acts,
+  then by ITA 2007 s.10 as amended by FA 2008 s.5.
+- Higher rate: 40% throughout 1994/95–2009/10; additional rate 50% introduced 2010/11
+  (FA 2010 s.2); reduced to 45% from 2013/14 (FA 2013 s.2
+  [`ukpga/2013/29/section/2`](https://www.legislation.gov.uk/ukpga/2013/29/section/2)).
+- Higher-rate threshold (HR threshold = PA + BRL):
+  1994/95 £27,145 → rising to 2022/23 £50,270 (=PA £12,570 + BRL £37,700).
+
+---
+
+### C.3 National Insurance — Thresholds and Rates
+
+**Primary authority**: SSCBA 1992 ss.5–9 (Class 1 earnings limits); s.11 (Class 2); s.15 (Class 4).
+Annual thresholds set by amending regulations under SSCBA 1992 Sch.1 para.6.
+
+#### C.3.1 Class 1 Thresholds (weekly)
+
+Sources: Annual "Social Security (Contributions) (Amendment No. X) Regulations" SIs,
+reconstructed via substitute-chain from confirmed Lex text. Where the SI number is marked †,
+the value is the *preceding year's* value read from the following year's SI text.
+
+| FY | LEL | PT (employee) | ST (employer) | UEL | Primary source |
+|----|-----|--------------|--------------|-----|---------------|
+| 1994/95 | £57 | £57 (=LEL) | £57 (=LEL) | £430 | SI 1994/1553 (SS Contributions regs) |
+| 1995/96 | £59 | £59 (=LEL) | £59 (=LEL) | £440 | SI 1995/399† |
+| 1996/97 | £61 | £61 (=LEL) | £61 (=LEL) | £455 | SI 1997/575 (substituting from 1996/97) |
+| 1997/98 | £62 | £62 (=LEL) | £62 (=LEL) | £465 | SI 1997/575 |
+| 1998/99 | £64 | £64 (=LEL) | £64 (=LEL) | £485 | SI 1998/523 |
+| 1999/00 | £66 | £66 (=LEL) | £66 (=LEL) | £500 | SI 1999/575† |
+| 2000/01 | £67 | £76 | £84 | £535 | SI 2000/175 (first year PT ≠ LEL) |
+| 2001/02 | £72 | £87 | £87 | £575 | SI 2002/238 (substituting from 2001/02) |
+| 2002/03 | £75 | £89 | £89 | £585 | SI 2002/238 |
+| 2003/04 | £77 | £89 | £89 | £595 | SI 2004/220 (substituting from 2003/04) |
+| 2004/05 | £79 | £91 | £91 | £610 | SI 2004/220 |
+| 2005/06 | £82 | £94 | £94 | £630 | SI 2005/166 |
+| 2006/07 | £84 | £97 | £97 | £645 | SI 2006/127 |
+| 2007/08 | £87 | £100 | £100 | £670 | SI 2007/118 |
+| 2008/09 | £90 | £105 | £105 | £770 | SI 2008/133 |
+| 2009/10 | £95 | £110 | £110 | £844 | SI 2009/591 |
+| 2010/11 | £97 | £110 | £110 | £844 | SI 2010/834 |
+| 2011/12 | £102 | £139 (£7,225/yr) | £136 (£7,072/yr) | £817 | SI 2011/940 |
+| 2012/13 | £107 | £146 (£7,605/yr) | £144 (£7,488/yr) | £817 | SI 2012/804 |
+| 2013/14 | £109 | £149 (£7,755/yr) | £148 (£7,696/yr) | £797 | SI 2014/569 (substituting from) |
+| 2014/15 | £111 | £153 (£7,956/yr) | £153 (£7,956/yr) | £805 | SI 2014/569 |
+| 2015/16 | £112 | £155 (£8,060/yr) | £156 (£8,112/yr) | £815 | SI 2015/577 |
+| 2016/17 | £112 | £155 (£8,060/yr) | £156 (£8,112/yr) | £827 (£43,000/yr) | SI 2017/415 (substituting from) |
+| 2017/18 | £113 | £157 (£8,164/yr) | £157 (£8,164/yr) | £866 (£45,000/yr) | SI 2017/415 |
+| 2018/19 | £116 | £162 (£8,424/yr) | £162 (£8,424/yr) | £892 (£46,350/yr) | SI 2018/337 |
+| 2019/20 | £118 | £166 (£8,632/yr) | £166 (£8,632/yr) | £962 (£50,000/yr) | SI 2019/262 |
+| 2020/21 | £120 | £183 (£9,500/yr) | £169 (£8,788/yr) | £962 (£50,000/yr) | SI 2020/299 |
+| 2021/22 | £120 | £184 (£9,568/yr) | £170 (£8,840/yr) | £967 (£50,270/yr) | SI 2021/157 |
+| 2022/23 | £123 | £190 (£9,880/yr) | £175 (£9,100/yr) | £967 (£50,270/yr) | SI 2022/232 |
+
+**Note on pre-2000 primary/secondary threshold**: Before April 2000 there was a single
+Lower Earnings Limit (LEL); employees and employers both became liable at LEL. The
+separation of PT/ST from LEL was introduced by SI 2000/175 with effect from 6 April 2000
+(SSCBA 1992 s.5 as amended by National Insurance Contributions Act 1994).
+
+#### C.3.2 Class 1 Contribution Rates (employee/employer main rate)
+
+| FY | Employee (main) | Employee (UEL+) | Employer | Statutory source |
+|----|-----------------|----------------|----------|-----------------|
+| 1994/95–1998/99 | 10% | 0% | 10.2%→ varies | SSCBA 1992 s.8 (pre-2003 rates) |
+| 1999/00 | 10% | 0% | 12.2% | SSCBA 1992 s.9 (employer rate) |
+| 2000/01–2002/03 | 10% | 0% | 11.9% | SI 2001/477 (reduced employer rate) |
+| 2003/04 | 11% | 1% | 12.8% | National Insurance Contributions Act 2002 s.1 amending SSCBA 1992 ss.8–9 |
+| 2004/05–2010/11 | 11% | 1% | 12.8% | SSCBA 1992 ss.8–9 (unchanged) |
+| 2011/12–2022/23 | 12% | 2% | 13.8% | National Insurance Contributions Act 2008 s.3 (from 2011/12 via SI 2011/940) |
+
+**Note**: The employer rate was also reduced from 12.8% to 11.9% by SI 2001/477 for
+2001/02 then restored. The 13.8% employer rate from 2011/12 was set by NICA 2008 s.3.
+
+#### C.3.3 Class 2 NI (self-employed weekly flat rate)
+
+| FY | Weekly rate | Small profits threshold (annual) | Source |
+|----|------------|----------------------------------|--------|
+| 1994/95 | £5.65 | £3,200 | SI 1994/542 (uprating order cross-reference) |
+| 1999/00 | £6.35 | £3,770 | SI 1999/527 |
+| 2000/01 | £2.00 | £3,825 | National Insurance Contributions Act 1994 + SI 2000/175 |
+| 2001/02 | £2.00 | £3,955 | SI 2001/477 art.3 |
+| 2002/03 | £2.00 | £4,025 | SI 2002/2366 |
+| 2003/04 | £2.00 | £4,095 | SS Contributions re-rating |
+| 2004/05 | £2.05 | £4,215 | SI 2004/770 |
+| 2005/06 | £2.10 | £4,345 | SI 2005/878 art.2 |
+| 2006/07 | £2.10 | £4,465 | SI 2006/624 art.2 |
+| 2007/08 | £2.20 | £4,635 | SI 2007/1052 art.2 |
+| 2008/09 | £2.30 | £4,825 | SI 2008/579 art.2 |
+| 2009/10 | £2.40 | £5,075 | SI 2009/593 art.2 |
+| 2010/11 | £2.40 | £5,075 | (unchanged) |
+| 2011/12 | £2.50 | £5,315 | SI 2011/940 |
+| 2012/13 | £2.65 | £5,595 | SI 2012/807 art.2 |
+| 2013/14 | £2.70 | £5,725 | SI 2013/622 art.2 |
+| 2014/15 | £2.75 | £5,885 | SI 2014/572 art.2 |
+| 2015/16 | £2.80 | £5,965 | SI 2015/478 art.2 |
+| 2016/17 | £2.80 | £5,965 | (unchanged) |
+| 2017/18 | £2.85 | £6,025 | SI 2017/418 art.2 |
+| 2018/19 | £2.95 | £6,205 | SI 2018/337 Sch. |
+| 2019/20 | £3.00 | £6,365 | SI 2019/262 Sch. |
+| 2020/21 | £3.05 | £6,475 | SI 2020/299 Sch. |
+| 2021/22 | £3.05 | £6,515 | SI 2021/157 Sch. |
+| 2022/23 | £3.15 | £6,725 | SI 2022/232 Sch. |
+
+**Class 2 was abolished from 6 April 2024** (National Insurance Contributions (Reduction in
+Rates) Act 2023 s.2; see Appendix B.3).
+
+#### C.3.4 Class 4 NI (self-employed profits — annual thresholds and rates)
+
+| FY | Lower profits limit | Upper profits limit | Main rate | Additional rate | Source |
+|----|--------------------|--------------------|-----------|-----------------|--------|
+| 1994/95 | £6,490 | £22,360 | 7.3% | n/a | SSCBA 1992 s.15 as amended |
+| 1999/00 | £7,530 | £26,000 | 6% | n/a | FA 1999 / SI regs |
+| 2000/01 | £4,385 (=PA) | £27,820 | 7% | n/a | SI 2000/175 (aligned LPL with PA) |
+| 2003/04 | £4,615 | £30,940 | 8% | 1% | NICA 2002 s.2 (additional rate above UPL) |
+| 2010/11 | £5,715 | £43,875 | 8% | 1% | SI 2010/834 |
+| 2011/12 | £7,225 | £42,475 | 9% | 2% | NICA 2008 s.4 + SI 2011/940 |
+| 2022/23 | £9,880 | £50,270 | 9% | 2% | SI 2022/232 Sch. |
+
+---
+
+### C.4 Child Benefit
+
+**Primary authority**: Child Benefit Act 2005 s.1; SSCBA 1992 ss.141–147.
+Rates set by: Child Benefit and Social Security (Fixing and Adjustment of Rates)
+Regulations 1976 reg.2 as substituted annually by the Benefits Up-rating Order.
+
+#### C.4.1 Eldest child weekly rate
+
+| FY | Rate | Source |
+|----|------|--------|
+| 1994/95 | £10.20 | SI 1994/542 art.13 (amending SI 1976/1267 reg.2) |
+| 1995/96 | £10.40 | SI 1995/559 art.13 |
+| 1996/97 | £11.05 | SI 1996/599 art.13 |
+| 1997/98 | £11.05 | (unchanged per SI 1997/543) |
+| 1998/99 | £11.45 | SI 1998/470 art.11 |
+| 1999/00 | £14.40 | FA 1999 (substantial increase for first child; SI 1999/264) |
+| 2000/01 | £15.00 | SI 2000/440 art.12 (substituting from £14.40) |
+| 2001/02 | £15.50 | SI 2001/207 art.13(a)(i) (substituting £15.00 for £15.50) |
+| 2002/03 | £15.75 | SI 2002/668 art.12 |
+| 2003/04 | £16.05 | SI 2003/526 art.14(a) (substituting "£15.75" for "£16.05") |
+| 2004/05 | £16.50 | SI 2004/552 art.14 |
+| 2005/06 | £17.00 | SI 2005/522 art.14 |
+| 2006/07 | £17.45 | SI 2006/645 art.3 (Sch.1 col 2, Part III CB entry) |
+| 2007/08 | £18.10 | SI 2007/688 art.13 |
+| 2008/09 | £18.80 | SI 2008/632 art.12 |
+| 2009/10 | £20.00 | SI 2009/497 art.12 |
+| 2010/11 | £20.30 | SI 2010/793 art.12 |
+| 2011/12 | £20.30 | SI 2011/821 (frozen) |
+| 2012/13 | £20.30 | SI 2012/780 (frozen) |
+| 2013/14 | £20.30 | SI 2013/574 (frozen) |
+| 2014/15 | £20.50 | SI 2014/516 art.13 |
+| 2015/16 | £20.70 | SI 2015/457 art.3 |
+| 2016/17 | £20.70 | SI 2016/249 (frozen under Welfare Reform and Work Act 2016 s.11) |
+| 2017/18 | £20.70 | SI 2017/260 (frozen) |
+| 2018/19 | £20.70 | SI 2018/281 (frozen) |
+| 2019/20 | £20.70 | SI 2019/480 (frozen) |
+| 2020/21 | £21.05 | SI 2020/234 art.3 |
+| 2021/22 | £21.15 | SI 2021/162 art.3 |
+| 2022/23 | £21.80 | SI 2022/232 Sch. / SI 2022/234 art.3 |
+
+#### C.4.2 Additional children weekly rate
+
+| FY | Rate | Source |
+|----|------|--------|
+| 1994/95 | £8.25 | SI 1994/542 art.13 |
+| 1999/00 | £9.60 | SI 1999/264 |
+| 2000/01 | £10.00 | SI 2000/440 art.12 |
+| 2001/02 | £10.35 | SI 2001/207 art.13(c) (substituting "£10.00" for "£10.35") |
+| 2002/03 | £10.55 | SI 2002/668 art.12 |
+| 2003/04 | £10.75 | SI 2003/526 art.14(c) (substituting "£10.55" for "£10.75") |
+| 2004/05 | £11.05 | SI 2004/552 art.14 |
+| 2005/06 | £11.40 | SI 2005/522 art.14 |
+| 2006/07 | £11.70 | SI 2006/645 Sch.1 |
+| 2007/08 | £12.10 | SI 2007/688 art.13 |
+| 2008/09 | £12.55 | SI 2008/632 art.12 |
+| 2009/10 | £13.20 | SI 2009/497 art.12 |
+| 2010/11 | £13.40 | SI 2010/793 art.12 |
+| 2011/12–2019/20 | £13.40–£13.70 | (incremental; frozen 2016–2019 per WRWA 2016 s.11) |
+| 2020/21 | £13.95 | SI 2020/234 art.3 |
+| 2021/22 | £14.00 | SI 2021/162 art.3 |
+| 2022/23 | £14.45 | SI 2022/234 art.3 |
+
+---
+
+### C.5 State Pension (Category A Basic)
+
+**Primary authority**: SSCBA 1992 s.44(4) (sets the weekly rate as a sum to be substituted
+annually by order). Each uprating order contains an article of the form "In s.44(4) for
+'£X' substitute '£Y'", making the previous year's rate directly readable.
+
+| FY | Single rate (£/wk) | Couple rate (£/wk) | Source |
+|----|-------------------|-------------------|--------|
+| 1994/95 | £55.25 | — | SI 1994/542 art.4(3) (substituting £53.80 → £55.25) |
+| 1995/96 | £57.25 | — | SI 1995/559 art.4(3) |
+| 1996/97 | £59.15 | — | SI 1996/599 art.4 |
+| 1997/98 | £62.45 | — | SI 1997/543 art.4 |
+| 1998/99 | £64.25 | — | SI 1998/470 art.4 |
+| 1999/00 | £66.75 | — | SI 1999/264 art.4 |
+| 2000/01 | £67.50 | £72.50 | SI 2000/440 art.4(3) |
+| 2001/02 | £66.90† | — | SI 2001/207 art.4(3)(a) (£64.75→£66.90; substituting from 2000/01) |
+| 2002/03 | £68.05 | — | SI 2002/668 art.4(3) |
+| 2003/04 | £69.20 | — | SI 2003/526 art.4(3)(a) (sub. "£68.05" for "£69.20") |
+| 2004/05 | £70.85 | — | SI 2004/552 art.4 |
+| 2005/06 | £73.35 | — | SI 2005/522 art.4(3) |
+| 2006/07 | £75.35 | — | SI 2006/645 art.4(3)(a) (sub. "£73.35" for "£75.35") |
+| 2007/08 | £78.30 | — | SI 2007/688 art.4 |
+| 2008/09 | £81.10 | — | SI 2008/632 art.4(3) |
+| 2009/10 | £86.20 | — | SI 2009/497 art.4(3)(a) (sub. "£81.10" for "£86.20") |
+| 2010/11 | £86.65 | — | SI 2010/793 art.4 (Pensions Act 2008 triple lock not yet in force) |
+| 2011/12 | £87.30 | — | SI 2011/821 art.4 (triple lock first applied; CPI 3.1% uplift) |
+| 2012/13 | £95.15 | — | SI 2012/780 art.4(3) (£107.45 couple rate also set) |
+| 2013/14 | £97.25 | — | SI 2013/574 art.4(3)(a) (sub. "£95.15" for "£97.25") |
+| 2014/15 | £101.10 | — | SI 2014/516 art.4 |
+| 2015/16 | £107.45 | — | SI 2015/457 art.4 (£115.95 couple rate) |
+| 2016/17 | £115.95 | — | SI 2016/249 art.4 (triple lock: higher of CPI/AWE/2.5%) |
+| 2017/18 | £119.30 | — | SI 2017/260 art.4 |
+| 2018/19 | £122.30 | — | SI 2018/281 art.4 |
+| 2019/20 | £125.95 | — | SI 2019/480 art.4 |
+| 2020/21 | £129.20 | — | SI 2020/234 art.4 |
+| 2021/22 | £137.60 | — | SI 2021/162 art.4 (2.5% floor; CPI 0.5%, AWE 0.2%) |
+| 2022/23 | £141.85 | — | SI 2022/234 art.4 (3.1% CPI) |
+
+**Note on triple lock**: The guarantee of the higher of CPI, AWE, or 2.5% was introduced
+for the basic state pension from April 2011 by the Pensions Act 2011 (amending SSAA 1992
+s.150A). For 2021/22 the earnings element was suspended by the Social Security (Up-rating
+of Benefits) Act 2021 s.1 (earnings measure distorted by COVID-19 furlough).
+
+**New State Pension (from 2016/17)**: introduced by Pensions Act 2014 s.2. Full NSP rates:
+| FY | Full NSP (£/wk) | Source |
+|----|----------------|--------|
+| 2016/17 | £155.65 | SI 2016/249 (Pensions Act 2014 s.17) |
+| 2017/18 | £159.55 | SI 2017/260 |
+| 2018/19 | £164.35 | SI 2018/281 |
+| 2019/20 | £168.60 | SI 2019/480 |
+| 2020/21 | £175.20 | SI 2020/234 |
+| 2021/22 | £179.60 | SI 2021/162 |
+| 2022/23 | £185.15 | SI 2022/234 |
+
+---
+
+### C.6 Pension Credit
+
+**Primary authority**: State Pension Credit Act 2002 (SPCA 2002); State Pension Credit
+Regulations 2002 (SI 2002/1792) reg.6 (guarantee credit) and reg.7 (savings credit).
+Came into force 6 October 2003. Annual rates set by the Benefits Up-rating Order.
+
+| FY | Single MIG/GC (£/wk) | Couple MIG/GC (£/wk) | Source |
+|----|---------------------|---------------------|--------|
+| 2003/04 | £102.10 | £155.80 | SI 2003/526 art.25(2) (first year; "remain unchanged" = initial rates from SI 2002/1792) |
+| 2004/05 | £105.45 | £160.95 | SI 2004/552 art.25 |
+| 2005/06 | £109.45 | £167.05 | SI 2005/522 art.26 |
+| 2006/07 | £114.05 | £174.05 | SI 2006/645 art.26(2)(a/b) (sub. £167.05→£174.05, £109.45→£114.05) |
+| 2007/08 | £119.05 | £181.70 | SI 2007/688 art.26 |
+| 2008/09 | £124.05 | £189.35 | SI 2008/632 art.26 |
+| 2009/10 | £130.00 | £198.45 | SI 2009/497 art.26(2)(a/b) (sub. £124.05→£130.00; £189.35→£198.45) |
+| 2010/11 | £132.60 | £202.40 | SI 2010/793 art.26 |
+| 2011/12 | £137.35 | £209.70 | SI 2011/821 art.22 |
+| 2012/13 | £142.70 | £217.90 | SI 2012/780 art.22 |
+| 2013/14 | £145.40 | £222.05 | SI 2013/574 art.24(2)(a/b) (sub. £142.70→£145.40; £217.90→£222.05) |
+| 2014/15 | £148.35 | £226.50 | SI 2014/516 art.22 |
+| 2015/16 | £151.20 | £230.85 | SI 2015/457 art.21 |
+| 2016/17 | £155.60 | £237.55 | SI 2016/249 art.21 |
+| 2017/18 | £159.35 | £243.25 | SI 2017/260 art.21 |
+| 2018/19 | £163.00 | £248.80 | SI 2018/281 art.20 |
+| 2019/20 | £167.25 | £255.25 | SI 2019/480 art.20 |
+| 2020/21 | £173.75 | £265.20 | SI 2020/234 art.20 |
+| 2021/22 | £177.10 | £270.30 | SI 2021/162 art.20 |
+| 2022/23 | £182.60 | £278.70 | SI 2022/234 art.20 |
+
+---
+
+### C.7 Income Support Applicable Amounts
+
+**Primary authority**: Social Security Contributions and Benefits Act 1992 s.124;
+Income Support (General) Regulations 1987 (SI 1987/1967) Sch.2 (personal allowances).
+Annual amounts set by the Benefits Up-rating Order (art. on "Applicable amounts for
+Income Support"), which refers to schedules not available in the Lex full-text but whose
+initial values can be extracted from the JSA contribution-based rates in the same order
+(JSA applicable amounts mirror IS applicable amounts by virtue of reg.79 JSA Regs 1996).
+
+#### C.7.1 IS/JSA-CB personal allowances (£/week)
+
+The substitute-chain technique is used: each year's order states the JSA rates in the
+article "Increase in age-related amounts of contribution-based Jobseeker's Allowance"
+(art.21 in SI 2001/207, art.22 in SI 2003/526, art.23 in SI 2006/645, art.23 in SI 2009/497,
+art.21 in SI 2013/574). The IS personal allowances are identical to JSA applicable amounts
+per IS Regs 1987 Sch.2 para.1.
+
+| FY | Single < 25 (£/wk) | Single 25+ (£/wk) | Couple (both 18+) | Source |
+|----|--------------------|-------------------|-------------------|--------|
+| 1994/95 | £36.15 | £45.70 | £71.70 | SI 1994/542 Sch.4 (IS Regs Sch.2) |
+| 1995/96 | £37.15 | £46.95 | £73.75 | SI 1995/559 |
+| 1996/97 | £38.90 | £49.15 | £77.15 | SI 1996/599 |
+| 1997/98 | £39.85 | £50.35 | £78.85 | SI 1997/543 |
+| 1998/99 | £40.70 | £51.40 | £80.65 | SI 1998/470 |
+| 1999/00 | £41.35 | £52.20 | £81.95 | SI 1999/264 |
+| 2000/01 | £42.00 | £53.05 | £83.25 | SI 2000/440 art. JSA |
+| 2001/02 | £31.95† | £42.00† | £53.05† | SI 2001/207 art.21(a/b/c): sub £31.45→£31.95; £41.35→£42.00; £52.20→£53.05 |
+| 2002/03 | £42.70 | £53.95 | £84.65 | SI 2002/668 art.21 |
+| 2003/04 | £43.25 | £54.65 | £85.75 | SI 2003/526 art.22(a/b/c): sub £32.50→£32.90; £42.70→£43.25; £53.95→£54.65 |
+| 2004/05 | £44.05 | £55.65 | £87.30 | SI 2004/552 art.22 |
+| 2005/06 | £45.50 | £57.45 | £90.10 | SI 2005/522 art.22 |
+| 2006/07 | £34.60 | £45.50 | £57.45 | SI 2006/645 art.23(a/b/c): sub £33.85→£34.60; £44.50→£45.50; £56.20→£57.45 |
+| 2007/08 | £35.65 | £46.85 | £58.50 | SI 2007/688 art.23 |
+| 2008/09 | £47.95 | £47.95 | £74.95 | SI 2008/632 art.22 (IS/JSA rates diverged: JSA u25 = £47.95) |
+| 2009/10 | £50.95 | £50.95 | £64.30 | SI 2009/497 art.23(a/b/c): sub £47.95→£50.95 (u25=25+); £60.50→£64.30 (couple) |
+| 2010/11 | £51.85 | £51.85 | £102.75 | SI 2010/793 art.22 (IS couple aligned with JSA from 2008) |
+| 2011/12 | £53.45 | £53.45 | £105.95 | SI 2011/821 art.18 |
+| 2012/13 | £56.25 | £56.25 | £111.45 | SI 2012/780 art.19 |
+| 2013/14 | £56.80 | £56.80 | £71.70 | SI 2013/574 art.21(a/b/c): sub £56.25→£56.80; £71.00→£71.70 |
+| 2014/15 | £57.35 | £57.35 | £114.85 | SI 2014/516 art.19 |
+| 2015/16 | £57.90 | £57.90 | £114.85 | SI 2015/457 art.14 |
+| 2016/17–2019/20 | £57.90 | £57.90 | £114.85 | Frozen by Welfare Reform and Work Act 2016 s.11 |
+| 2020/21 | £58.90 | £73.10 | £114.85 | SI 2020/234 (JSA/IS UC roll-out; IS u25 frozen) |
+| 2021/22 | £59.20 | £74.70 | £116.80 | SI 2021/162 art.18 |
+| 2022/23 | £61.05 | £77.00 | £121.05 | SI 2022/234 art.18 |
+
+**Note**: The IS/JSA rate structure was simplified when both £u25 and £25+ rates for the
+"age-related" JSA contribution-based amount converged in 2008/09. The IS personal allowance
+for single under-25 is set by IS Regs Sch.2 para.1(1)(a); single 25+ by para.1(1)(b);
+couple by para.1(3)(b) — as substituted annually.
+
+---
+
+### C.8 Working Tax Credit and Child Tax Credit (2003/04–2022/23)
+
+**Primary authority**: Tax Credits Act 2002 (TCA 2002) ss.9–12.
+WTC elements: Working Tax Credit (Entitlement and Maximum Rate) Regulations 2002
+(SI 2002/2005) Sch.2 as amended annually.
+CTC elements: Child Tax Credit Regulations 2002 (SI 2002/2007) reg.7 as amended annually.
+Taper and thresholds: Tax Credits (Income Thresholds and Determination of Rates) Regulations
+2002 (SI 2002/2008) reg.3 as amended annually.
+
+#### C.8.1 WTC maximum annual element amounts (£/yr)
+
+| FY | Basic | Couple | Lone parent | 30-hour | Disabled | Severe disabled | Source |
+|----|-------|--------|------------|---------|----------|----------------|--------|
+| 2003/04 | 1,525 | 1,500 | 1,500 | 620 | 2,040 | 825 | SI 2002/2005 Sch.2 (original 2003/04 rates) |
+| 2004/05 | 1,570 | 1,545 | 1,545 | 640 | 2,100 | 850 | SI 2003/2815 (annual amendment) |
+| 2005/06 | 1,620 | 1,595 | 1,595 | 660 | 2,165 | 875 | SI 2004/2663 |
+| 2006/07 | 1,665 | 1,640 | 1,640 | 680 | 2,225 | 900 | SI 2005/2919 |
+| 2007/08 | 1,730 | 1,700 | 1,700 | 705 | 2,310 | 935 | SI 2006/2689 |
+| 2008/09 | 1,800 | 1,770 | 1,770 | 735 | 2,405 | 975 | SI 2007/3195 |
+| 2009/10 | 1,890 | 1,860 | 1,860 | 775 | 2,530 | 1,025 | SI 2008/2697 |
+| 2010/11 | 1,920 | 1,890 | 1,890 | 790 | 2,570 | 1,040 | SI 2009/2887 |
+| 2011/12 | 1,920 | 1,950 | 1,950 | 790 | 2,650 | 1,075 | SI 2010/2914 |
+| 2012/13 | 1,920 | 1,950 | 1,950 | 790 | 2,790 | 1,130 | SI 2011/2833 |
+| 2013/14 | 1,920 | 1,970 | 1,970 | 790 | 2,855 | 1,225 | SI 2012/2885 |
+| 2014/15 | 1,920 | 1,970 | 1,970 | 790 | 2,935 | 1,255 | SI 2013/2901 |
+| 2015/16 | 1,960 | 2,010 | 2,010 | 810 | 2,970 | 1,275 | SI 2014/2924 |
+| 2016/17–2019/20 | 1,960 | 2,010 | 2,010 | 810 | 3,000 | 1,275 | Frozen under WRWA 2016 s.11; SI 2015/2041 etc |
+| 2020/21 | 2,005 | 2,060 | 2,060 | 825 | 3,220 | 1,390 | SI 2019/1327 |
+| 2021/22 | 2,005 | 2,060 | 2,060 | 825 | 3,240 | 1,400 | SI 2020/1156 |
+| 2022/23 | 2,070 | 2,125 | 2,125 | 860 | 3,345 | 1,445 | SI 2021/1157 |
+
+#### C.8.2 CTC maximum annual element amounts (£/yr)
+
+| FY | Family element | Child/YP element | Disabled child | Severely disabled child | Source |
+|----|--------------|-----------------|---------------|------------------------|--------|
+| 2003/04 | 545 | 1,445 | 2,215 | 890 | SI 2002/2007 reg.7 (original) |
+| 2004/05 | 545 | 1,625 | 2,285 | 920 | SI 2003/2815 |
+| 2005/06 | 545 | 1,690 | 2,350 | 945 | SI 2004/2663 |
+| 2006/07 | 545 | 1,765 | 2,440 | 985 | SI 2005/2919 |
+| 2007/08 | 545 | 1,845 | 2,440 | 985 | SI 2006/2689 |
+| 2008/09 | 545 | 2,085 | 2,540 | 1,040 | SI 2007/3195 |
+| 2009/10 | 545 | 2,235 | 2,670 | 1,075 | SI 2008/2697 |
+| 2010/11 | 545 | 2,300 | 2,715 | 1,095 | SI 2009/2887 |
+| 2011/12 | 545 | 2,555 | 2,800 | 1,130 | SI 2010/2914 |
+| 2012/13 | 545 | 2,690 | 2,950 | 1,190 | SI 2011/2833 |
+| 2013/14 | 545 | 2,720 | 3,015 | 1,220 | SI 2012/2885 |
+| 2014/15 | 545 | 2,750 | 3,100 | 1,255 | SI 2013/2901 |
+| 2015/16 | 545 | 2,780 | 3,140 | 1,275 | SI 2014/2924 |
+| 2016/17–2019/20 | 545 | 2,780 | 3,175 | 1,290 | Frozen (WRWA 2016 s.11); disability elements uprated |
+| 2020/21 | 545 | 2,830 | 3,415 | 1,385 | SI 2019/1327 |
+| 2021/22 | 545 | 2,845 | 3,435 | 1,390 | SI 2020/1156 (CTC child element = reg.7(4)(c)) |
+| 2022/23 | 545 | 2,935 | 3,545 | 1,430 | SI 2021/1157 |
+
+**Note on CTC family element**: The family element (£545/yr) has been frozen since 2003/04.
+CTC Regulations 2002 reg.7(3) as currently in force shows £545 (SI 2002/2007 reg.7(3)).
+
+#### C.8.3 Income threshold and taper
+
+| FY | WTC threshold | CTC threshold (CTC-only) | Taper rate | Source |
+|----|--------------|--------------------------|-----------|--------|
+| 2003/04 | £5,060 | £13,230 | 37% | SI 2002/2008 reg.3, reg.7 Step 4 (threshold £5,060; taper 37%) |
+| 2004/05 | £5,060 | £13,480 | 37% | SI 2003/3204 (amending SI 2002/2008) |
+| 2005/06–2010/11 | £5,220 | £15,575 | 37% | Annual amendments to SI 2002/2008 |
+| 2011/12 | £6,420 | £15,860 | 41% | SI 2010/2494 (taper increased from 37% to 41%) |
+| 2012/13–2022/23 | £6,420 (frozen) | varies | 41% | SI 2011/2229 (WTC threshold frozen); CTC threshold adjusted annually |
+
+---
+
+### C.9 Housing Benefit — Applicable Amounts
+
+**Primary authority**: Social Security Contributions and Benefits Act 1992 s.130;
+Housing Benefit (General) Regulations 1987 (SI 1987/1971) Sch.2 as amended by annual
+uprating orders.
+
+Housing Benefit applicable amounts are set to mirror Income Support applicable amounts
+(HB Regs 1987 Sch.2 para.1 is substituted by the same figures as IS Regs 1987 Sch.2
+para.1). Accordingly the personal allowance rates in **§C.7** above also apply to HB.
+
+The key HB-specific parameters are:
+
+#### C.9.1 LHA and maximum rent restriction (from 2008/09)
+
+Before 2008/09, HB for private tenants was restricted to the local reference rent. From
+7 April 2008, HB for new claimants in private rented sector was determined by the Local
+Housing Allowance (LHA) based on the 30th percentile (originally 50th) of local rents
+in each Broad Rental Market Area (BRMA). Authority: Housing Benefit Regulations 2006
+(SI 2006/213) reg.13D (inserted by SI 2007/2868 art.4).
+
+From April 2011, LHA was reduced to the 30th percentile of local rents (SI 2010/2591).
+
+#### C.9.2 Benefit Cap (from 2013/14)
+
+Introduced by Welfare Reform Act 2012 s.96 and the Benefit Cap (Housing Benefit)
+Regulations 2012 (SI 2012/2994).
+
+| FY | London (family) | National (family) | London (single) | National (single) | Source |
+|----|-----------------|-------------------|-----------------|--------------------|--------|
+| 2013/14 | £500/wk | £500/wk | £500/wk | £500/wk | SI 2012/2994 reg.5 (one initial cap) |
+| 2014/15–2015/16 | £500/wk | £500/wk | £500/wk | £500/wk | No change |
+| 2016/17 | £442.31/wk (£23,000/yr) | £384.62/wk (£20,000/yr) | £296.35/wk (£15,410/yr) | £257.69/wk (£13,400/yr) | SI 2016/909 reg.2 (Welfare Reform and Work Act 2016 s.8) |
+| 2017/18–2022/23 | (frozen) | (frozen) | (frozen) | (frozen) | SI 2012/2994 as amended by SI 2016/909 |
+
+---
+
+### C.10 NI Contribution Rates — Summary of Class 1 Rate Changes
+
+| FY | Employee main | Employee additional (UEL+) | Employer | Source (primary) |
+|----|--------------|---------------------------|----------|-----------------|
+| 1994/95–2002/03 | 10% | 0% | 10.2%–12.2% | SSCBA 1992 s.8(2)(a); s.9(2) (as originally enacted); Finance Act 1994 |
+| 2003/04+ | 11% (main) | 1% (additional) | 12.8% | National Insurance Contributions Act 2002 s.1 (SSCBA 1992 ss.8–9 substituted) |
+| 2011/12+ | 12% (main) | 2% (additional) | 13.8% | National Insurance Contributions Act 2008 s.3 (effective from SI 2011/940) |
+
+**Note**: Employer Class 1 secondary rate was reduced temporarily:
+- 1999/00: 12.2% (set by SSCBA 1992 s.9 unamended)
+- 2001/02: 11.9% (SI 2001/477 art.2, made under SSCBA 1992 s.9(4))
+- 2002/03 onwards: reverted to 12.2% / then 12.8% from 2003/04
+
+---
+
+### C.11 Key Repeals and Replacements
+
+The following legacy benefits are relevant to the historical period and to the model's
+managed-migration logic:
+
+| Benefit | Introduced | Replaced by | Authority |
+|---------|-----------|------------|-----------|
+| Family Credit | 1988 | Working Tax Credit (April 2003) | Tax Credits Act 2002 s.1(1) |
+| Disabled Person's Tax Credit | 1999 | WTC disability element (2003) | Tax Credits Act 2002 s.1(1) |
+| Working Families' Tax Credit | 1999 | Working Tax Credit (2003) | Tax Credits Act 2002 |
+| Income Support (working-age) | 1988 | Universal Credit (roll-out 2013–) | Welfare Reform Act 2012 s.1 |
+| Income-based JSA | 1996 | Universal Credit | Welfare Reform Act 2012 s.33 |
+| Income-related ESA | 2008 | Universal Credit | Welfare Reform Act 2012 s.33 |
+| Housing Benefit (working-age) | 1983 | UC housing element | Welfare Reform Act 2012 s.33 |
+| Child Tax Credit | 2003 | UC child element | Welfare Reform Act 2012 |
+| Working Tax Credit | 2003 | UC work allowances / standard allowance | Welfare Reform Act 2012 |
+
+---
+
+### C.12 Income Tax Rates 1994/95–2022/23
+
+| FY | Starter/lower | Basic rate | Higher rate | Additional rate | Source |
+|----|--------------|-----------|------------|----------------|--------|
+| 1994/95–1995/96 | 20% (£0–2,500) | 25% | 40% | — | ICTA 1988 s.1(2) as amended FA 1994/1995 |
+| 1996/97–1998/99 | 20% | 23% | 40% | — | FA 1996/1997/1998 (basic rate reduced) |
+| 1999/00–2007/08 | 10% (£0–1,520→2,230) | 22% | 40% | — | FA 1999 (10p rate) → FA 2008 s.5 removed 10p |
+| 2008/09 | — | 20% | 40% | — | FA 2008 s.5 (10p rate abolished; SSCBA 1992 s.1 et al) |
+| 2009/10 | — | 20% | 40% | — | |
+| 2010/11 | — | 20% | 40% | 50% (£150k+) | FA 2009 s.6 (additional rate introduced) |
+| 2011/12–2012/13 | — | 20% | 40% | 50% | FA 2011 |
+| 2013/14+ | — | 20% | 40% | 45% | FA 2013 s.2 (additional rate reduced from 50% to 45%) |
+
+The 10% starting rate band was introduced by FA 1999 and applied to the first £1,520 of
+taxable income (raised to £2,230 by 2007/08). It was abolished from 2008/09 by FA 2008
+s.5 (amending ITA 2007 s.10; ICTA 1988 s.1 had already been repealed by ITA 2007).
+
+---
+
+*All SIs referenced above are available at legislation.gov.uk under their respective
+`uksi/{year}/{number}` identifiers. FA = Finance Act (`ukpga/{year}/{number}`).
+ICTA 1988 = Income and Corporation Taxes Act 1988 (`ukpga/1988/1`).
+SSCBA 1992 = Social Security Contributions and Benefits Act 1992 (`ukpga/1992/4`).
+SSAA 1992 = Social Security Administration Act 1992 (`ukpga/1992/5`).
+TCA 2002 = Tax Credits Act 2002 (`ukpga/2002/21`).
+ITA 2007 = Income Tax Act 2007 (`ukpga/2007/3`).
+WRWA 2016 = Welfare Reform and Work Act 2016 (`ukpga/2016/7`).*

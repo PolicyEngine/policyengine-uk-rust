@@ -1,0 +1,157 @@
+# UK Tax-Benefit Parameters for Fiscal Year 2022/23
+# Sources: Finance Act 2022, SI 2022/292 (Benefits Up-rating Order 2022)
+# Major: Health and Social Care Levy adds 1.25pp to NI Apr-Nov, then reversed from Nov 2022;
+#        Blended employee NI main rate: (13.25% * 7/12) + (12% * 5/12) = 12.73% approx;
+#        NI Primary Threshold raised to £12,570 from July 2022 (directors: £11,908 annual);
+#        Dividend rates increased by 1.25pp; additional rate threshold still £150,000;
+#        Scottish Child Payment extended to under-16s and increased to £25/week from Nov 2022
+# HMRC: gov.uk/guidance/rates-and-thresholds-for-employers-2022-to-2023
+# DWP: gov.uk/government/publications/benefit-and-pension-rates-2022-to-2023
+
+fiscal_year: "2022/23"
+
+income_tax:
+  personal_allowance: 12570.0       # Frozen; HMRC Table A1
+  pa_taper_threshold: 100000.0
+  pa_taper_rate: 0.5
+  marriage_allowance_fraction: 0.10
+  uk_brackets:
+    - { rate: 0.20, threshold: 0.0 }
+    - { rate: 0.40, threshold: 37700.0 }    # HMRC employer guidance 2022/23
+    - { rate: 0.45, threshold: 150000.0 }   # Still £150k (reduced to £125,140 from 2023/24)
+  scottish_brackets:
+    - { rate: 0.19, threshold: 0.0 }        # Starter; HMRC employer guidance
+    - { rate: 0.20, threshold: 2162.0 }     # Basic
+    - { rate: 0.21, threshold: 13118.0 }    # Intermediate
+    - { rate: 0.41, threshold: 31092.0 }    # Higher (41% not 42% in 2022/23)
+    - { rate: 0.46, threshold: 150000.0 }   # Top (46% not 47% in 2022/23)
+  dividend_allowance: 2000.0        # HMRC Table A1
+  dividend_basic_rate: 0.0875       # Increased by 1.25pp from 7.5% (Health & Social Care Levy)
+  dividend_higher_rate: 0.3375      # Increased by 1.25pp from 32.5%
+  dividend_additional_rate: 0.3935  # Increased by 1.25pp from 38.1%
+  savings_starter_rate_band: 5000.0
+
+national_insurance:
+  # PT raised to £242/week (= £12,570 annualised) from 6 July 2022
+  # For directors: annualised PT = £11,908 (blended)
+  # We use the directors' annualised figure for consistency with annual model
+  primary_threshold_annual: 11908.0   # Directors' annualised: SI 2022/331
+  upper_earnings_limit_annual: 50270.0  # £967/week; HMRC Table A4
+  # Health and Social Care Levy: +1.25pp from Apr, reversed from Nov 2022
+  # Blended: (13.25% * 7/12) + (12% * 5/12) = 12.73%
+  # However the most common approach is to use directors' annual rate
+  # Directors: 13.25% Apr-Nov (7 months), 12% Nov-Apr (5 months)
+  main_rate: 0.1273   # Blended annual rate
+  additional_rate: 0.02  # 3.25% Apr-Nov, 2% Nov-Apr; blended ~2.52%, but using year-end
+  secondary_threshold_annual: 9100.0  # £175/week; HMRC employer guidance
+  # Employer rate: 15.05% Apr-Nov, 13.8% Nov-Apr
+  employer_rate: 0.1428  # Blended: (15.05% * 7/12) + (13.8% * 5/12)
+  class2_flat_rate_weekly: 3.15       # HMRC Table A4
+  class2_small_profits_threshold: 6725.0  # HMRC Table A4
+  class4_lower_profits_limit: 11908.0 # HMRC Table A4 (aligned to PT)
+  class4_upper_profits_limit: 50270.0 # HMRC Table A4
+  # Class 4: 9.73% Apr-Nov (inc 1.25pp levy), 9% Nov-Apr; blended
+  class4_main_rate: 0.0943  # Blended: (9.73% * 7/12) + (9% * 5/12)
+  class4_additional_rate: 0.0227  # Blended: (2.73% * 7/12) + (2% * 5/12)
+
+universal_credit:
+  # SI 2022/292; standard rates (no COVID uplift)
+  standard_allowance_single_under25: 265.31   # DWP 2022/23 rates
+  standard_allowance_single_over25: 334.91
+  standard_allowance_couple_under25: 416.45
+  standard_allowance_couple_over25: 525.72
+  child_element_first: 290.00     # DWP 2022/23 rates (born before 6 Apr 2017)
+  child_element_subsequent: 244.58
+  disabled_child_lower: 132.89    # DWP 2022/23 rates
+  disabled_child_higher: 414.88
+  lcwra_element: 354.28
+  carer_element: 168.81
+  taper_rate: 0.55               # 55% rate continues from Nov 2021
+  work_allowance_higher: 573.0   # DWP 2022/23 rates
+  work_allowance_lower: 344.0
+  child_limit: 2
+
+child_benefit:
+  eldest_weekly: 21.80            # SI 2022/292
+  additional_weekly: 14.45
+  hicbc_threshold: 50000.0
+  hicbc_taper_end: 60000.0
+
+state_pension:
+  new_state_pension_weekly: 185.15  # DWP 2022/23 rates
+  old_basic_pension_weekly: 141.85
+
+pension_credit:
+  standard_minimum_single: 182.60   # DWP 2022/23 rates
+  standard_minimum_couple: 278.70
+  savings_credit_threshold_single: 158.47
+  savings_credit_threshold_couple: 251.70
+
+benefit_cap:
+  single_london: 15410.0
+  single_outside_london: 13400.0
+  non_single_london: 23000.0
+  non_single_outside_london: 20000.0
+  earnings_exemption_threshold: 7400.0
+
+housing_benefit:
+  withdrawal_rate: 0.65
+  personal_allowance_single_under25: 61.05   # DWP 2022/23 rates
+  personal_allowance_single_25_plus: 77.00
+  personal_allowance_couple: 121.05
+  child_allowance: 70.80
+  family_premium: 17.85
+
+tax_credits:
+  wtc_basic_element: 2070.0   # SI 2022/292
+  wtc_couple_element: 2125.0
+  wtc_lone_parent_element: 2125.0
+  wtc_30_hour_element: 860.0
+  ctc_child_element: 2935.0
+  ctc_family_element: 545.0
+  ctc_disabled_child_element: 3545.0
+  ctc_severely_disabled_child_element: 1430.0
+  income_threshold: 6770.0
+  taper_rate: 0.41
+  wtc_min_hours_single: 30.0
+  wtc_min_hours_couple: 24.0
+
+scottish_child_payment:
+  # £10/week under-6 until Nov 2022; £25/week under-16 from Nov 2022
+  # Using year-end rate
+  weekly_amount: 25.0
+  max_age: 16.0
+
+disability_premiums:
+  # DWP 2022/23 rates (from HB premiums section)
+  disability_premium_single: 36.20
+  disability_premium_couple: 51.60
+  enhanced_disability_premium_single: 17.75
+  enhanced_disability_premium_couple: 25.35
+  severe_disability_premium: 69.40
+  carer_premium: 38.85
+
+income_related_benefits:
+  esa_allowance_single_under25: 61.05   # DWP 2022/23 rates
+  esa_allowance_single_25_plus: 77.00
+  esa_allowance_couple: 121.05
+  esa_wrag_component: 30.60
+  esa_support_component: 40.60
+  jsa_allowance_single_under25: 61.05
+  jsa_allowance_single_25_plus: 77.00
+  jsa_allowance_couple: 121.05
+  carers_allowance_weekly: 69.70
+  ca_earnings_disregard_weekly: 132.0
+  ca_min_hours_caring: 35.0
+  ca_care_recipient_min_age: 16.0
+
+uc_migration:
+  # Managed migration expanding but still modest coverage
+  housing_benefit: 0.18
+  tax_credits: 0.35
+  income_support: 0.18
+
+growth_factors:
+  cpi_rate: 0.10067         # CPI Sept 2022: 10.067%
+  gdp_deflator: 0.04361
+  earnings_growth: 0.05848

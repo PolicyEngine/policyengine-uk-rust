@@ -16,6 +16,9 @@ pub fn calculate_benunit(
     // Non-means-tested / universal benefits (available regardless of UC/legacy)
     let child_benefit = calculate_child_benefit(bu, people, person_results, params);
     let state_pension = calculate_state_pension(bu, people, params);
+    // Carers Allowance: non-means-tested flat rate for informal carers.
+    // Paid to individual, regardless of UC/legacy system.
+    let carers_allowance = calculate_carers_allowance(bu, people, person_results, params);
 
     let ne = params.take_up.new_entrant_rate;
 
@@ -30,19 +33,23 @@ pub fn calculate_benunit(
     let migrated_hb  = bu.reported_hb  && any_working_age && bu.take_up_seed < m.housing_benefit;
     let migrated_tc  = (bu.reported_ctc || bu.reported_wtc) && bu.take_up_seed < m.tax_credits;
     let migrated_is  = bu.reported_is  && bu.take_up_seed < m.income_support;
-    let on_uc_system = bu.on_uc || bu.is_enr_uc || migrated_hb || migrated_tc || migrated_is;
+    // In baseline mode, ENR flags don't route non-reporters to UC — only reported receipt counts.
+    let enr_uc_active = bu.is_enr_uc && !params.baseline_mode;
+    let on_uc_system = bu.on_uc || enr_uc_active || migrated_hb || migrated_tc || migrated_is;
     let reported_uc  = bu.reported_uc || migrated_hb || migrated_tc || migrated_is;
 
-    let (uc, pension_credit, housing_benefit, ctc, wtc, income_support, scp);
+    let (uc, pension_credit, housing_benefit, ctc, wtc, income_support, esa_ir, jsa_ib, scp);
     if on_uc_system {
         let raw_uc = calculate_universal_credit(bu, people, person_results, params);
-        let takes = takes_up_reform(bu, params.take_up.universal_credit, reported_uc, bu.is_enr_uc, ne);
+        let takes = takes_up_reform(bu, params.take_up.universal_credit, reported_uc, bu.is_enr_uc, ne, params.baseline_mode);
         uc = if takes { raw_uc } else { (0.0, raw_uc.1, raw_uc.2) };
         pension_credit = calculate_pension_credit(bu, people, params);
         housing_benefit = 0.0;
         ctc = 0.0;
         wtc = 0.0;
         income_support = 0.0;
+        esa_ir = 0.0;
+        jsa_ib = 0.0;
         scp = if takes { calculate_scottish_child_payment(bu, people, household, params) } else { 0.0 };
     } else if bu.on_legacy {
         // Not yet migrated: still on legacy system
@@ -55,8 +62,18 @@ pub fn calculate_benunit(
         let tc = calculate_tax_credits(bu, people, person_results, params);
         ctc = if bu.reported_ctc { tc.0 } else { 0.0 };
         wtc = if bu.reported_wtc { tc.1 } else { 0.0 };
+        // Route ESA(IR) or IS based on which legacy benefit is reported.
+        // ESA(IR) replaces IS for claimants with limited capability for work.
+        let has_esa_reported = bu.person_ids.iter().any(|&pid| people[pid].esa_income_reported > 0.0);
+        let has_jsa_reported = bu.person_ids.iter().any(|&pid| people[pid].jsa_income_reported > 0.0);
         let raw_is = calculate_income_support(bu, people, person_results, params);
-        income_support = if bu.reported_is { raw_is } else { 0.0 };
+        income_support = if bu.reported_is && !has_esa_reported { raw_is } else { 0.0 };
+        esa_ir = if has_esa_reported {
+            calculate_esa_income_related(bu, people, person_results, params)
+        } else { 0.0 };
+        jsa_ib = if has_jsa_reported {
+            calculate_jsa_income_based(bu, people, person_results, params)
+        } else { 0.0 };
         scp = 0.0;
     } else {
         // Not on any means-tested system — check if newly entitled under reform
@@ -66,12 +83,14 @@ pub fn calculate_benunit(
         ctc = 0.0;
         wtc = 0.0;
         income_support = 0.0;
+        esa_ir = 0.0;
+        jsa_ib = 0.0;
         scp = 0.0;
     }
 
     // Sum pre-cap benefits
     let pre_cap_benefits = uc.0 + child_benefit + state_pension + pension_credit
-        + housing_benefit + ctc + wtc + income_support + scp;
+        + housing_benefit + ctc + wtc + income_support + esa_ir + jsa_ib + carers_allowance + scp;
 
     // Apply benefit cap
     let benefit_cap_reduction = calculate_benefit_cap(
@@ -79,7 +98,24 @@ pub fn calculate_benunit(
         pre_cap_benefits, child_benefit, state_pension,
     );
 
-    let total_benefits = (pre_cap_benefits - benefit_cap_reduction).max(0.0);
+    // Passthrough benefits: reported amounts for benefits we don't model.
+    // Includes disability benefits (PIP/DLA/AA/ADP/CDP), contributory ESA/JSA,
+    // and other unmodelled benefits (bereavement, maternity, winter fuel, etc.).
+    // All exempt from the benefit cap.
+    let passthrough_benefits: f64 = bu.person_ids.iter().map(|&pid| {
+        let p = &people[pid];
+        p.pip_dl_reported + p.pip_m_reported
+            + p.dla_sc_reported + p.dla_m_reported
+            + p.attendance_allowance_reported
+            + p.esa_contrib_reported
+            + p.jsa_contrib_reported
+            + p.other_benefits_reported
+            + p.adp_dl_reported + p.adp_m_reported
+            + p.cdp_care_reported + p.cdp_mob_reported
+    }).sum();
+
+    let modelled_benefits = (pre_cap_benefits - benefit_cap_reduction).max(0.0);
+    let total_benefits = modelled_benefits + passthrough_benefits;
 
     BenUnitResult {
         universal_credit: uc.0,
@@ -90,8 +126,12 @@ pub fn calculate_benunit(
         child_tax_credit: ctc,
         working_tax_credit: wtc,
         income_support,
+        esa_income_related: esa_ir,
+        jsa_income_based: jsa_ib,
+        carers_allowance,
         scottish_child_payment: scp,
         benefit_cap_reduction,
+        passthrough_benefits,
         total_benefits,
         uc_max_amount: uc.1,
         uc_income_reduction: uc.2,
@@ -104,10 +144,12 @@ fn takes_up(bu: &BenUnit, rate: f64) -> bool {
 }
 
 /// Three-way take-up decision for a benefit:
-/// - Reported receipt → always receives (current recipient, behavioural status quo)
-/// - ENR in baseline  → full take-up rate (willing claimant, just wasn't eligible before)
-/// - Genuinely new    → new_entrant_rate (partial behavioural response to new entitlement)
-fn takes_up_reform(bu: &BenUnit, rate: f64, reported: bool, is_enr: bool, new_entrant_rate: f64) -> bool {
+/// - Baseline mode: only reported claimants receive (ground truth is reported receipt)
+/// - Reported receipt → always receives
+/// - ENR (baseline-eligible but not reported, newly eligible under reform) → full take-up rate
+/// - Genuinely new entrant → new_entrant_rate (partial behavioural response)
+fn takes_up_reform(bu: &BenUnit, rate: f64, reported: bool, is_enr: bool, new_entrant_rate: f64, baseline_mode: bool) -> bool {
+    if baseline_mode { return reported; }
     if reported  { return true; }
     if is_enr    { return takes_up(bu, rate); }
     takes_up(bu, new_entrant_rate)
@@ -149,7 +191,7 @@ fn calculate_child_benefit(
     if amount > 0.0 {
         let tu = params.take_up.child_benefit;
         let ne = params.take_up.new_entrant_rate;
-        if !takes_up_reform(bu, tu, bu.reported_cb, bu.is_enr_cb, ne) { return 0.0; }
+        if !takes_up_reform(bu, tu, bu.reported_cb, bu.is_enr_cb, ne, params.baseline_mode) { return 0.0; }
     }
     amount
 }
@@ -214,10 +256,15 @@ fn calculate_universal_credit(
         })
         .sum();
 
-    // LCWRA element
+    // LCWRA element: UC Regs 2013 reg.27 — limited capability for work-related activity.
+    // In FRS, best proxy: PIP daily living (standard or enhanced), DLA care middle/highest,
+    // or ESA support group. LIMITILL is too broad; we use the DLA/PIP flags as the gate.
     let has_lcwra = bu.person_ids.iter()
         .filter(|&&pid| people[pid].is_adult())
-        .any(|&pid| people[pid].is_disabled);
+        .any(|&pid| {
+            let p = &people[pid];
+            p.pip_dl_std || p.pip_dl_enh || p.dla_care_mid || p.dla_care_high || p.esa_group == 1
+        });
     let lcwra_monthly = if has_lcwra { uc.lcwra_element } else { 0.0 };
 
     // Carer element
@@ -372,7 +419,7 @@ fn calculate_pension_credit(bu: &BenUnit, people: &[Person], params: &Parameters
     if amount > 0.0 {
         let tu = params.take_up.pension_credit;
         let ne = params.take_up.new_entrant_rate;
-        if !takes_up_reform(bu, tu, bu.reported_pc, bu.is_enr_pc, ne) { return 0.0; }
+        if !takes_up_reform(bu, tu, bu.reported_pc, bu.is_enr_pc, ne, params.baseline_mode) { return 0.0; }
     }
     amount
 }
@@ -413,8 +460,10 @@ fn calculate_housing_benefit(
 
     let family_premium_weekly = if num_children > 0 { hb_params.family_premium } else { 0.0 };
     let child_allowance_weekly = hb_params.child_allowance * num_children as f64;
+    let dp_weekly = disability_premiums_weekly(bu, people, params);
 
-    let applicable_amount = (personal_allowance_weekly + family_premium_weekly + child_allowance_weekly) * 52.0;
+    let applicable_amount = (personal_allowance_weekly + family_premium_weekly
+        + child_allowance_weekly + dp_weekly) * 52.0;
 
     // Income for HB purposes
     let income: f64 = bu.person_ids.iter()
@@ -531,14 +580,14 @@ fn calculate_tax_credits(
 /// (lone parents with young children, carers, disabled).
 ///
 /// IS = max(0, applicable_amount - income).
-/// Very few new claimants due to UC migration, but still in the system.
+/// Applicable amount includes disability premiums where applicable.
+/// Source: Income Support (General) Regs 1987 (SI 1987/1967) regs 17-22 and Sch.2.
 fn calculate_income_support(
     bu: &BenUnit,
     people: &[Person],
     _person_results: &[PersonResult],
     params: &Parameters,
 ) -> f64 {
-    // Use HB applicable amount params (they share the same personal allowance structure)
     let hb_params = match &params.housing_benefit {
         Some(hb) => hb,
         None => return 0.0,
@@ -558,8 +607,10 @@ fn calculate_income_support(
 
     let family_premium_weekly = if num_children > 0 { hb_params.family_premium } else { 0.0 };
     let child_allowance_weekly = hb_params.child_allowance * num_children as f64;
+    let dp_weekly = disability_premiums_weekly(bu, people, params);
 
-    let applicable_amount = (personal_allowance_weekly + family_premium_weekly + child_allowance_weekly) * 52.0;
+    let applicable_amount = (personal_allowance_weekly + family_premium_weekly
+        + child_allowance_weekly + dp_weekly) * 52.0;
 
     let income: f64 = bu.person_ids.iter()
         .map(|&pid| {
@@ -571,6 +622,259 @@ fn calculate_income_support(
         .sum();
 
     (applicable_amount - income).max(0.0)
+}
+
+/// Compute disability premium additions to an applicable amount (weekly).
+///
+/// Used by IS, HB (applicable amount), ESA, and JSA to add disability premiums.
+///
+/// Premiums:
+///  - Disability Premium (DP): person has lower-rate DLA/PIP or is in WRAG/assessment.
+///    IS (General) Regs 1987 Sch.2 para.11.
+///  - Enhanced Disability Premium (EDP): highest DLA care or enhanced PIP DL.
+///    Sch.2 para.13.
+///  - Severe Disability Premium (SDP): enhanced PIP/highest DLA care, lives alone (or both
+///    disabled in a couple), no non-disabled carer receiving CA.
+///    Sch.2 para.14.
+///  - Carer Premium: at least one person in the bu receives CA.
+///    Sch.2 para.14D.
+fn disability_premiums_weekly(
+    bu: &BenUnit,
+    people: &[Person],
+    params: &crate::parameters::Parameters,
+) -> f64 {
+    let dp_params = match &params.disability_premiums {
+        Some(p) => p,
+        None => return 0.0,
+    };
+
+    let is_couple = bu.is_couple(people);
+    let adults: Vec<&Person> = bu.person_ids.iter()
+        .filter(|&&pid| people[pid].is_adult())
+        .map(|&pid| &people[pid])
+        .collect();
+
+    // DP: any adult has disability flag (lower/mid DLA care, any DLA mob, any PIP, AA, or WRAG)
+    let any_dp = adults.iter().any(|p| {
+        p.dla_care_low || p.dla_care_mid || p.dla_care_high
+        || p.dla_mob_low || p.dla_mob_high
+        || p.pip_dl_std || p.pip_dl_enh
+        || p.pip_mob_std || p.pip_mob_enh
+        || p.aa_low || p.aa_high
+        || p.esa_group == 2 || p.esa_group == 3  // WRAG or assessment phase
+    });
+    let dp_weekly = if any_dp {
+        if is_couple { dp_params.disability_premium_couple }
+        else { dp_params.disability_premium_single }
+    } else { 0.0 };
+
+    // EDP: any adult has enhanced PIP DL or highest DLA care
+    let any_edp = adults.iter().any(|p| p.pip_dl_enh || p.dla_care_high);
+    let edp_weekly = if any_edp {
+        if is_couple { dp_params.enhanced_disability_premium_couple }
+        else { dp_params.enhanced_disability_premium_single }
+    } else { 0.0 };
+
+    // SDP: severely disabled adult(s), living alone or both disabled in couple, no CA carer.
+    // Simplified: if any adult has pip_dl_enh or dla_care_high AND is_carer is false for all adults
+    // and no non-disabled person in the bu.
+    let num_severely_disabled = adults.iter().filter(|p| p.is_severely_disabled).count();
+    let any_carer_in_bu = adults.iter().any(|p| p.is_carer);
+    let sdp_weekly = if !any_carer_in_bu && num_severely_disabled > 0 {
+        if is_couple && num_severely_disabled >= 2 {
+            dp_params.severe_disability_premium * 2.0
+        } else if !is_couple {
+            dp_params.severe_disability_premium
+        } else {
+            0.0  // One disabled, one non-disabled in couple → no SDP (non-disabled = potential carer)
+        }
+    } else { 0.0 };
+
+    // Carer Premium: any adult receives CA
+    let carer_premium_weekly = if any_carer_in_bu { dp_params.carer_premium } else { 0.0 };
+
+    dp_weekly + edp_weekly + sdp_weekly + carer_premium_weekly
+}
+
+/// ESA (Income-Related): IS equivalent for claimants with limited capability for work.
+///
+/// ESA(IR) = max(0, applicable_amount - income).
+/// Applicable amount = personal allowance + disability premiums + work-related/support component.
+///
+/// Source: Welfare Reform Act 2007 c.5 s.2; ESA Regs 2008 (SI 2008/794) regs 67-74.
+fn calculate_esa_income_related(
+    bu: &BenUnit,
+    people: &[Person],
+    _person_results: &[PersonResult],
+    params: &Parameters,
+) -> f64 {
+    let irb = match &params.income_related_benefits {
+        Some(p) => p,
+        None => return 0.0,
+    };
+
+    let is_couple = bu.is_couple(people);
+    let eldest_age = bu.eldest_adult_age(people);
+    let num_children = bu.num_children(people);
+
+    let personal_allowance_weekly = if is_couple {
+        irb.esa_allowance_couple
+    } else if eldest_age >= 25.0 {
+        irb.esa_allowance_single_25_plus
+    } else {
+        irb.esa_allowance_single_under25
+    };
+
+    // Work-related component or support component based on ESA group.
+    // Support group (esa_group=1) gets support component; WRAG (esa_group=2) or assessment
+    // phase gets WRAG component. Only for adults with an ESA group.
+    let extra_component_weekly: f64 = bu.person_ids.iter()
+        .filter(|&&pid| people[pid].is_adult())
+        .map(|&pid| {
+            match people[pid].esa_group {
+                1 => irb.esa_support_component,
+                2 | 3 => irb.esa_wrag_component,
+                _ => 0.0,
+            }
+        })
+        .fold(0.0_f64, f64::max); // Only one component per bu
+
+    let family_premium_weekly: f64 = if num_children > 0 {
+        params.housing_benefit.as_ref().map_or(0.0, |hb| hb.family_premium)
+    } else { 0.0 };
+    let child_allowance_weekly: f64 = params.housing_benefit.as_ref()
+        .map_or(0.0, |hb| hb.child_allowance * num_children as f64);
+
+    let dp_weekly = disability_premiums_weekly(bu, people, params);
+
+    let applicable_amount = (personal_allowance_weekly + extra_component_weekly
+        + family_premium_weekly + child_allowance_weekly + dp_weekly) * 52.0;
+
+    let income: f64 = bu.person_ids.iter()
+        .map(|&pid| {
+            let p = &people[pid];
+            p.employment_income + p.self_employment_income
+                + p.pension_income + p.state_pension_reported
+                + p.savings_interest_income + p.other_income
+        })
+        .sum();
+
+    (applicable_amount - income).max(0.0)
+}
+
+/// JSA (Income-Based): IS equivalent for jobseekers available for and actively seeking work.
+///
+/// JSA(IB) = max(0, applicable_amount - income).
+/// Applicable amount = personal allowance + disability premiums (if applicable) + family premiums.
+///
+/// Source: Jobseekers Act 1995 c.18 s.4-5; JSA Regs 1996 (SI 1996/207) regs 83-96.
+fn calculate_jsa_income_based(
+    bu: &BenUnit,
+    people: &[Person],
+    _person_results: &[PersonResult],
+    params: &Parameters,
+) -> f64 {
+    let irb = match &params.income_related_benefits {
+        Some(p) => p,
+        None => return 0.0,
+    };
+
+    // At least one adult must be looking for work (LOOKWK=1) or have JSA-eligible emp_status
+    let any_available = bu.person_ids.iter()
+        .filter(|&&pid| people[pid].is_adult())
+        .any(|&pid| {
+            let p = &people[pid];
+            p.looking_for_work || p.emp_status == 3  // 3=unemployed
+        });
+    if !any_available {
+        return 0.0;
+    }
+
+    let is_couple = bu.is_couple(people);
+    let eldest_age = bu.eldest_adult_age(people);
+    let num_children = bu.num_children(people);
+
+    let personal_allowance_weekly = if is_couple {
+        irb.jsa_allowance_couple
+    } else if eldest_age >= 25.0 {
+        irb.jsa_allowance_single_25_plus
+    } else {
+        irb.jsa_allowance_single_under25
+    };
+
+    let family_premium_weekly: f64 = if num_children > 0 {
+        params.housing_benefit.as_ref().map_or(0.0, |hb| hb.family_premium)
+    } else { 0.0 };
+    let child_allowance_weekly: f64 = params.housing_benefit.as_ref()
+        .map_or(0.0, |hb| hb.child_allowance * num_children as f64);
+
+    let dp_weekly = disability_premiums_weekly(bu, people, params);
+
+    let applicable_amount = (personal_allowance_weekly + family_premium_weekly
+        + child_allowance_weekly + dp_weekly) * 52.0;
+
+    let income: f64 = bu.person_ids.iter()
+        .map(|&pid| {
+            let p = &people[pid];
+            p.employment_income + p.self_employment_income
+                + p.pension_income + p.state_pension_reported
+                + p.savings_interest_income + p.other_income
+        })
+        .sum();
+
+    (applicable_amount - income).max(0.0)
+}
+
+/// Carers Allowance: non-means-tested flat rate for informal carers.
+///
+/// Eligibility:
+///   - Aged 16+
+///   - Spends ≥35 hours/week caring for a severely disabled person
+///   - Net earnings after deductions ≤ earnings disregard
+///   - Not in full-time education
+///
+/// In the FRS, we use:
+///   - `is_self_identified_carer` (CARER1=1) as the caring hours proxy
+///   - The disabled person must be in the same or different household (FRS can't tell, so
+///     we award CA to any reported carer who passes the earnings test)
+///   - Reported CA receipt used as the take-up gate (passthrough for reported claimants,
+///     no modelling of new claimants — CA eligibility is hard to fully determine from FRS)
+///
+/// Source: SSCBA 1992 s.70; SS (Carers Allowance) Regs 2002 (SI 2002/2690).
+fn calculate_carers_allowance(
+    bu: &BenUnit,
+    people: &[Person],
+    person_results: &[PersonResult],
+    params: &Parameters,
+) -> f64 {
+    let irb = match &params.income_related_benefits {
+        Some(p) => p,
+        None => return 0.0,
+    };
+
+    bu.person_ids.iter()
+        .filter(|&&pid| people[pid].is_adult())
+        .map(|&pid| {
+            let p = &people[pid];
+            // Passthrough for reported claimants, subject to earnings test
+            let reported_ca = p.carers_allowance_reported > 0.0;
+            let is_eligible_carer = p.is_carer || p.is_self_identified_carer;
+            if !reported_ca && !is_eligible_carer { return 0.0; }
+
+            // Earnings test: net earnings must be <= ca_earnings_disregard_weekly
+            let gross_earned = p.employment_income + p.self_employment_income;
+            let ni_deduction = person_results[pid].national_insurance;
+            let pension_contribs = p.employee_pension_contributions + p.personal_pension_contributions;
+            let net_earned_weekly = (gross_earned - ni_deduction - pension_contribs).max(0.0) / 52.0;
+            let passes_earnings_test = net_earned_weekly <= irb.ca_earnings_disregard_weekly;
+
+            if (reported_ca || is_eligible_carer) && passes_earnings_test {
+                irb.carers_allowance_weekly * 52.0
+            } else {
+                0.0
+            }
+        })
+        .sum()
 }
 
 /// Scottish Child Payment: £26.70/week per eligible child under 16.
@@ -766,6 +1070,7 @@ mod tests {
         let params = Parameters::for_year(2025).unwrap();
         let (mut people, bu, hh) = make_single_bu(0.0, 0);
         people[0].is_disabled = true;
+        people[0].pip_dl_std = true; // PIP DL standard rate → LCWRA eligible
         let person_results: Vec<PersonResult> = people.iter()
             .map(|p| crate::variables::income_tax::calculate(p, &params))
             .collect();
@@ -1064,6 +1369,7 @@ mod parameter_impact_tests {
     fn param_uc_lcwra_element() {
         let (mut params, mut p, bu, hh) = base_person_uc();
         p.is_disabled = true;
+        p.pip_dl_std = true; // PIP DL standard rate → LCWRA eligible
         let base = calc(&params, &[p.clone()], &bu, &hh).universal_credit;
         params.universal_credit.lcwra_element += 100.0;
         let reformed = calc(&params, &[p], &bu, &hh).universal_credit;
@@ -1602,6 +1908,7 @@ mod parameter_impact_tests {
     #[test]
     fn param_take_up_universal_credit() {
         let (mut params, p, _, hh) = base_person_uc();
+        params.baseline_mode = false; // test reform take-up logic
         // ENR (not reported, not on_uc) — take-up rate determines receipt
         let bu = BenUnit { id: 0, household_id: 0, person_ids: vec![0],
             take_up_seed: 0.75, on_uc: false, is_enr_uc: true, rent_monthly: 500.0, ..BenUnit::default() };
@@ -1615,6 +1922,7 @@ mod parameter_impact_tests {
     #[test]
     fn param_take_up_child_benefit() {
         let (mut params, p, _, hh) = base_person_uc();
+        params.baseline_mode = false; // test reform take-up logic
         let mut child = Person::default(); child.id = 1; child.age = 5.0;
         let bu = BenUnit { id: 0, household_id: 0, person_ids: vec![0, 1],
             take_up_seed: 0.75, is_enr_cb: true, ..BenUnit::default() };
@@ -1628,6 +1936,7 @@ mod parameter_impact_tests {
     #[test]
     fn param_take_up_pension_credit() {
         let (mut params, _, _, hh) = base_person_uc();
+        params.baseline_mode = false; // test reform take-up logic
         let mut p = Person::default(); p.age = 68.0; p.state_pension_reported = 5000.0;
         let bu = BenUnit { id: 0, household_id: 0, person_ids: vec![0],
             take_up_seed: 0.75, is_enr_pc: true, ..BenUnit::default() };
@@ -1641,6 +1950,7 @@ mod parameter_impact_tests {
     #[test]
     fn param_take_up_new_entrant_rate() {
         let (mut params, p, _, hh) = base_person_uc();
+        params.baseline_mode = false; // test reform take-up logic
         // Genuinely new entrant (no reported, no ENR)
         let bu = BenUnit { id: 0, household_id: 0, person_ids: vec![0],
             take_up_seed: 0.25, on_uc: true, rent_monthly: 500.0, ..BenUnit::default() };

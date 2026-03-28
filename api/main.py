@@ -27,25 +27,30 @@ app.add_middleware(
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RUST_BINARY = os.path.join(ROOT_DIR, "target", "release", "policyengine-uk-rust")
 CLEAN_FRS_DIR = os.path.join(ROOT_DIR, "data", "frs_clean")
-AVAILABLE_YEARS = [2023, 2024, 2025, 2026, 2027, 2028, 2029]
+FRS_RAW_DIR = os.path.join(ROOT_DIR, "data", "frs_raw")
+AVAILABLE_YEARS = list(range(1994, 2030))
 
 baseline_cache: dict[int, dict] = {}
 params_cache: dict[int, dict] = {}
 
 
-def _data_args() -> list[str]:
-    if os.path.isdir(CLEAN_FRS_DIR):
+def _data_args(year: int) -> list[str]:
+    # For 2023/24, prefer clean FRS if available
+    if year == 2023 and os.path.isdir(CLEAN_FRS_DIR):
         return ["--clean-frs", CLEAN_FRS_DIR]
+    # Always pass --frs-raw; Rust will find the best available year and uprate if needed
+    if os.path.isdir(FRS_RAW_DIR):
+        return ["--frs-raw", FRS_RAW_DIR]
     return []
 
 
 def run_simulation(year: int, reform_json: Optional[str] = None) -> dict:
-    cmd = [RUST_BINARY, "--year", str(year), "--output", "json"] + _data_args()
+    cmd = [RUST_BINARY, "--year", str(year), "--output", "json"] + _data_args(year)
     if reform_json:
         cmd += ["--reform-json", reform_json]
     try:
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=30, cwd=ROOT_DIR
+            cmd, capture_output=True, text=True, timeout=120, cwd=ROOT_DIR
         )
     except subprocess.TimeoutExpired:
         raise HTTPException(504, detail="Simulation timed out")

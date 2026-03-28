@@ -158,6 +158,43 @@ scottish_child_payment:
   weekly_amount: 26.70
   max_age: 16.0
 
+disability_premiums:
+  # Income Support (General) Regs 1987 (SI 1987/1967) Sch.2, as amended.
+  # Uprated by SI 2025/295 (Uprating Order 2025) art.14
+  # Disability Premium: Sch.2 para.11(1)(a)
+  disability_premium_single: 42.50
+  disability_premium_couple: 60.60
+  # Enhanced Disability Premium: Sch.2 para.13(1)
+  enhanced_disability_premium_single: 27.90
+  enhanced_disability_premium_couple: 39.85
+  # Severe Disability Premium: Sch.2 para.14(1)
+  severe_disability_premium: 81.50
+  # Carer Premium: Sch.2 para.14D(1)
+  carer_premium: 46.00
+
+income_related_benefits:
+  # ESA personal allowances: Employment and Support Allowance Regs 2008 (SI 2008/794) Sch.4
+  # Uprated by SI 2025/295 art.18
+  esa_allowance_single_under25: 71.70
+  esa_allowance_single_25_plus: 90.50
+  esa_allowance_couple: 142.25
+  # ESA components: SI 2008/794 Sch.4 col.2; uprated by SI 2025/295 art.18
+  esa_wrag_component: 35.95
+  esa_support_component: 48.95
+  # JSA allowances: Jobseeker's Allowance Regs 1996 (SI 1996/207) Sch.1
+  # Uprated by SI 2025/295 art.16
+  jsa_allowance_single_under25: 71.70
+  jsa_allowance_single_25_plus: 90.50
+  jsa_allowance_couple: 142.25
+  # Carers Allowance: SSCBA 1992 s.70; SS (Carers Allowance) Regs 2002 (SI 2002/2690) reg.4
+  # Uprated by SI 2025/295 art.12: £81.90/week
+  carers_allowance_weekly: 81.90
+  # CA earnings disregard: SI 2002/2690 reg.8; uprated by SI 2025/295 art.13: £151.00/week
+  ca_earnings_disregard_weekly: 151.00
+  # CA caring hours: SSCBA 1992 s.70(1)(b)
+  ca_min_hours_caring: 35.0
+  ca_care_recipient_min_age: 16.0
+
 uc_migration:
   # DWP managed migration statistics, extrapolated
   # Fraction of legacy claimants migrated to UC by this year
