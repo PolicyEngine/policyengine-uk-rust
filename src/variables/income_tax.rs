@@ -792,7 +792,8 @@ mod parameter_impact_tests {
 
     #[test]
     fn param_ni_class2_flat_rate() {
-        let mut params = Parameters::for_year(2025).unwrap();
+        // Class 2 was abolished from April 2024; test against 2023/24 where it applied
+        let mut params = Parameters::for_year(2023).unwrap();
         let p = se_earner();
         let base = calc(&p, &params).national_insurance;
         params.national_insurance.class2_flat_rate_weekly += 1.0;
@@ -802,7 +803,8 @@ mod parameter_impact_tests {
 
     #[test]
     fn param_ni_class2_small_profits_threshold() {
-        let mut params = Parameters::for_year(2025).unwrap();
+        // Class 2 was abolished from April 2024; test against 2023/24 where it applied
+        let mut params = Parameters::for_year(2023).unwrap();
         // Person with SE income just above SPT
         let mut p = Person::default(); p.age = 35.0; p.self_employment_income = 7000.0;
         let base = calc(&p, &params).national_insurance;

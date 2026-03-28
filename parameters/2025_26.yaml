@@ -47,10 +47,9 @@ national_insurance:
   # (Reduction in Rates) Act 2024 c.1)
   main_rate: 0.08
   additional_rate: 0.02
-  # Class 2 (self-employed flat rate): SSCBA 1992 s.11
-  # £3.45/week for profits above small profits threshold £6,725
-  class2_flat_rate_weekly: 3.45
-  class2_small_profits_threshold: 6725.0
+  # Class 2 abolished from 6 April 2024 (National Insurance Contributions Act 2024)
+  class2_flat_rate_weekly: 0.0
+  class2_small_profits_threshold: 0.0
   # Class 1 employer (secondary): SSCBA 1992 s.9; SI 2025/288
   # Secondary threshold reduced to £5,000/year from April 2025 (Autumn Budget 2024)
   # Employer rate increased to 15% from April 2025

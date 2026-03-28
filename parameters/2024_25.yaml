@@ -35,6 +35,9 @@ national_insurance:
   class4_upper_profits_limit: 50270.0
   class4_main_rate: 0.06  # Reduced from 8% to 6% from 6 Apr 2024
   class4_additional_rate: 0.02
+  # Class 2 abolished from 6 April 2024 (National Insurance Contributions Act 2024)
+  class2_flat_rate_weekly: 0.0
+  class2_small_profits_threshold: 0.0
 
 universal_credit:
   # SI 2024/242 (Up-rating Order 2024), amending UC Regs 2013 reg.36

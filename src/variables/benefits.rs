@@ -238,7 +238,10 @@ fn calculate_universal_credit(
     let max_amount_annual = max_amount_monthly * 12.0;
 
     // Work allowance
-    let has_work_allowance = has_housing_costs || num_children > 0 || has_lcwra;
+    // UC Regs 2013 reg.22(1)(b)(ii): work allowance only available if claimant has
+    // responsibility for a child/qualifying young person or limited capability for work.
+    // Having housing costs does NOT confer entitlement — it only determines which rate applies.
+    let has_work_allowance = num_children > 0 || has_lcwra;
     let work_allowance_annual = if has_work_allowance {
         if has_housing_costs {
             uc.work_allowance_lower * 12.0

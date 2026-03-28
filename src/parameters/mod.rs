@@ -144,8 +144,9 @@ pub struct NationalInsuranceParams {
 
 fn default_secondary_threshold() -> f64 { 5000.0 }
 fn default_employer_rate() -> f64 { 0.15 }
-fn default_class2_flat_rate() -> f64 { 3.45 }
-fn default_class2_spt() -> f64 { 6725.0 }
+// Class 2 abolished from 6 April 2024 (NIC Act 2024); default to 0 for post-2024 years
+fn default_class2_flat_rate() -> f64 { 0.0 }
+fn default_class2_spt() -> f64 { 0.0 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UniversalCreditParams {
