@@ -65,6 +65,10 @@ struct Cli {
     #[arg(long, default_value = "pretty")]
     output: String,
 
+    /// Dump per-household microdata as CSV to stdout (weight, equivalised_net_income, gross_income, total_tax, total_benefits)
+    #[arg(long)]
+    output_microdata: bool,
+
     /// Show per-decile breakdown
     #[arg(long, default_value = "true")]
     deciles: bool,
@@ -217,6 +221,16 @@ fn main() -> anyhow::Result<()> {
         reform_params.clone(),
     );
     let reformed = reform_sim.run();
+
+    // Microdata output mode
+    if cli.output_microdata {
+        println!("weight,equivalised_net_income,gross_income,total_tax,total_benefits");
+        for hh in &dataset.households {
+            let r = &baseline.household_results[hh.id];
+            println!("{},{},{},{},{}", hh.weight, r.equivalised_net_income, r.gross_income, r.total_tax, r.total_benefits);
+        }
+        return Ok(());
+    }
 
     // Analysis
     let households = &dataset.households;
