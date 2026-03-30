@@ -1,1 +1,1 @@
-Fixed PyPI publishing pipeline: manylinux wheel tags, automated versioning trigger.
+Fixed PyPI publishing pipeline: manylinux wheel tags, automated versioning.
