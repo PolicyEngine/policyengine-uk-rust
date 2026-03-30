@@ -64,9 +64,16 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Set up Python (container)
+        if: matrix.container != ''
+        run: |
+          # Use the manylinux container's bundled CPython 3.12
+          PYBIN=$(ls -d /opt/python/cp312-cp312/bin 2>/dev/null || ls -d /opt/python/cp31*/bin | head -1)
+          echo "$PYBIN" >> $GITHUB_PATH
+
       - name: Install build tools
         run: |
-          python3 -m pip install build wheel
+          pip install build wheel
 
       - name: Stage binary and parameters into package
         run: |
@@ -76,7 +83,7 @@ jobs:
           cp -r parameters interfaces/python/policyengine_uk_compiled/parameters
 
       - name: Build wheel
-        run: python3 -m build --wheel
+        run: python -m build --wheel
 
       - name: Retag Linux wheel as manylinux
         if: matrix.manylinux != ''
