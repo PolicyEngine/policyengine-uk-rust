@@ -13,29 +13,55 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
+            manylinux: manylinux_2_17_x86_64.manylinux2014_x86_64
+            container: quay.io/pypa/manylinux_2_28_x86_64
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            manylinux: manylinux_2_17_aarch64.manylinux2014_aarch64
+            container: ""
           - os: macos-14
             target: aarch64-apple-darwin
+            manylinux: ""
+            container: ""
 
     runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container || null }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust
+      - name: Install Rust (container)
+        if: matrix.container != ''
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install Rust (native)
+        if: matrix.container == ''
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+
+      - name: Install cross-compilation tools (aarch64-linux)
+        if: matrix.target == 'aarch64-unknown-linux-gnu' && matrix.container == ''
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo '[target.aarch64-unknown-linux-gnu]' >> ~/.cargo/config.toml
+          echo 'linker = "aarch64-linux-gnu-gcc"' >> ~/.cargo/config.toml
+          rustup target add aarch64-unknown-linux-gnu
 
       - name: Build Rust binary
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Set up Python
+        if: matrix.container == ''
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Install build tools
-        run: pip install build wheel
+        run: pip3 install build wheel
 
       - name: Stage binary and parameters into package
         run: |
@@ -45,14 +71,16 @@ jobs:
           cp -r parameters interfaces/python/policyengine_uk_compiled/parameters
 
       - name: Build wheel
-        run: python -m build --wheel
+        run: python3 -m build --wheel
 
       - name: Retag Linux wheel as manylinux
-        if: runner.os == 'Linux'
+        if: matrix.manylinux != ''
         run: |
           cd dist
-          for whl in *linux_x86_64*.whl; do
-            newname="${whl/linux_x86_64/manylinux_2_17_x86_64.manylinux2014_x86_64}"
+          for whl in *linux*.whl; do
+            # Extract the current platform tag
+            oldtag=$(echo "$whl" | grep -oP '(linux_\w+)')
+            newname="${whl/$oldtag/${{ matrix.manylinux }}}"
             mv "$whl" "$newname"
             echo "Renamed $whl -> $newname"
           done
