@@ -52,6 +52,21 @@ jobs:
       - name: Build wheel
         run: python -m build --wheel
 
+      - name: Retag Linux wheel as manylinux
+        if: runner.os == 'Linux'
+        run: |
+          pip install wheel
+          for whl in dist/*.whl; do
+            python -c "
+import pathlib, re
+p = pathlib.Path('$whl')
+new = re.sub(r'linux_x86_64', 'manylinux_2_17_x86_64.manylinux2014_x86_64', p.name)
+if new != p.name:
+    p.rename(p.parent / new)
+    print(f'Renamed to {new}')
+"
+          done
+
       - uses: actions/upload-artifact@v4
         with:
           name: wheel-${{ matrix.target }}
@@ -86,4 +101,4 @@ jobs:
           user: __token__
           password: ${{ secrets.PYPI }}
           packages-dir: dist/
-          skip_existing: true
+          skip-existing: true
