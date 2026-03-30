@@ -1,3 +1,10 @@
+## [0.3.3] - 2026-03-30
+
+### Fixed
+
+- Fix CI: use manylinux container's bundled Python for wheel builds
+
+
 ## [0.3.2] - 2026-03-30
 
 ### Fixed
