@@ -36,6 +36,8 @@ jobs:
           export HOME=/root
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
           echo "/root/.cargo/bin" >> $GITHUB_PATH
+          echo "RUSTUP_HOME=/root/.rustup" >> $GITHUB_ENV
+          echo "CARGO_HOME=/root/.cargo" >> $GITHUB_ENV
 
       - name: Install Rust (native)
         if: matrix.container == ''
