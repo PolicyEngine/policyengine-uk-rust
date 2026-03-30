@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::Path;
 use crate::engine::entities::*;
 use crate::engine::simulation::SimulationResults;
@@ -531,11 +532,57 @@ fn write_microdata_csv_households<W: std::io::Write>(
     Ok(())
 }
 
+/// Remap entity IDs to contiguous 0..N so they can be used as Vec indices.
+/// This handles non-contiguous or sparse IDs from external input (e.g. API).
+fn remap_entity_ids(
+    people: &mut Vec<Person>,
+    benunits: &mut Vec<BenUnit>,
+    households: &mut Vec<Household>,
+) {
+    // Build old→new mappings based on position in the Vec
+    let person_map: HashMap<usize, usize> = people.iter().enumerate().map(|(i, p)| (p.id, i)).collect();
+    let benunit_map: HashMap<usize, usize> = benunits.iter().enumerate().map(|(i, b)| (b.id, i)).collect();
+    let household_map: HashMap<usize, usize> = households.iter().enumerate().map(|(i, h)| (h.id, i)).collect();
+
+    // Check if remapping is needed (all IDs already contiguous 0..N)
+    let needs_remap = people.iter().enumerate().any(|(i, p)| p.id != i)
+        || benunits.iter().enumerate().any(|(i, b)| b.id != i)
+        || households.iter().enumerate().any(|(i, h)| h.id != i);
+
+    if !needs_remap {
+        return;
+    }
+
+    // Remap person fields
+    for p in people.iter_mut() {
+        p.id = *person_map.get(&p.id).unwrap_or(&p.id);
+        p.benunit_id = *benunit_map.get(&p.benunit_id).unwrap_or(&p.benunit_id);
+        p.household_id = *household_map.get(&p.household_id).unwrap_or(&p.household_id);
+    }
+
+    // Remap benunit fields
+    for bu in benunits.iter_mut() {
+        bu.id = *benunit_map.get(&bu.id).unwrap_or(&bu.id);
+        bu.household_id = *household_map.get(&bu.household_id).unwrap_or(&bu.household_id);
+        bu.person_ids = bu.person_ids.iter().filter_map(|pid| person_map.get(pid).copied()).collect();
+    }
+
+    // Remap household fields
+    for hh in households.iter_mut() {
+        hh.id = *household_map.get(&hh.id).unwrap_or(&hh.id);
+        hh.benunit_ids = hh.benunit_ids.iter().filter_map(|bid| benunit_map.get(bid).copied()).collect();
+        hh.person_ids = hh.person_ids.iter().filter_map(|pid| person_map.get(pid).copied()).collect();
+    }
+}
+
 /// Load a Dataset from clean CSVs (persons.csv, benunits.csv, households.csv).
 pub fn load_clean_dataset(data_dir: &Path, year: u32) -> anyhow::Result<Dataset> {
-    let households = parse_households_csv(std::fs::File::open(data_dir.join("households.csv"))?)?;
+    let mut households = parse_households_csv(std::fs::File::open(data_dir.join("households.csv"))?)?;
     let mut benunits = parse_benunits_csv(std::fs::File::open(data_dir.join("benunits.csv"))?)?;
-    let people = parse_persons_csv(std::fs::File::open(data_dir.join("persons.csv"))?)?;
+    let mut people = parse_persons_csv(std::fs::File::open(data_dir.join("persons.csv"))?)?;
+
+    // Remap sparse IDs to contiguous 0..N for Vec indexing
+    remap_entity_ids(&mut people, &mut benunits, &mut households);
 
     // Derive would_claim_esa/jsa from person data if not set (old CSV format)
     for bu in &mut benunits {
@@ -565,9 +612,12 @@ pub fn load_clean_frs(data_dir: &Path) -> anyhow::Result<Dataset> {
 pub fn assemble_dataset(
     mut people: Vec<Person>,
     mut benunits: Vec<BenUnit>,
-    households: Vec<Household>,
+    mut households: Vec<Household>,
     year: u32,
 ) -> Dataset {
+    // Remap sparse IDs to contiguous 0..N for Vec indexing
+    remap_entity_ids(&mut people, &mut benunits, &mut households);
+
     // Derive would_claim_esa/jsa from person data if not set
     for bu in &mut benunits {
         if !bu.would_claim_esa {
