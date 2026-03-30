@@ -1,0 +1,280 @@
+"""Pydantic models mirroring the Rust parameter and output structures."""
+
+from __future__ import annotations
+
+from typing import Optional
+from pydantic import BaseModel, Field
+
+
+# ── Parameter models (mirror src/parameters/mod.rs) ──────────────────────────
+
+
+class TaxBracket(BaseModel):
+    rate: float
+    threshold: float
+
+
+class IncomeTaxParams(BaseModel):
+    personal_allowance: Optional[float] = None
+    pa_taper_threshold: Optional[float] = None
+    pa_taper_rate: Optional[float] = None
+    uk_brackets: Optional[list[TaxBracket]] = None
+    scottish_brackets: Optional[list[TaxBracket]] = None
+    dividend_allowance: Optional[float] = None
+    dividend_basic_rate: Optional[float] = None
+    dividend_higher_rate: Optional[float] = None
+    dividend_additional_rate: Optional[float] = None
+    savings_starter_rate_band: Optional[float] = None
+    marriage_allowance_max_fraction: Optional[float] = None
+    marriage_allowance_rounding: Optional[float] = None
+
+
+class NationalInsuranceParams(BaseModel):
+    primary_threshold_annual: Optional[float] = None
+    upper_earnings_limit_annual: Optional[float] = None
+    main_rate: Optional[float] = None
+    additional_rate: Optional[float] = None
+    secondary_threshold_annual: Optional[float] = None
+    employer_rate: Optional[float] = None
+    class2_flat_rate_weekly: Optional[float] = None
+    class2_small_profits_threshold: Optional[float] = None
+    class4_lower_profits_limit: Optional[float] = None
+    class4_upper_profits_limit: Optional[float] = None
+    class4_main_rate: Optional[float] = None
+    class4_additional_rate: Optional[float] = None
+
+
+class UniversalCreditParams(BaseModel):
+    standard_allowance_single_under25: Optional[float] = None
+    standard_allowance_single_over25: Optional[float] = None
+    standard_allowance_couple_under25: Optional[float] = None
+    standard_allowance_couple_over25: Optional[float] = None
+    child_element_first: Optional[float] = None
+    child_element_subsequent: Optional[float] = None
+    disabled_child_lower: Optional[float] = None
+    disabled_child_higher: Optional[float] = None
+    lcwra_element: Optional[float] = None
+    carer_element: Optional[float] = None
+    taper_rate: Optional[float] = None
+    work_allowance_higher: Optional[float] = None
+    work_allowance_lower: Optional[float] = None
+    child_limit: Optional[int] = None
+
+
+class ChildBenefitParams(BaseModel):
+    eldest_weekly: Optional[float] = None
+    additional_weekly: Optional[float] = None
+    hicbc_threshold: Optional[float] = None
+    hicbc_taper_end: Optional[float] = None
+
+
+class StatePensionParams(BaseModel):
+    new_state_pension_weekly: Optional[float] = None
+    old_basic_pension_weekly: Optional[float] = None
+
+
+class PensionCreditParams(BaseModel):
+    standard_minimum_single: Optional[float] = None
+    standard_minimum_couple: Optional[float] = None
+    savings_credit_threshold_single: Optional[float] = None
+    savings_credit_threshold_couple: Optional[float] = None
+
+
+class BenefitCapParams(BaseModel):
+    single_london: Optional[float] = None
+    single_outside_london: Optional[float] = None
+    non_single_london: Optional[float] = None
+    non_single_outside_london: Optional[float] = None
+    earnings_exemption_threshold: Optional[float] = None
+
+
+class HousingBenefitParams(BaseModel):
+    withdrawal_rate: Optional[float] = None
+    personal_allowance_single_under25: Optional[float] = None
+    personal_allowance_single_25_plus: Optional[float] = None
+    personal_allowance_couple: Optional[float] = None
+    child_allowance: Optional[float] = None
+    family_premium: Optional[float] = None
+
+
+class TaxCreditsParams(BaseModel):
+    wtc_basic_element: Optional[float] = None
+    wtc_couple_element: Optional[float] = None
+    wtc_lone_parent_element: Optional[float] = None
+    wtc_30_hour_element: Optional[float] = None
+    ctc_child_element: Optional[float] = None
+    ctc_family_element: Optional[float] = None
+    ctc_disabled_child_element: Optional[float] = None
+    ctc_severely_disabled_child_element: Optional[float] = None
+    income_threshold: Optional[float] = None
+    taper_rate: Optional[float] = None
+    wtc_min_hours_single: Optional[float] = None
+    wtc_min_hours_couple: Optional[float] = None
+
+
+class ScottishChildPaymentParams(BaseModel):
+    weekly_amount: Optional[float] = None
+    max_age: Optional[float] = None
+
+
+class DisabilityPremiumParams(BaseModel):
+    disability_premium_single: Optional[float] = None
+    disability_premium_couple: Optional[float] = None
+    enhanced_disability_premium_single: Optional[float] = None
+    enhanced_disability_premium_couple: Optional[float] = None
+    severe_disability_premium: Optional[float] = None
+    carer_premium: Optional[float] = None
+
+
+class IncomeRelatedBenefitParams(BaseModel):
+    esa_allowance_single_under25: Optional[float] = None
+    esa_allowance_single_25_plus: Optional[float] = None
+    esa_allowance_couple: Optional[float] = None
+    esa_wrag_component: Optional[float] = None
+    esa_support_component: Optional[float] = None
+    jsa_allowance_single_under25: Optional[float] = None
+    jsa_allowance_single_25_plus: Optional[float] = None
+    jsa_allowance_couple: Optional[float] = None
+    carers_allowance_weekly: Optional[float] = None
+    ca_earnings_disregard_weekly: Optional[float] = None
+    ca_min_hours_caring: Optional[float] = None
+    ca_care_recipient_min_age: Optional[float] = None
+
+
+class UcMigrationRates(BaseModel):
+    housing_benefit: Optional[float] = None
+    tax_credits: Optional[float] = None
+    income_support: Optional[float] = None
+
+
+class Parameters(BaseModel):
+    """Full parameter set. All fields optional for use as reform overlay."""
+
+    fiscal_year: Optional[str] = None
+    income_tax: Optional[IncomeTaxParams] = None
+    national_insurance: Optional[NationalInsuranceParams] = None
+    universal_credit: Optional[UniversalCreditParams] = None
+    child_benefit: Optional[ChildBenefitParams] = None
+    state_pension: Optional[StatePensionParams] = None
+    pension_credit: Optional[PensionCreditParams] = None
+    benefit_cap: Optional[BenefitCapParams] = None
+    housing_benefit: Optional[HousingBenefitParams] = None
+    tax_credits: Optional[TaxCreditsParams] = None
+    scottish_child_payment: Optional[ScottishChildPaymentParams] = None
+    uc_migration: Optional[UcMigrationRates] = None
+    disability_premiums: Optional[DisabilityPremiumParams] = None
+    income_related_benefits: Optional[IncomeRelatedBenefitParams] = None
+
+
+# ── Simulation config ─────────────────────────────────────────────────────────
+
+
+class SimulationConfig(BaseModel):
+    """Configuration for running a simulation."""
+
+    year: int = 2025
+    policy: Optional[Parameters] = Field(
+        None, description="Reform parameters (overlay on baseline)"
+    )
+    clean_frs_base: Optional[str] = Field(
+        None, description="Base dir with per-year clean FRS subdirs"
+    )
+    clean_frs: Optional[str] = Field(
+        None, description="Single clean FRS directory"
+    )
+    frs_raw: Optional[str] = Field(
+        None, description="Base dir with per-year raw FRS tab files"
+    )
+    binary_path: Optional[str] = Field(
+        None, description="Path to compiled policyengine-uk-rust binary"
+    )
+
+
+# ── Output models (mirror JsonOutput in src/main.rs) ─────────────────────────
+
+
+class BudgetaryImpact(BaseModel):
+    baseline_revenue: float
+    reform_revenue: float
+    revenue_change: float
+    baseline_benefits: float
+    reform_benefits: float
+    benefit_spending_change: float
+    net_cost: float
+
+
+class IncomeBreakdown(BaseModel):
+    employment_income: float
+    self_employment_income: float
+    pension_income: float
+    savings_interest_income: float
+    dividend_income: float
+    property_income: float
+    other_income: float
+
+
+class ProgramBreakdown(BaseModel):
+    income_tax: float
+    employee_ni: float
+    employer_ni: float
+    universal_credit: float
+    child_benefit: float
+    state_pension: float
+    pension_credit: float
+    housing_benefit: float
+    child_tax_credit: float
+    working_tax_credit: float
+    income_support: float
+    esa_income_related: float
+    jsa_income_based: float
+    carers_allowance: float
+    scottish_child_payment: float
+    benefit_cap_reduction: float
+    passthrough_benefits: float
+
+
+class Caseloads(BaseModel):
+    income_tax_payers: float
+    ni_payers: float
+    employer_ni_payers: float
+    universal_credit: float
+    child_benefit: float
+    state_pension: float
+    pension_credit: float
+    housing_benefit: float
+    child_tax_credit: float
+    working_tax_credit: float
+    income_support: float
+    esa_income_related: float
+    jsa_income_based: float
+    carers_allowance: float
+    scottish_child_payment: float
+    benefit_cap_affected: float
+
+
+class DecileImpact(BaseModel):
+    decile: int
+    avg_baseline_income: float
+    avg_reform_income: float
+    avg_change: float
+    pct_change: float
+
+
+class WinnersLosers(BaseModel):
+    winners_pct: float
+    losers_pct: float
+    unchanged_pct: float
+    avg_gain: float
+    avg_loss: float
+
+
+class SimulationResult(BaseModel):
+    fiscal_year: str
+    budgetary_impact: BudgetaryImpact
+    income_breakdown: IncomeBreakdown
+    program_breakdown: ProgramBreakdown
+    caseloads: Caseloads
+    decile_impacts: list[DecileImpact]
+    winners_losers: WinnersLosers
+    avg_hbai_net_income: float
+    cpi_index: float

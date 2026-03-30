@@ -2,18 +2,18 @@
 
 import json
 import os
-import subprocess
 from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from policyengine_uk_compiled import Simulation, Parameters as PolicyParams
+
 app = FastAPI(title="PolicyEngine UK API")
 
 ALLOWED_ORIGINS = [
     "http://localhost:3000",
-    # GitHub Pages frontend
     "https://policyengine.github.io",
 ]
 
@@ -25,8 +25,7 @@ app.add_middleware(
 )
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-RUST_BINARY = os.path.join(ROOT_DIR, "target", "release", "policyengine-uk-rust")
-CLEAN_FRS_DIR = os.path.join(ROOT_DIR, "data", "frs_clean")
+CLEAN_FRS_DIR = os.path.join(ROOT_DIR, "data", "frs")
 FRS_RAW_DIR = os.path.join(ROOT_DIR, "data", "frs_raw")
 AVAILABLE_YEARS = list(range(1994, 2030))
 
@@ -34,39 +33,26 @@ baseline_cache: dict[int, dict] = {}
 params_cache: dict[int, dict] = {}
 
 
-def _data_args(year: int) -> list[str]:
-    # For 2023/24, prefer clean FRS if available
-    if year == 2023 and os.path.isdir(CLEAN_FRS_DIR):
-        return ["--clean-frs", CLEAN_FRS_DIR]
-    # Always pass --frs-raw; Rust will find the best available year and uprate if needed
+def _data_kwargs() -> dict:
+    if os.path.isdir(CLEAN_FRS_DIR):
+        return {"clean_frs_base": CLEAN_FRS_DIR}
     if os.path.isdir(FRS_RAW_DIR):
-        return ["--frs-raw", FRS_RAW_DIR]
-    return []
+        return {"frs_raw": FRS_RAW_DIR}
+    return {}
 
 
 def run_simulation(year: int, reform_json: Optional[str] = None) -> dict:
-    cmd = [RUST_BINARY, "--year", str(year), "--output", "json"] + _data_args(year)
+    sim = Simulation(year=year, **_data_kwargs())
+    policy = None
     if reform_json:
-        cmd += ["--policy-json", reform_json]
-    try:
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=120, cwd=ROOT_DIR
-        )
-    except subprocess.TimeoutExpired:
-        raise HTTPException(504, detail="Simulation timed out")
-    if result.returncode != 0:
-        raise HTTPException(500, detail=f"Simulation failed: {result.stderr}")
-    return json.loads(result.stdout)
+        policy = PolicyParams(**json.loads(reform_json))
+    result = sim.run(policy=policy)
+    return result.model_dump()
 
 
 def get_baseline_params(year: int) -> dict:
-    cmd = [RUST_BINARY, "--year", str(year), "--export-params-json"]
-    result = subprocess.run(
-        cmd, capture_output=True, text=True, timeout=10, cwd=ROOT_DIR
-    )
-    if result.returncode != 0:
-        raise HTTPException(500, detail=f"Failed to load params: {result.stderr}")
-    return json.loads(result.stdout)
+    sim = Simulation(year=year)
+    return sim.get_baseline_params()
 
 
 @app.on_event("startup")
@@ -136,7 +122,6 @@ async def get_baseline(year: int):
 
 @app.get("/api/baselines")
 async def get_all_baselines():
-    """Return baseline results for all cached years."""
     return {str(y): baseline_cache[y] for y in sorted(baseline_cache.keys())}
 
 
@@ -165,7 +150,6 @@ async def simulate(req: SimulateRequest):
 
 @app.post("/api/simulate-multi")
 async def simulate_multi(req: SimulateMultiYearRequest):
-    """Run the same reform across multiple years. Returns {year: result}."""
     overlay = _extract_overlay(req)
     results = {}
     for year in req.years:
@@ -182,6 +166,5 @@ async def simulate_multi(req: SimulateMultiYearRequest):
 async def health():
     return {
         "status": "ok",
-        "binary": os.path.exists(RUST_BINARY),
         "frs_data": os.path.isdir(CLEAN_FRS_DIR),
     }

@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "policyengine-uk-compiled"
+version = "0.1.0"
+description = "Compiled UK tax-benefit microsimulation engine (Rust binary with Python interface)"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+dependencies = [
+    "pydantic>=2.0",
+]
+
+[project.urls]
+Repository = "https://github.com/PolicyEngine/policyengine-uk-rust"
+
+[tool.setuptools.packages.find]
+include = ["policyengine_uk_compiled*"]
+
+[tool.setuptools.package-data]
+policyengine_uk_compiled = [
+    "bin/*",
+    "parameters/*.yaml",
+]

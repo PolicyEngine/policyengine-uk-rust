@@ -2,9 +2,9 @@
 Modal deployment for PolicyEngine UK microsimulation API.
 
 Architecture:
-  - Rust binary is compiled at image build time (baked into the image layer).
+  - Rust binary is compiled at image build time and bundled into the Python package.
   - Modal Volume (`policyengine-uk-frs`) holds per-year clean FRS CSVs (1994/-2023/).
-    Upload with: python api/upload_frs.py data/frs_clean_all
+    Upload with: python api/upload_frs.py data/frs
   - FastAPI app is served via modal.asgi_app().
 
 Deploy:
@@ -20,29 +20,28 @@ import modal
 # Volumes
 # ---------------------------------------------------------------------------
 frs_volume = modal.Volume.from_name("policyengine-uk-frs", create_if_missing=True)
-FRS_MOUNT = "/data/frs_clean"
+FRS_MOUNT = "/data/frs"
 
 # ---------------------------------------------------------------------------
-# Image — Debian base, install Rust toolchain, clone repo, compile binary
+# Image — Debian base, install Rust toolchain, clone repo, compile, install package
 # ---------------------------------------------------------------------------
 image = (
     modal.Image.debian_slim(python_version="3.12")
     .apt_install("curl", "build-essential", "pkg-config")
-    # Install Rust (stable) without interactive prompts
     .run_commands(
         "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable",
         "echo 'source $HOME/.cargo/env' >> ~/.bashrc",
     )
-    .pip_install("fastapi>=0.115", "uvicorn[standard]>=0.30", "pydantic>=2.0")
-    # Copy the repo source into the image (exclude FRS data — it stays on the Volume)
+    .pip_install("fastapi>=0.115", "uvicorn[standard]>=0.30", "pydantic>=2.0", "build", "wheel")
     .add_local_dir(".", remote_path="/app", copy=True,
                    ignore=["data/", "target/", ".git/", "app/node_modules/", "app/.next/"])
     .run_commands(
+        # Build binary, stage into package, install
         "cd /app && $HOME/.cargo/bin/cargo build --release 2>&1",
-        "cp /app/target/release/policyengine-uk-rust /usr/local/bin/policyengine-uk",
-        "chmod +x /usr/local/bin/policyengine-uk",
-        # Smoke-test: export params for 2025 (fast, no data needed)
-        "policyengine-uk --year 2025 --export-params-json > /dev/null",
+        "cd /app && bash build_package.sh",
+        "cd /app && pip install .",
+        # Smoke-test
+        "python -c 'from policyengine_uk_compiled import Simulation; s = Simulation(year=2025); print(s.get_baseline_params()[\"fiscal_year\"])'",
     )
 )
 
@@ -58,14 +57,14 @@ app = modal.App("policyengine-uk", image=image)
 def _make_fastapi_app():
     import json
     import os
-    import subprocess
     from typing import Any, Optional
 
     from fastapi import FastAPI, HTTPException
     from fastapi.middleware.cors import CORSMiddleware
     from pydantic import BaseModel
 
-    RUST_BINARY = "policyengine-uk"
+    from policyengine_uk_compiled import Simulation, Parameters as PolicyParams
+
     FRS_BASE_DIR = FRS_MOUNT
     AVAILABLE_YEARS = list(range(1994, 2030))
 
@@ -73,7 +72,7 @@ def _make_fastapi_app():
 
     fastapi_app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # Locked down by Modal's HTTPS — open for GH Pages
+        allow_origins=["*"],
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -81,39 +80,22 @@ def _make_fastapi_app():
     baseline_cache: dict[int, dict] = {}
     params_cache: dict[int, dict] = {}
 
-    def _data_args() -> list[str]:
+    def _data_kwargs() -> dict:
         if os.path.isdir(FRS_BASE_DIR) and os.listdir(FRS_BASE_DIR):
-            return ["--clean-frs-base", FRS_BASE_DIR]
-        return []
+            return {"clean_frs_base": FRS_BASE_DIR}
+        return {}
 
     def run_simulation(year: int, reform_json: Optional[str] = None) -> dict:
-        cmd = [
-            RUST_BINARY,
-            "--year", str(year),
-            "--output", "json",
-        ] + _data_args()
+        sim = Simulation(year=year, **_data_kwargs())
+        policy = None
         if reform_json:
-            cmd += ["--policy-json", reform_json]
-        try:
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=120,
-                cwd="/app",  # binary resolves parameters/ relative to cwd
-            )
-        except subprocess.TimeoutExpired:
-            raise HTTPException(504, detail="Simulation timed out")
-        if result.returncode != 0:
-            raise HTTPException(500, detail=f"Simulation failed: cmd={cmd} stderr={result.stderr[:2000]}")
-        return json.loads(result.stdout)
+            policy = PolicyParams(**json.loads(reform_json))
+        result = sim.run(policy=policy)
+        return result.model_dump()
 
     def get_baseline_params(year: int) -> dict:
-        result = subprocess.run(
-            [RUST_BINARY, "--year", str(year), "--export-params-json"],
-            capture_output=True, text=True, timeout=10,
-            cwd="/app",
-        )
-        if result.returncode != 0:
-            raise HTTPException(500, detail=f"Failed to load params: {result.stderr[:500]}")
-        return json.loads(result.stdout)
+        sim = Simulation(year=year)
+        return sim.get_baseline_params()
 
     @fastapi_app.on_event("startup")
     async def cache_baselines():
@@ -212,10 +194,8 @@ def _make_fastapi_app():
 
     @fastapi_app.get("/api/health")
     async def health():
-        import shutil
         return {
             "status": "ok",
-            "binary": bool(shutil.which("policyengine-uk")),
             "frs_data": os.path.isdir(FRS_BASE_DIR) and bool(os.listdir(FRS_BASE_DIR)),
             "cached_years": sorted(baseline_cache.keys()),
         }
@@ -225,11 +205,9 @@ def _make_fastapi_app():
 
 @app.function(
     volumes={FRS_MOUNT: frs_volume},
-    # Startup caches 36 year baselines — needs time and memory
     memory=8192,
     cpu=4,
     timeout=600,
-    # EU West (Ireland) for lower latency from UK callers
     region="eu-west-1",
 )
 @modal.concurrent(max_inputs=10)

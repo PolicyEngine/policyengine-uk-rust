@@ -2,14 +2,14 @@
 Upload clean FRS data to the Modal Volume.
 
 Usage:
-    python api/upload_frs.py data/frs_clean_all
+    python api/upload_frs.py data/frs
 
 The directory should contain per-year subdirectories (1994/, 1995/, ..., 2023/)
 each with persons.csv, benunits.csv, households.csv.
 
 Generate with:
     for year in $(seq 1994 2023); do
-        ./target/release/policyengine-uk-rust --year $year --frs <tab-dir> --extract-frs data/frs_clean_all/$year
+        ./target/release/policyengine-uk-rust --year $year --frs <tab-dir> --extract-frs data/frs/$year
     done
 
 This only needs to be run once (or when the FRS data changes).

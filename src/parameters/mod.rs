@@ -25,8 +25,6 @@ pub struct Parameters {
     pub tax_credits: Option<TaxCreditsParams>,
     #[serde(default)]
     pub scottish_child_payment: Option<ScottishChildPaymentParams>,
-    #[serde(default = "TakeUpRates::default")]
-    pub take_up: TakeUpRates,
     #[serde(default = "UcMigrationRates::default")]
     pub uc_migration: UcMigrationRates,
     /// Disability premiums for IS/HB/ESA applicable amounts.
@@ -36,48 +34,8 @@ pub struct Parameters {
     /// Income-related benefits: ESA(IR), JSA(IB), Carers Allowance.
     #[serde(default)]
     pub income_related_benefits: Option<IncomeRelatedBenefitParams>,
-    /// Baseline mode: if true, benefits are only awarded to reported claimants.
-    /// Take-up rates and ENR logic are disabled. Set to false for reform simulations.
-    #[serde(default = "Parameters::default_baseline_mode", skip_serializing)]
-    pub baseline_mode: bool,
 }
 
-impl Parameters {
-    fn default_baseline_mode() -> bool { true }
-}
-
-/// Take-up rates for means-tested benefits.
-///
-/// Legacy benefits (HB, CTC, WTC, IS) are received only by reported claimants —
-/// no new entrants to the legacy system under current policy. Their take-up
-/// rates are therefore not modelled here.
-///
-/// Source: DWP Income-Related Benefits Estimates of Take-Up.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TakeUpRates {
-    pub universal_credit: f64,
-    pub child_benefit: f64,
-    pub pension_credit: f64,
-    /// Take-up rate for genuinely new entrants (not ENRs) when a reform expands
-    /// UC eligibility. Models partial behavioural response to new entitlement.
-    #[serde(default = "TakeUpRates::default_new_entrant_rate")]
-    pub new_entrant_rate: f64,
-}
-
-impl Default for TakeUpRates {
-    fn default() -> Self {
-        TakeUpRates {
-            universal_credit: 0.80,
-            child_benefit: 0.93,
-            pension_credit: 0.63,
-            new_entrant_rate: 0.3,
-        }
-    }
-}
-
-impl TakeUpRates {
-    fn default_new_entrant_rate() -> f64 { 0.3 }
-}
 
 /// UC managed migration rates by legacy benefit type.
 /// Fraction of legacy claimants who have been migrated to UC by the modelled year.

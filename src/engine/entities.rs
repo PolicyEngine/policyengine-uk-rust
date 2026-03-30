@@ -214,8 +214,8 @@ pub struct BenUnit {
     pub id: usize,
     pub household_id: usize,
     pub person_ids: Vec<usize>,
-    /// Random seed [0, 1) for take-up decisions — deterministic per benunit.
-    pub take_up_seed: f64,
+    /// Random seed [0, 1) for UC migration routing — deterministic per benunit.
+    pub migration_seed: f64,
     /// Whether this benunit reported UC receipt in the FRS.
     pub on_uc: bool,
     /// Whether this benunit reported any legacy means-tested benefit (HB/CTC/WTC/IS) in the FRS.
@@ -223,23 +223,16 @@ pub struct BenUnit {
     pub rent_monthly: f64,
     pub is_lone_parent: bool,
 
-    // Reported receipt flags (true = any member reported non-zero amount)
-    pub reported_cb: bool,
-    pub reported_uc: bool,
-    pub reported_hb: bool,
-    pub reported_pc: bool,
-    pub reported_ctc: bool,
-    pub reported_wtc: bool,
-    pub reported_is: bool,
-
-    // Entitled Non-Recipient flags (computed at extract time from baseline policy)
-    // True = model says entitled under baseline policy but no reported receipt.
-    pub is_enr_uc: bool,
-    pub is_enr_hb: bool,
-    pub is_enr_pc: bool,
-    pub is_enr_cb: bool,
-    pub is_enr_ctc: bool,
-    pub is_enr_wtc: bool,
+    // Would-claim flags: in microdata, set from reported receipt in the FRS.
+    pub would_claim_uc: bool,
+    pub would_claim_cb: bool,
+    pub would_claim_hb: bool,
+    pub would_claim_pc: bool,
+    pub would_claim_ctc: bool,
+    pub would_claim_wtc: bool,
+    pub would_claim_is: bool,
+    pub would_claim_esa: bool,
+    pub would_claim_jsa: bool,
 
     // In-kind benefits (annual, from FRS DVs — included in HBAI net income)
     pub free_school_meals: f64,      // FSMBU

@@ -1,6 +1,12 @@
 /target
 /data
 *.zip
+dist/
+*.egg-info/
+
+# Bundled binary + parameters (built by build_package.sh, not committed)
+policyengine_uk_compiled/bin/
+policyengine_uk_compiled/parameters/
 
 # Node/Next.js
 app/node_modules/
