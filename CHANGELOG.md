@@ -1,3 +1,10 @@
+## [0.3.2] - 2026-03-30
+
+### Fixed
+
+- Fix CI: resolve rustup/cargo toolchain detection in manylinux container builds
+
+
 ## [0.3.1] - 2026-03-30
 
 ### Fixed
