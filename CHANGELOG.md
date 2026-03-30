@@ -1,3 +1,10 @@
+## [0.3.1] - 2026-03-30
+
+### Fixed
+
+- Fix Linux wheel builds: manylinux container for glibc compat, aarch64-linux support
+
+
 ## [0.3.0] - 2026-03-30
 
 ### Added
