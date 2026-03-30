@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 from pydantic import BaseModel, Field
 
 
@@ -254,10 +254,10 @@ class Caseloads(BaseModel):
 
 class DecileImpact(BaseModel):
     decile: int
-    avg_baseline_income: float
-    avg_reform_income: float
-    avg_change: float
-    pct_change: float
+    avg_baseline_income: Optional[float] = None
+    avg_reform_income: Optional[float] = None
+    avg_change: Optional[float] = None
+    pct_change: Optional[float] = None
 
 
 class WinnersLosers(BaseModel):
@@ -278,3 +278,13 @@ class SimulationResult(BaseModel):
     winners_losers: WinnersLosers
     avg_hbai_net_income: float
     cpi_index: float
+
+
+class MicrodataResult(BaseModel):
+    """Per-entity simulation results as DataFrames."""
+
+    model_config = {"arbitrary_types_allowed": True}
+
+    persons: Any  # pd.DataFrame
+    benunits: Any  # pd.DataFrame
+    households: Any  # pd.DataFrame

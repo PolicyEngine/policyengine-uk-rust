@@ -233,6 +233,32 @@ pub fn write_microdata(
     Ok(())
 }
 
+/// Write enhanced microdata to stdout using the concatenated CSV protocol.
+pub fn write_microdata_to_stdout(
+    dataset: &Dataset,
+    baseline: &SimulationResults,
+    reformed: &SimulationResults,
+) -> anyhow::Result<()> {
+    use std::io::Write;
+    let stdout = std::io::stdout();
+    let mut out = stdout.lock();
+
+    // Persons
+    write!(out, "===PERSONS===\n")?;
+    write_microdata_csv_persons(&mut out, dataset, baseline, reformed)?;
+
+    // Benunits
+    write!(out, "===BENUNITS===\n")?;
+    write_microdata_csv_benunits(&mut out, dataset, baseline, reformed)?;
+
+    // Households
+    write!(out, "===HOUSEHOLDS===\n")?;
+    write_microdata_csv_households(&mut out, dataset, baseline, reformed)?;
+
+    out.flush()?;
+    Ok(())
+}
+
 fn write_microdata_persons(
     dataset: &Dataset,
     baseline: &SimulationResults,
@@ -240,7 +266,17 @@ fn write_microdata_persons(
     output_dir: &Path,
 ) -> anyhow::Result<()> {
     let path = output_dir.join("persons.csv");
-    let mut wtr = csv::Writer::from_path(&path)?;
+    let file = std::fs::File::create(&path)?;
+    write_microdata_csv_persons(file, dataset, baseline, reformed)
+}
+
+fn write_microdata_csv_persons<W: std::io::Write>(
+    writer: W,
+    dataset: &Dataset,
+    baseline: &SimulationResults,
+    reformed: &SimulationResults,
+) -> anyhow::Result<()> {
+    let mut wtr = csv::Writer::from_writer(writer);
 
     wtr.write_record(&[
         // IDs
@@ -338,7 +374,17 @@ fn write_microdata_benunits(
     output_dir: &Path,
 ) -> anyhow::Result<()> {
     let path = output_dir.join("benunits.csv");
-    let mut wtr = csv::Writer::from_path(&path)?;
+    let file = std::fs::File::create(&path)?;
+    write_microdata_csv_benunits(file, dataset, baseline, reformed)
+}
+
+fn write_microdata_csv_benunits<W: std::io::Write>(
+    writer: W,
+    dataset: &Dataset,
+    baseline: &SimulationResults,
+    reformed: &SimulationResults,
+) -> anyhow::Result<()> {
+    let mut wtr = csv::Writer::from_writer(writer);
 
     wtr.write_record(&[
         // IDs
@@ -429,7 +475,17 @@ fn write_microdata_households(
     output_dir: &Path,
 ) -> anyhow::Result<()> {
     let path = output_dir.join("households.csv");
-    let mut wtr = csv::Writer::from_path(&path)?;
+    let file = std::fs::File::create(&path)?;
+    write_microdata_csv_households(file, dataset, baseline, reformed)
+}
+
+fn write_microdata_csv_households<W: std::io::Write>(
+    writer: W,
+    dataset: &Dataset,
+    baseline: &SimulationResults,
+    reformed: &SimulationResults,
+) -> anyhow::Result<()> {
+    let mut wtr = csv::Writer::from_writer(writer);
 
     wtr.write_record(&[
         "household_id", "weight", "region",
@@ -475,19 +531,19 @@ fn write_microdata_households(
     Ok(())
 }
 
-/// Load a Dataset from clean CSVs (produced by write_clean_csvs).
-pub fn load_clean_frs(data_dir: &Path) -> anyhow::Result<Dataset> {
-    let households = load_households_csv(data_dir)?;
-    let mut benunits = load_benunits_csv(data_dir)?;
-    let people = load_persons_csv(data_dir)?;
+/// Load a Dataset from clean CSVs (persons.csv, benunits.csv, households.csv).
+pub fn load_clean_dataset(data_dir: &Path, year: u32) -> anyhow::Result<Dataset> {
+    let households = parse_households_csv(std::fs::File::open(data_dir.join("households.csv"))?)?;
+    let mut benunits = parse_benunits_csv(std::fs::File::open(data_dir.join("benunits.csv"))?)?;
+    let people = parse_persons_csv(std::fs::File::open(data_dir.join("persons.csv"))?)?;
 
     // Derive would_claim_esa/jsa from person data if not set (old CSV format)
     for bu in &mut benunits {
         if !bu.would_claim_esa {
-            bu.would_claim_esa = bu.person_ids.iter().any(|&pid| people[pid].esa_income > 0.0);
+            bu.would_claim_esa = bu.person_ids.iter().any(|&pid| people.get(pid).map_or(false, |p| p.esa_income > 0.0));
         }
         if !bu.would_claim_jsa {
-            bu.would_claim_jsa = bu.person_ids.iter().any(|&pid| people[pid].jsa_income > 0.0);
+            bu.would_claim_jsa = bu.person_ids.iter().any(|&pid| people.get(pid).map_or(false, |p| p.jsa_income > 0.0));
         }
     }
 
@@ -495,13 +551,51 @@ pub fn load_clean_frs(data_dir: &Path) -> anyhow::Result<Dataset> {
         people,
         benunits,
         households,
-        name: "FRS (cleaned)".to_string(),
-        year: 2023,
+        name: "dataset".to_string(),
+        year,
     })
 }
 
+/// Backward-compatible alias.
+pub fn load_clean_frs(data_dir: &Path) -> anyhow::Result<Dataset> {
+    load_clean_dataset(data_dir, 2023)
+}
+
+/// Assemble a Dataset from pre-parsed entity vectors.
+pub fn assemble_dataset(
+    mut people: Vec<Person>,
+    mut benunits: Vec<BenUnit>,
+    households: Vec<Household>,
+    year: u32,
+) -> Dataset {
+    // Derive would_claim_esa/jsa from person data if not set
+    for bu in &mut benunits {
+        if !bu.would_claim_esa {
+            bu.would_claim_esa = bu.person_ids.iter().any(|&pid| people.get(pid).map_or(false, |p| p.esa_income > 0.0));
+        }
+        if !bu.would_claim_jsa {
+            bu.would_claim_jsa = bu.person_ids.iter().any(|&pid| people.get(pid).map_or(false, |p| p.jsa_income > 0.0));
+        }
+    }
+    // Auto-derive is_in_scotland from household region
+    for p in &mut people {
+        if let Some(hh) = households.get(p.household_id) {
+            if hh.region.is_scotland() {
+                p.is_in_scotland = true;
+            }
+        }
+    }
+    Dataset {
+        people,
+        benunits,
+        households,
+        name: "dataset".to_string(),
+        year,
+    }
+}
+
 fn parse_bool(s: &str) -> bool {
-    s == "true" || s == "1"
+    s == "true" || s == "1" || s == "True" || s == "TRUE"
 }
 
 fn parse_f64(s: &str) -> f64 {
@@ -512,11 +606,15 @@ fn parse_usize(s: &str) -> usize {
     s.parse::<usize>().unwrap_or(0)
 }
 
+fn parse_i64(s: &str) -> i64 {
+    s.parse::<i64>().unwrap_or(0)
+}
+
 fn parse_id_list(s: &str) -> Vec<usize> {
     if s.is_empty() {
         return Vec::new();
     }
-    s.split(';').filter_map(|x| x.parse::<usize>().ok()).collect()
+    s.split(';').filter_map(|x| x.trim().parse::<usize>().ok()).collect()
 }
 
 fn parse_region(s: &str) -> Region {
@@ -537,184 +635,187 @@ fn parse_region(s: &str) -> Region {
     }
 }
 
-fn load_persons_csv(data_dir: &Path) -> anyhow::Result<Vec<Person>> {
-    let path = data_dir.join("persons.csv");
-    let mut rdr = csv::Reader::from_path(&path)?;
+// ── Header-based CSV helpers ──────────────────────────────────────────────
+
+struct HeaderIndex {
+    headers: csv::StringRecord,
+}
+
+impl HeaderIndex {
+    fn new(headers: csv::StringRecord) -> Self {
+        Self { headers }
+    }
+
+    fn idx(&self, name: &str) -> Option<usize> {
+        self.headers.iter().position(|h| h == name)
+    }
+
+    fn get_str(&self, r: &csv::StringRecord, name: &str) -> String {
+        self.idx(name).and_then(|i| r.get(i)).unwrap_or("").to_string()
+    }
+
+    fn get_bool(&self, r: &csv::StringRecord, name: &str) -> bool {
+        self.idx(name).map(|i| parse_bool(r.get(i).unwrap_or(""))).unwrap_or(false)
+    }
+
+    fn get_bool_default(&self, r: &csv::StringRecord, name: &str, default: bool) -> bool {
+        match self.idx(name) {
+            Some(i) => parse_bool(r.get(i).unwrap_or("")),
+            None => default,
+        }
+    }
+
+    fn get_f64(&self, r: &csv::StringRecord, name: &str) -> f64 {
+        self.idx(name).map(|i| parse_f64(r.get(i).unwrap_or(""))).unwrap_or(0.0)
+    }
+
+    fn get_f64_default(&self, r: &csv::StringRecord, name: &str, default: f64) -> f64 {
+        match self.idx(name) {
+            Some(i) => {
+                let s = r.get(i).unwrap_or("");
+                if s.is_empty() { default } else { parse_f64(s) }
+            }
+            None => default,
+        }
+    }
+
+    fn get_i64(&self, r: &csv::StringRecord, name: &str) -> i64 {
+        self.idx(name).map(|i| parse_i64(r.get(i).unwrap_or(""))).unwrap_or(0)
+    }
+
+    fn get_usize(&self, r: &csv::StringRecord, name: &str) -> usize {
+        self.idx(name).map(|i| parse_usize(r.get(i).unwrap_or(""))).unwrap_or(0)
+    }
+}
+
+// ── Generic reader-based CSV parsers ──────────────────────────────────────
+
+/// Parse persons from any CSV reader. Header-based: missing columns use defaults.
+pub fn parse_persons_csv<R: std::io::Read>(reader: R) -> anyhow::Result<Vec<Person>> {
+    let mut rdr = csv::Reader::from_reader(reader);
+    let h = HeaderIndex::new(rdr.headers()?.clone());
     let mut people = Vec::new();
 
     for result in rdr.records() {
         let r = result?;
-        let mut i = 0;
-        let mut next = || -> &str { let v = r.get(i).unwrap_or(""); i += 1; v };
-
-        let person_id = parse_usize(next());
-        let benunit_id = parse_usize(next());
-        let household_id = parse_usize(next());
-        let age = parse_f64(next());
-        let gender = if next() == "male" { Gender::Male } else { Gender::Female };
-        let is_benunit_head = parse_bool(next());
-        let is_household_head = parse_bool(next());
-        let employment_income = parse_f64(next());
-        let self_employment_income = parse_f64(next());
-        let pension_income = parse_f64(next());
-        let state_pension = parse_f64(next());
-        let savings_interest_income = parse_f64(next());
-        let dividend_income = parse_f64(next());
-        let property_income = parse_f64(next());
-        let maintenance_income = parse_f64(next());
-        let miscellaneous_income = parse_f64(next());
-        let other_income = parse_f64(next());
-        let is_in_scotland = parse_bool(next());
-        let hours_worked = parse_f64(next());
-        // Disability rate-band flags — default false for old CSVs
-        let dla_care_low = parse_bool(next());
-        let dla_care_mid = parse_bool(next());
-        let dla_care_high = parse_bool(next());
-        let dla_mob_low = parse_bool(next());
-        let dla_mob_high = parse_bool(next());
-        let pip_dl_std = parse_bool(next());
-        let pip_dl_enh = parse_bool(next());
-        let pip_mob_std = parse_bool(next());
-        let pip_mob_enh = parse_bool(next());
-        let aa_low = parse_bool(next());
-        let aa_high = parse_bool(next());
-        let is_disabled = parse_bool(next());
-        let is_enhanced_disabled = parse_bool(next());
-        let is_severely_disabled = parse_bool(next());
-        let is_carer = parse_bool(next());
-        let limitill = parse_bool(next());
-        let esa_group = next().parse::<i64>().unwrap_or(0);
-        let emp_status = next().parse::<i64>().unwrap_or(0);
-        let looking_for_work = parse_bool(next());
-        let is_self_identified_carer = parse_bool(next());
-        let employee_pension_contributions = parse_f64(next());
-        let personal_pension_contributions = parse_f64(next());
-        let childcare_expenses = parse_f64(next());
-        let child_benefit = parse_f64(next());
-        let housing_benefit = parse_f64(next());
-        let income_support = parse_f64(next());
-        let pension_credit = parse_f64(next());
-        let child_tax_credit = parse_f64(next());
-        let working_tax_credit = parse_f64(next());
-        let universal_credit = parse_f64(next());
-        let dla_care = parse_f64(next());
-        let dla_mobility = parse_f64(next());
-        let pip_daily_living = parse_f64(next());
-        let pip_mobility = parse_f64(next());
-        let carers_allowance = parse_f64(next());
-        let attendance_allowance = parse_f64(next());
-        let esa_income = parse_f64(next());
-        let esa_contributory = parse_f64(next());
-        let jsa_income = parse_f64(next());
-        let jsa_contributory = parse_f64(next());
-        let other_benefits = parse_f64(next());
-        let adp_daily_living = parse_f64(next());
-        let adp_mobility = parse_f64(next());
-        let cdp_care = parse_f64(next());
-        let cdp_mobility = parse_f64(next());
-        let would_claim_marriage_allowance = parse_bool(next());
-
         people.push(Person {
-            id: person_id, benunit_id, household_id,
-            age, gender, is_benunit_head, is_household_head,
-            employment_income, self_employment_income,
-            pension_income, state_pension,
-            savings_interest_income, dividend_income,
-            property_income, maintenance_income,
-            miscellaneous_income, other_income,
-            is_in_scotland, hours_worked,
-            dla_care_low, dla_care_mid, dla_care_high,
-            dla_mob_low, dla_mob_high,
-            pip_dl_std, pip_dl_enh,
-            pip_mob_std, pip_mob_enh,
-            aa_low, aa_high,
-            is_disabled, is_enhanced_disabled, is_severely_disabled, is_carer,
-            limitill, esa_group, emp_status,
-            looking_for_work, is_self_identified_carer,
-            employee_pension_contributions, personal_pension_contributions,
-            childcare_expenses,
-            child_benefit, housing_benefit,
-            income_support, pension_credit,
-            child_tax_credit, working_tax_credit,
-            universal_credit,
-            dla_care, dla_mobility,
-            pip_daily_living, pip_mobility,
-            carers_allowance, attendance_allowance,
-            esa_income, esa_contributory,
-            jsa_income, jsa_contributory,
-            other_benefits,
-            adp_daily_living, adp_mobility,
-            cdp_care, cdp_mobility,
-            would_claim_marriage_allowance,
+            id: h.get_usize(&r, "person_id"),
+            benunit_id: h.get_usize(&r, "benunit_id"),
+            household_id: h.get_usize(&r, "household_id"),
+            age: h.get_f64_default(&r, "age", 30.0),
+            gender: if h.get_str(&r, "gender") == "female" { Gender::Female } else { Gender::Male },
+            is_benunit_head: h.get_bool(&r, "is_benunit_head"),
+            is_household_head: h.get_bool(&r, "is_household_head"),
+            employment_income: h.get_f64(&r, "employment_income"),
+            self_employment_income: h.get_f64(&r, "self_employment_income"),
+            pension_income: h.get_f64(&r, "private_pension_income"),
+            state_pension: h.get_f64(&r, "state_pension"),
+            savings_interest_income: h.get_f64(&r, "savings_interest"),
+            dividend_income: h.get_f64(&r, "dividend_income"),
+            property_income: h.get_f64(&r, "property_income"),
+            maintenance_income: h.get_f64(&r, "maintenance_income"),
+            miscellaneous_income: h.get_f64(&r, "miscellaneous_income"),
+            other_income: h.get_f64(&r, "other_income"),
+            is_in_scotland: h.get_bool(&r, "is_in_scotland"),
+            hours_worked: h.get_f64(&r, "hours_worked_annual"),
+            dla_care_low: h.get_bool(&r, "dla_care_low"),
+            dla_care_mid: h.get_bool(&r, "dla_care_mid"),
+            dla_care_high: h.get_bool(&r, "dla_care_high"),
+            dla_mob_low: h.get_bool(&r, "dla_mob_low"),
+            dla_mob_high: h.get_bool(&r, "dla_mob_high"),
+            pip_dl_std: h.get_bool(&r, "pip_dl_std"),
+            pip_dl_enh: h.get_bool(&r, "pip_dl_enh"),
+            pip_mob_std: h.get_bool(&r, "pip_mob_std"),
+            pip_mob_enh: h.get_bool(&r, "pip_mob_enh"),
+            aa_low: h.get_bool(&r, "aa_low"),
+            aa_high: h.get_bool(&r, "aa_high"),
+            is_disabled: h.get_bool(&r, "is_disabled"),
+            is_enhanced_disabled: h.get_bool(&r, "is_enhanced_disabled"),
+            is_severely_disabled: h.get_bool(&r, "is_severely_disabled"),
+            is_carer: h.get_bool(&r, "is_carer"),
+            limitill: h.get_bool(&r, "limitill"),
+            esa_group: h.get_i64(&r, "esa_group"),
+            emp_status: h.get_i64(&r, "emp_status"),
+            looking_for_work: h.get_bool(&r, "looking_for_work"),
+            is_self_identified_carer: h.get_bool(&r, "is_self_identified_carer"),
+            employee_pension_contributions: h.get_f64(&r, "employee_pension_contributions"),
+            personal_pension_contributions: h.get_f64(&r, "personal_pension_contributions"),
+            childcare_expenses: h.get_f64(&r, "childcare_expenses"),
+            child_benefit: h.get_f64(&r, "child_benefit"),
+            housing_benefit: h.get_f64(&r, "housing_benefit"),
+            income_support: h.get_f64(&r, "income_support"),
+            pension_credit: h.get_f64(&r, "pension_credit"),
+            child_tax_credit: h.get_f64(&r, "child_tax_credit"),
+            working_tax_credit: h.get_f64(&r, "working_tax_credit"),
+            universal_credit: h.get_f64(&r, "universal_credit"),
+            dla_care: h.get_f64(&r, "dla_care"),
+            dla_mobility: h.get_f64(&r, "dla_mobility"),
+            pip_daily_living: h.get_f64(&r, "pip_daily_living"),
+            pip_mobility: h.get_f64(&r, "pip_mobility"),
+            carers_allowance: h.get_f64(&r, "carers_allowance"),
+            attendance_allowance: h.get_f64(&r, "attendance_allowance"),
+            esa_income: h.get_f64(&r, "esa_income"),
+            esa_contributory: h.get_f64(&r, "esa_contributory"),
+            jsa_income: h.get_f64(&r, "jsa_income"),
+            jsa_contributory: h.get_f64(&r, "jsa_contributory"),
+            other_benefits: h.get_f64(&r, "other_benefits"),
+            adp_daily_living: h.get_f64(&r, "adp_daily_living"),
+            adp_mobility: h.get_f64(&r, "adp_mobility"),
+            cdp_care: h.get_f64(&r, "cdp_care"),
+            cdp_mobility: h.get_f64(&r, "cdp_mobility"),
+            would_claim_marriage_allowance: h.get_bool(&r, "would_claim_marriage_allowance"),
         });
     }
 
     Ok(people)
 }
 
-fn load_benunits_csv(data_dir: &Path) -> anyhow::Result<Vec<BenUnit>> {
-    let path = data_dir.join("benunits.csv");
-    let mut rdr = csv::Reader::from_path(&path)?;
-
-    // Build header index for forward-compatible reading
-    let headers = rdr.headers()?.clone();
-    let idx = |name: &str| -> Option<usize> {
-        headers.iter().position(|h| h == name)
-    };
-    let get_str = |r: &csv::StringRecord, name: &str| -> String {
-        idx(name).and_then(|i| r.get(i)).unwrap_or("").to_string()
-    };
-    let get_bool = |r: &csv::StringRecord, name: &str| -> bool {
-        idx(name).map(|i| parse_bool(r.get(i).unwrap_or(""))).unwrap_or(false)
-    };
-    let get_f64 = |r: &csv::StringRecord, name: &str| -> f64 {
-        idx(name).map(|i| parse_f64(r.get(i).unwrap_or(""))).unwrap_or(0.0)
-    };
+/// Parse benefit units from any CSV reader. Header-based: missing columns use defaults.
+pub fn parse_benunits_csv<R: std::io::Read>(reader: R) -> anyhow::Result<Vec<BenUnit>> {
+    let mut rdr = csv::Reader::from_reader(reader);
+    let h = HeaderIndex::new(rdr.headers()?.clone());
 
     // Detect old format (reported_cb) vs new format (would_claim_cb)
-    let old_format = idx("reported_cb").is_some();
+    let old_format = h.idx("reported_cb").is_some();
 
     let mut benunits = Vec::new();
     for result in rdr.records() {
         let r = result?;
 
-        let seed = if old_format { get_f64(&r, "take_up_seed") } else { get_f64(&r, "migration_seed") };
+        let seed = if old_format { h.get_f64(&r, "take_up_seed") } else { h.get_f64(&r, "migration_seed") };
 
         let (wc_uc, wc_cb, wc_hb, wc_pc, wc_ctc, wc_wtc, wc_is, wc_esa, wc_jsa);
         if old_format {
-            // Old format: reported_X flags → would_claim_X
-            wc_uc  = get_bool(&r, "reported_uc");
-            wc_cb  = get_bool(&r, "reported_cb");
-            wc_hb  = get_bool(&r, "reported_hb");
-            wc_pc  = get_bool(&r, "reported_pc");
-            wc_ctc = get_bool(&r, "reported_ctc");
-            wc_wtc = get_bool(&r, "reported_wtc");
-            wc_is  = get_bool(&r, "reported_is");
-            // Old format didn't have explicit ESA/JSA reported flags on benunit;
-            // these will be derived from person data after loading.
+            wc_uc  = h.get_bool(&r, "reported_uc");
+            wc_cb  = h.get_bool(&r, "reported_cb");
+            wc_hb  = h.get_bool(&r, "reported_hb");
+            wc_pc  = h.get_bool(&r, "reported_pc");
+            wc_ctc = h.get_bool(&r, "reported_ctc");
+            wc_wtc = h.get_bool(&r, "reported_wtc");
+            wc_is  = h.get_bool(&r, "reported_is");
             wc_esa = false;
             wc_jsa = false;
         } else {
-            wc_uc  = get_bool(&r, "would_claim_uc");
-            wc_cb  = get_bool(&r, "would_claim_cb");
-            wc_hb  = get_bool(&r, "would_claim_hb");
-            wc_pc  = get_bool(&r, "would_claim_pc");
-            wc_ctc = get_bool(&r, "would_claim_ctc");
-            wc_wtc = get_bool(&r, "would_claim_wtc");
-            wc_is  = get_bool(&r, "would_claim_is");
-            wc_esa = get_bool(&r, "would_claim_esa");
-            wc_jsa = get_bool(&r, "would_claim_jsa");
+            wc_uc  = h.get_bool_default(&r, "would_claim_uc", true);
+            wc_cb  = h.get_bool_default(&r, "would_claim_cb", true);
+            wc_hb  = h.get_bool_default(&r, "would_claim_hb", true);
+            wc_pc  = h.get_bool_default(&r, "would_claim_pc", true);
+            wc_ctc = h.get_bool_default(&r, "would_claim_ctc", true);
+            wc_wtc = h.get_bool_default(&r, "would_claim_wtc", true);
+            wc_is  = h.get_bool_default(&r, "would_claim_is", true);
+            wc_esa = h.get_bool_default(&r, "would_claim_esa", true);
+            wc_jsa = h.get_bool_default(&r, "would_claim_jsa", true);
         }
 
         benunits.push(BenUnit {
-            id: get_str(&r, "benunit_id").parse().unwrap_or(0),
-            household_id: get_str(&r, "household_id").parse().unwrap_or(0),
-            person_ids: parse_id_list(&get_str(&r, "person_ids")),
+            id: h.get_usize(&r, "benunit_id"),
+            household_id: h.get_usize(&r, "household_id"),
+            person_ids: parse_id_list(&h.get_str(&r, "person_ids")),
             migration_seed: seed,
-            on_uc: get_bool(&r, "on_uc"),
-            on_legacy: get_bool(&r, "on_legacy"),
-            rent_monthly: get_f64(&r, "rent_monthly"),
-            is_lone_parent: get_bool(&r, "is_lone_parent"),
+            on_uc: h.get_bool(&r, "on_uc"),
+            on_legacy: h.get_bool(&r, "on_legacy"),
+            rent_monthly: h.get_f64(&r, "rent_monthly"),
+            is_lone_parent: h.get_bool(&r, "is_lone_parent"),
             would_claim_uc: wc_uc, would_claim_cb: wc_cb,
             would_claim_hb: wc_hb, would_claim_pc: wc_pc,
             would_claim_ctc: wc_ctc, would_claim_wtc: wc_wtc,
@@ -727,27 +828,22 @@ fn load_benunits_csv(data_dir: &Path) -> anyhow::Result<Vec<BenUnit>> {
     Ok(benunits)
 }
 
-fn load_households_csv(data_dir: &Path) -> anyhow::Result<Vec<Household>> {
-    let path = data_dir.join("households.csv");
-    let mut rdr = csv::Reader::from_path(&path)?;
+/// Parse households from any CSV reader. Header-based: missing columns use defaults.
+pub fn parse_households_csv<R: std::io::Read>(reader: R) -> anyhow::Result<Vec<Household>> {
+    let mut rdr = csv::Reader::from_reader(reader);
+    let h = HeaderIndex::new(rdr.headers()?.clone());
     let mut households = Vec::new();
 
     for result in rdr.records() {
         let r = result?;
-        let mut i = 0;
-        let mut next = || -> &str { let v = r.get(i).unwrap_or(""); i += 1; v };
-
-        let id = parse_usize(next());
-        let benunit_ids = parse_id_list(next());
-        let person_ids = parse_id_list(next());
-        let weight = parse_f64(next());
-        let region = parse_region(next());
-        let rent = parse_f64(next());
-        let council_tax = parse_f64(next());
-
         households.push(Household {
-            id, benunit_ids, person_ids,
-            weight, region, rent, council_tax,
+            id: h.get_usize(&r, "household_id"),
+            benunit_ids: parse_id_list(&h.get_str(&r, "benunit_ids")),
+            person_ids: parse_id_list(&h.get_str(&r, "person_ids")),
+            weight: h.get_f64_default(&r, "weight", 1.0),
+            region: parse_region(&h.get_str(&r, "region")),
+            rent: h.get_f64(&r, "rent_annual"),
+            council_tax: h.get_f64(&r, "council_tax_annual"),
         });
     }
 

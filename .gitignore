@@ -3,21 +3,22 @@
 *.zip
 dist/
 *.egg-info/
+**/*.egg-info/
 
 # Bundled binary + parameters (built by build_package.sh, not committed)
-policyengine_uk_compiled/bin/
-policyengine_uk_compiled/parameters/
+interfaces/python/policyengine_uk_compiled/bin/
+interfaces/python/policyengine_uk_compiled/parameters/
 
 # Node/Next.js
-app/node_modules/
-app/.next/
-app/out/
+interfaces/web/app/node_modules/
+interfaces/web/app/.next/
+interfaces/web/app/out/
 
-# Python API
+# Python
 __pycache__/
 *.pyc
-api/.venv/
-api/*.egg-info/
+interfaces/web/api/.venv/
+interfaces/web/api/*.egg-info/
 
 # IDE
 .idea/

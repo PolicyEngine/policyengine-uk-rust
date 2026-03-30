@@ -1,5 +1,6 @@
 pub mod frs;
 pub mod clean;
+pub mod stdin;
 
 use crate::engine::entities::*;
 

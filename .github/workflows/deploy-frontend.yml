@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "app/**"
+      - "interfaces/web/app/**"
       - ".github/workflows/deploy-frontend.yml"
   workflow_dispatch:
 
@@ -28,14 +28,14 @@ jobs:
         with:
           node-version: "20"
           cache: npm
-          cache-dependency-path: app/package-lock.json
+          cache-dependency-path: interfaces/web/app/package-lock.json
 
       - name: Install dependencies
-        working-directory: app
+        working-directory: interfaces/web/app
         run: npm ci
 
       - name: Build static export
-        working-directory: app
+        working-directory: interfaces/web/app
         env:
           NODE_ENV: production
           # Point to the deployed Modal API — set this secret in GitHub repo settings.
@@ -46,7 +46,7 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: app/out
+          path: interfaces/web/app/out
 
   deploy:
     needs: build

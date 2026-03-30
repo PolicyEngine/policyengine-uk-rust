@@ -39,10 +39,10 @@ jobs:
 
       - name: Stage binary and parameters into package
         run: |
-          mkdir -p policyengine_uk_compiled/bin
-          cp target/${{ matrix.target }}/release/policyengine-uk-rust policyengine_uk_compiled/bin/
-          chmod +x policyengine_uk_compiled/bin/policyengine-uk-rust
-          cp -r parameters policyengine_uk_compiled/parameters
+          mkdir -p interfaces/python/policyengine_uk_compiled/bin
+          cp target/${{ matrix.target }}/release/policyengine-uk-rust interfaces/python/policyengine_uk_compiled/bin/
+          chmod +x interfaces/python/policyengine_uk_compiled/bin/policyengine-uk-rust
+          cp -r parameters interfaces/python/policyengine_uk_compiled/parameters
 
       - name: Build wheel
         run: python -m build --wheel

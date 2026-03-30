@@ -4,14 +4,14 @@ Modal deployment for PolicyEngine UK microsimulation API.
 Architecture:
   - Rust binary is compiled at image build time and bundled into the Python package.
   - Modal Volume (`policyengine-uk-frs`) holds per-year clean FRS CSVs (1994/-2023/).
-    Upload with: python api/upload_frs.py data/frs
+    Upload with: python interfaces/web/api/upload_frs.py data/frs
   - FastAPI app is served via modal.asgi_app().
 
 Deploy:
-    modal deploy api/modal_app.py
+    modal deploy interfaces/web/api/modal_app.py
 
 Serve locally (with hot-reload):
-    modal serve api/modal_app.py
+    modal serve interfaces/web/api/modal_app.py
 """
 
 import modal
@@ -34,11 +34,11 @@ image = (
     )
     .pip_install("fastapi>=0.115", "uvicorn[standard]>=0.30", "pydantic>=2.0", "build", "wheel")
     .add_local_dir(".", remote_path="/app", copy=True,
-                   ignore=["data/", "target/", ".git/", "app/node_modules/", "app/.next/"])
+                   ignore=["data/", "target/", ".git/", "interfaces/web/app/node_modules/", "interfaces/web/app/.next/"])
     .run_commands(
         # Build binary, stage into package, install
         "cd /app && $HOME/.cargo/bin/cargo build --release 2>&1",
-        "cd /app && bash build_package.sh",
+        "cd /app && bash interfaces/python/build_package.sh",
         "cd /app && pip install .",
         # Smoke-test
         "python -c 'from policyengine_uk_compiled import Simulation; s = Simulation(year=2025); print(s.get_baseline_params()[\"fiscal_year\"])'",

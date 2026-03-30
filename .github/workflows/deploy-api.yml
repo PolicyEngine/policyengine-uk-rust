@@ -6,7 +6,7 @@ on:
     paths:
       - "src/**"
       - "parameters/**"
-      - "api/**"
+      - "interfaces/web/api/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/deploy-api.yml"
@@ -29,4 +29,4 @@ jobs:
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-        run: modal deploy api/modal_app.py
+        run: modal deploy interfaces/web/api/modal_app.py

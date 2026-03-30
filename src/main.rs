@@ -14,7 +14,8 @@ use crate::engine::Simulation;
 use crate::parameters::Parameters;
 use crate::reforms::Reform;
 use crate::data::frs::load_frs;
-use crate::data::clean::{write_clean_csvs, load_clean_frs, write_microdata};
+use crate::data::clean::{write_clean_csvs, load_clean_frs, load_clean_dataset, write_microdata, write_microdata_to_stdout};
+use crate::data::stdin::load_dataset_from_reader;
 
 #[derive(Parser)]
 #[command(name = "policyengine-uk")]
@@ -36,12 +37,20 @@ PARAMETER INSPECTION:
 struct Cli {
     // ── Data source (pick one) ──
 
-    /// Base dir with per-year clean FRS subdirs (YYYY/persons.csv etc.).
+    /// Read dataset from stdin (concatenated CSV protocol: ===PERSONS===, ===BENUNITS===, ===HOUSEHOLDS===).
+    #[arg(long)]
+    stdin_data: bool,
+
+    /// Directory containing persons.csv, benunits.csv, households.csv.
+    #[arg(long)]
+    data_dir: Option<PathBuf>,
+
+    /// Base dir with per-year clean subdirs (YYYY/persons.csv etc.).
     /// Falls back to latest year + uprating for projected years.
     #[arg(long)]
     clean_frs_base: Option<PathBuf>,
 
-    /// Single clean FRS directory (persons.csv, benunits.csv, households.csv).
+    /// Single clean directory (persons.csv, benunits.csv, households.csv).
     #[arg(long)]
     clean_frs: Option<PathBuf>,
 
@@ -78,6 +87,10 @@ struct Cli {
     /// Write enhanced microdata CSVs (inputs + simulation outputs) to directory.
     #[arg(long)]
     output_microdata: Option<PathBuf>,
+
+    /// Write enhanced microdata to stdout (concatenated CSV protocol).
+    #[arg(long)]
+    output_microdata_stdout: bool,
 
     // ── Data creation ──
 
@@ -276,7 +289,11 @@ fn main() -> anyhow::Result<()> {
     }
 
     // Load dataset
-    let dataset = if let Some(base) = &cli.clean_frs_base {
+    let dataset = if cli.stdin_data {
+        load_dataset_from_reader(std::io::BufReader::new(std::io::stdin().lock()), cli.year)?
+    } else if let Some(dir) = &cli.data_dir {
+        load_clean_dataset(dir, cli.year)?
+    } else if let Some(base) = &cli.clean_frs_base {
         // Per-year clean FRS directories: base/YYYY/
         let year_dir = base.join(cli.year.to_string());
         if year_dir.is_dir() {
@@ -327,7 +344,7 @@ fn main() -> anyhow::Result<()> {
             }
         }
     } else {
-        anyhow::bail!("No data source specified. Use --frs, --frs-raw, or --clean-frs.")
+        anyhow::bail!("No data source specified. Use --stdin-data, --data-dir, --clean-frs-base, --clean-frs, --frs-raw, or --frs.")
     };
 
     // Load policy (if none specified, policy = baseline)
@@ -368,6 +385,12 @@ fn main() -> anyhow::Result<()> {
         if !json_mode {
             println!("  {} Wrote enhanced microdata to {}", "▸".bright_cyan(), micro_dir.display());
         }
+        return Ok(());
+    }
+
+    // Microdata to stdout
+    if cli.output_microdata_stdout {
+        write_microdata_to_stdout(&dataset, &baseline, &reformed)?;
         return Ok(());
     }
 
