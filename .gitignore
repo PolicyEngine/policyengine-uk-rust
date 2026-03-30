@@ -14,7 +14,8 @@ app/.next/
 app/out/
 
 # Python API
-api/__pycache__/
+__pycache__/
+*.pyc
 api/.venv/
 api/*.egg-info/
 
