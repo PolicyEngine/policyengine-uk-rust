@@ -33,8 +33,9 @@ jobs:
       - name: Install Rust (container)
         if: matrix.container != ''
         run: |
+          export HOME=/root
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          echo "/root/.cargo/bin" >> $GITHUB_PATH
 
       - name: Install Rust (native)
         if: matrix.container == ''
@@ -47,6 +48,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
+          mkdir -p ~/.cargo
           echo '[target.aarch64-unknown-linux-gnu]' >> ~/.cargo/config.toml
           echo 'linker = "aarch64-linux-gnu-gcc"' >> ~/.cargo/config.toml
           rustup target add aarch64-unknown-linux-gnu
@@ -61,7 +63,8 @@ jobs:
           python-version: "3.12"
 
       - name: Install build tools
-        run: pip3 install build wheel
+        run: |
+          python3 -m pip install build wheel
 
       - name: Stage binary and parameters into package
         run: |
@@ -78,9 +81,8 @@ jobs:
         run: |
           cd dist
           for whl in *linux*.whl; do
-            # Extract the current platform tag
-            oldtag=$(echo "$whl" | grep -oP '(linux_\w+)')
-            newname="${whl/$oldtag/${{ matrix.manylinux }}}"
+            oldtag=$(echo "$whl" | sed -n 's/.*-\(linux_[a-z0-9_]*\)\.whl/\1/p')
+            newname=$(echo "$whl" | sed "s/$oldtag/${{ matrix.manylinux }}/")
             mv "$whl" "$newname"
             echo "Renamed $whl -> $newname"
           done
