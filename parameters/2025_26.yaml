@@ -21,12 +21,14 @@ income_tax:
 
   # Scottish rates set by Scottish Rate Resolution 2025/26
   # Scotland Act 1998 s.80C; Scottish Parliament resolution
+  # Scottish rates set by Scottish Rate Resolution 2025/26
+  # Scotland Act 1998 s.80C; Scottish Budget 2025-26
   scottish_brackets:
     - { rate: 0.19, threshold: 0.0 }       # Starter rate
-    - { rate: 0.20, threshold: 2306.0 }    # Basic rate
-    - { rate: 0.21, threshold: 13991.0 }   # Intermediate rate
-    - { rate: 0.42, threshold: 31092.0 }   # Higher rate
-    - { rate: 0.45, threshold: 62430.0 }   # Advanced rate
+    - { rate: 0.20, threshold: 2827.0 }    # Basic rate (was 2306 in 2024/25)
+    - { rate: 0.21, threshold: 14921.0 }   # Intermediate rate (was 13991)
+    - { rate: 0.42, threshold: 31092.0 }   # Higher rate (frozen)
+    - { rate: 0.45, threshold: 62430.0 }   # Advanced rate (frozen)
     - { rate: 0.48, threshold: 125140.0 }  # Top rate
 
   # ITA 2007 s.8 — dividend rates

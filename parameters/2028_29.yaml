@@ -13,13 +13,14 @@ income_tax:
     - { rate: 0.20, threshold: 0.0 }
     - { rate: 0.40, threshold: 38435.0 }   # £37,700 × 1.0195
     - { rate: 0.45, threshold: 127580.0 }  # PA × 2 + £100k
+  # Scottish brackets: CPI-uprated from 2027/28 values
   scottish_brackets:
     - { rate: 0.19, threshold: 0.0 }
-    - { rate: 0.20, threshold: 2351.0 }
-    - { rate: 0.21, threshold: 14264.0 }
-    - { rate: 0.42, threshold: 31698.0 }
-    - { rate: 0.45, threshold: 63648.0 }
-    - { rate: 0.48, threshold: 127580.0 }
+    - { rate: 0.20, threshold: 2943.0 }    # 2884 × 1.0204
+    - { rate: 0.21, threshold: 15533.0 }   # 15222 × 1.0204
+    - { rate: 0.42, threshold: 32367.0 }   # 31720 × 1.0204
+    - { rate: 0.45, threshold: 64990.0 }   # 63691 × 1.0204
+    - { rate: 0.48, threshold: 127580.0 }  # Top rate threshold
   dividend_allowance: 500.0
   dividend_basic_rate: 0.0875
   dividend_higher_rate: 0.3375
@@ -53,7 +54,7 @@ universal_credit:
   taper_rate: 0.55
   work_allowance_higher: 735.0
   work_allowance_lower: 443.0
-  child_limit: 2
+  child_limit: 99  # Two-child limit repealed from April 2026
 
 child_benefit:
   eldest_weekly: 28.02
