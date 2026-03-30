@@ -1,3 +1,10 @@
+## [0.3.0] - 2026-03-30
+
+### Added
+
+- Add aarch64-linux wheel and fix x86_64-linux glibc compatibility (build in manylinux container)
+
+
 ## [0.2.1] - 2026-03-30
 
 ### Fixed
