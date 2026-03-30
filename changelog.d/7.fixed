@@ -1,1 +1,0 @@
-Fix aarch64-linux wheel: build natively in manylinux container instead of cross-compiling (fixes glibc 2.39 dependency)

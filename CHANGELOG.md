@@ -1,3 +1,10 @@
+## [0.3.4] - 2026-03-30
+
+### Fixed
+
+- Fix aarch64-linux wheel: build natively in manylinux container instead of cross-compiling (fixes glibc 2.39 dependency)
+
+
 ## [0.3.3] - 2026-03-30
 
 ### Fixed
