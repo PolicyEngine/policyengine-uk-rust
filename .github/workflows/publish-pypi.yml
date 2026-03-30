@@ -1,18 +1,13 @@
 name: Publish to PyPI
 
 on:
-  push:
-    branches: [main]
-  workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: write
 
 jobs:
   build-wheels:
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      github.event.head_commit.message == 'Update package version'
     strategy:
       matrix:
         include:

@@ -16,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       (!(github.event.head_commit.message == 'Update package version'))
+    outputs:
+      committed: ${{ steps.commit.outputs.committed }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -42,8 +44,8 @@ jobs:
           add: "."
           message: Update package version
 
-      - name: Trigger publish workflow
-        if: steps.commit.outputs.committed == 'true'
-        run: gh workflow run publish-pypi.yml
-        env:
-          GH_TOKEN: ${{ github.token }}
+  publish:
+    needs: versioning
+    if: needs.versioning.outputs.committed == 'true'
+    uses: ./.github/workflows/publish-pypi.yml
+    secrets: inherit
