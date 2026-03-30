@@ -1,3 +1,10 @@
+## [0.3.5] - 2026-03-30
+
+### Changed
+
+- Use variable-specific uprating indices (earnings, CPI, GDP/capita, etc.) matching policyengine-uk; fix Scottish brackets for 2025/26+; repeal two-child limit from 2026/27; upload uprated FRS data for 2024-2029 to GCS
+
+
 ## [0.3.4] - 2026-03-30
 
 ### Fixed
