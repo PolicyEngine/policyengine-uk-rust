@@ -1,12 +1,18 @@
 name: Publish to PyPI
 
 on:
-  release:
-    types: [published]
+  push:
+    branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build-wheels:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event.head_commit.message == 'Update package version'
     strategy:
       matrix:
         include:
@@ -58,6 +64,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Publish git tag
+        run: bash .github/publish-git-tag.sh
+
       - uses: actions/download-artifact@v4
         with:
           path: dist
