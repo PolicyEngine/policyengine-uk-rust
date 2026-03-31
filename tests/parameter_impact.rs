@@ -20,7 +20,7 @@ mod data;
 
 use engine::simulation::*;
 use parameters::*;
-use data::clean::load_clean_frs;
+use data::clean::load_clean_dataset;
 use data::Dataset;
 
 /// Load FRS data for a given fiscal year from the per-year clean FRS base directory.
@@ -28,12 +28,12 @@ use data::Dataset;
 fn load_frs_for_year(base: &Path, year: u32) -> Dataset {
     let year_dir = base.join(year.to_string());
     if year_dir.is_dir() {
-        load_clean_frs(&year_dir).unwrap()
+        load_clean_dataset(&year_dir, year).unwrap()
     } else {
         let latest = (1994..=year).rev()
             .find(|y| base.join(y.to_string()).is_dir())
             .unwrap_or_else(|| panic!("No clean FRS data found for year {} or earlier", year));
-        let mut ds = load_clean_frs(&base.join(latest.to_string())).unwrap();
+        let mut ds = load_clean_dataset(&base.join(latest.to_string()), latest).unwrap();
         ds.uprate_to(year);
         ds
     }

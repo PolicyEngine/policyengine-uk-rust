@@ -194,6 +194,16 @@ fn write_households(dataset: &Dataset, output_dir: &Path) -> anyhow::Result<()> 
         "benunit_ids", "person_ids",
         "weight", "region",
         "rent_annual", "council_tax_annual",
+        // COICOP consumption
+        "food_and_non_alcoholic_beverages", "alcohol_and_tobacco",
+        "clothing_and_footwear", "housing_water_and_fuel",
+        "household_furnishings", "health",
+        "transport", "communication",
+        "recreation_and_culture", "education",
+        "restaurants_and_hotels", "miscellaneous_goods_and_services",
+        "petrol_spending", "diesel_spending",
+        // Product-level consumption (JSON blob)
+        "consumption_products",
     ])?;
 
     for hh in &dataset.households {
@@ -206,6 +216,9 @@ fn write_households(dataset: &Dataset, output_dir: &Path) -> anyhow::Result<()> 
             .collect::<Vec<_>>()
             .join(";");
 
+        // Serialize product-level consumption as JSON
+        let products_json = serde_json::to_string(&hh.consumption_products).unwrap_or_else(|_| "{}".to_string());
+
         wtr.write_record(&[
             hh.id.to_string(),
             bu_ids,
@@ -214,6 +227,21 @@ fn write_households(dataset: &Dataset, output_dir: &Path) -> anyhow::Result<()> 
             hh.region.name().to_string(),
             format!("{:.2}", hh.rent),
             format!("{:.2}", hh.council_tax),
+            format!("{:.2}", hh.food_and_non_alcoholic_beverages),
+            format!("{:.2}", hh.alcohol_and_tobacco),
+            format!("{:.2}", hh.clothing_and_footwear),
+            format!("{:.2}", hh.housing_water_and_fuel),
+            format!("{:.2}", hh.household_furnishings),
+            format!("{:.2}", hh.health),
+            format!("{:.2}", hh.transport),
+            format!("{:.2}", hh.communication),
+            format!("{:.2}", hh.recreation_and_culture),
+            format!("{:.2}", hh.education),
+            format!("{:.2}", hh.restaurants_and_hotels),
+            format!("{:.2}", hh.miscellaneous_goods_and_services),
+            format!("{:.2}", hh.petrol_spending),
+            format!("{:.2}", hh.diesel_spending),
+            products_json,
         ])?;
     }
 
@@ -603,11 +631,6 @@ pub fn load_clean_dataset(data_dir: &Path, year: u32) -> anyhow::Result<Dataset>
     })
 }
 
-/// Backward-compatible alias.
-pub fn load_clean_frs(data_dir: &Path) -> anyhow::Result<Dataset> {
-    load_clean_dataset(data_dir, 2023)
-}
-
 /// Assemble a Dataset from pre-parsed entity vectors.
 pub fn assemble_dataset(
     mut people: Vec<Person>,
@@ -886,6 +909,14 @@ pub fn parse_households_csv<R: std::io::Read>(reader: R) -> anyhow::Result<Vec<H
 
     for result in rdr.records() {
         let r = result?;
+        // Parse product-level consumption from JSON blob (empty map if missing/malformed)
+        let products_str = h.get_str(&r, "consumption_products");
+        let consumption_products: HashMap<String, f64> = if products_str.is_empty() {
+            HashMap::new()
+        } else {
+            serde_json::from_str(&products_str).unwrap_or_default()
+        };
+
         households.push(Household {
             id: h.get_usize(&r, "household_id"),
             benunit_ids: parse_id_list(&h.get_str(&r, "benunit_ids")),
@@ -894,6 +925,22 @@ pub fn parse_households_csv<R: std::io::Read>(reader: R) -> anyhow::Result<Vec<H
             region: parse_region(&h.get_str(&r, "region")),
             rent: h.get_f64(&r, "rent_annual"),
             council_tax: h.get_f64(&r, "council_tax_annual"),
+            // COICOP consumption (present in LCFS clean CSVs, zero for others)
+            food_and_non_alcoholic_beverages: h.get_f64(&r, "food_and_non_alcoholic_beverages"),
+            alcohol_and_tobacco: h.get_f64(&r, "alcohol_and_tobacco"),
+            clothing_and_footwear: h.get_f64(&r, "clothing_and_footwear"),
+            housing_water_and_fuel: h.get_f64(&r, "housing_water_and_fuel"),
+            household_furnishings: h.get_f64(&r, "household_furnishings"),
+            health: h.get_f64(&r, "health"),
+            transport: h.get_f64(&r, "transport"),
+            communication: h.get_f64(&r, "communication"),
+            recreation_and_culture: h.get_f64(&r, "recreation_and_culture"),
+            education: h.get_f64(&r, "education"),
+            restaurants_and_hotels: h.get_f64(&r, "restaurants_and_hotels"),
+            miscellaneous_goods_and_services: h.get_f64(&r, "miscellaneous_goods_and_services"),
+            petrol_spending: h.get_f64(&r, "petrol_spending"),
+            diesel_spending: h.get_f64(&r, "diesel_spending"),
+            consumption_products,
         });
     }
 

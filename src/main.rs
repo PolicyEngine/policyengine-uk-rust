@@ -14,7 +14,10 @@ use crate::engine::Simulation;
 use crate::parameters::Parameters;
 use crate::reforms::Reform;
 use crate::data::frs::load_frs;
-use crate::data::clean::{write_clean_csvs, load_clean_frs, load_clean_dataset, write_microdata, write_microdata_to_stdout};
+use crate::data::spi::load_spi;
+use crate::data::lcfs::load_lcfs;
+use crate::data::was::load_was;
+use crate::data::clean::{write_clean_csvs, load_clean_dataset, write_microdata, write_microdata_to_stdout};
 use crate::data::stdin::load_dataset_from_reader;
 
 #[derive(Parser)]
@@ -22,45 +25,54 @@ use crate::data::stdin::load_dataset_from_reader;
 #[command(about = "UK tax-benefit microsimulation engine")]
 #[command(version)]
 #[command(after_help = "\
-MODEL RUNS (require data + year):
-  Score a policy:    policyengine-uk --clean-frs-base data/ --year 2025 --output json
-  Score with reform: policyengine-uk --clean-frs-base data/ --year 2025 --policy-json '{...}'
-  Export microdata:  policyengine-uk --clean-frs-base data/ --year 2025 --output-microdata out/
+MODEL RUNS (any clean dataset + year):
+  Score a policy:    policyengine-uk --data data/frs/ --year 2025 --output json
+  Score with reform: policyengine-uk --data data/frs/ --year 2025 --policy-json '{...}'
+  Export microdata:  policyengine-uk --data data/frs/ --year 2025 --output-microdata out/
 
-DATA CREATION (one-off preprocessing):
-  Extract clean CSVs: policyengine-uk --frs raw_tab_dir/ --year 2023 --extract-frs clean/2023/
+DATA CREATION (raw survey → clean CSVs):
+  FRS:  policyengine-uk --frs  raw_tab_dir/ --year 2023 --extract data/frs/2023/
+  SPI:  policyengine-uk --spi  raw_tab_dir/ --year 2022 --extract data/spi/2022/
+  LCFS: policyengine-uk --lcfs raw_tab_dir/ --year 2023 --extract data/lcfs/2023/
+  WAS:  policyengine-uk --was  raw_tab_dir/ --year 2020 --extract data/was/2020/
 
 PARAMETER INSPECTION:
   Export as JSON:     policyengine-uk --year 2025 --export-params-json
   Export as YAML:     policyengine-uk --year 2025 --export-baseline
 ")]
 struct Cli {
-    // ── Data source (pick one) ──
+    // ── Data source for simulation (pick one) ──
 
-    /// Read dataset from stdin (concatenated CSV protocol: ===PERSONS===, ===BENUNITS===, ===HOUSEHOLDS===).
+    /// Read dataset from stdin (concatenated CSV protocol).
     #[arg(long)]
     stdin_data: bool,
 
-    /// Directory containing persons.csv, benunits.csv, households.csv.
-    #[arg(long)]
-    data_dir: Option<PathBuf>,
-
     /// Base dir with per-year clean subdirs (YYYY/persons.csv etc.).
-    /// Falls back to latest year + uprating for projected years.
+    /// Works for any dataset (FRS, SPI, LCFS, WAS). Falls back to latest year + uprating.
     #[arg(long)]
-    clean_frs_base: Option<PathBuf>,
+    data: Option<PathBuf>,
 
-    /// Single clean directory (persons.csv, benunits.csv, households.csv).
-    #[arg(long)]
-    clean_frs: Option<PathBuf>,
+    // ── Raw data extraction (survey-specific) ──
 
-    /// Base dir with per-year raw FRS tab files (frs_YYYY_YY/ dirs).
-    #[arg(long)]
-    frs_raw: Option<PathBuf>,
-
-    /// Single raw FRS tab-file directory.
+    /// Raw FRS tab-file directory.
     #[arg(long)]
     frs: Option<PathBuf>,
+
+    /// Raw SPI tab-file directory.
+    #[arg(long)]
+    spi: Option<PathBuf>,
+
+    /// Raw LCFS tab-file directory.
+    #[arg(long)]
+    lcfs: Option<PathBuf>,
+
+    /// Raw WAS tab-file directory.
+    #[arg(long)]
+    was: Option<PathBuf>,
+
+    /// Output directory for extracted clean CSVs. Requires --frs, --spi, --lcfs, or --was.
+    #[arg(long)]
+    extract: Option<PathBuf>,
 
     // ── Year ──
 
@@ -91,12 +103,6 @@ struct Cli {
     /// Write enhanced microdata to stdout (concatenated CSV protocol).
     #[arg(long)]
     output_microdata_stdout: bool,
-
-    // ── Data creation ──
-
-    /// Extract raw FRS to clean CSVs. Requires --frs.
-    #[arg(long)]
-    extract_frs: Option<PathBuf>,
 
     // ── Parameter inspection ──
 
@@ -232,32 +238,6 @@ struct WinnersLosers {
     avg_loss: f64,
 }
 
-/// Find the tab-file directory for a given fiscal year within the frs_raw base.
-/// Handles UKDS structure: frs_raw/frs_YYYY_YY/UKDA-XXXX-tab/tab/
-fn find_frs_tab_dir(base: &std::path::Path, year: u32) -> anyhow::Result<PathBuf> {
-    let dirname = format!("frs_{}_{:02}", year, (year + 1) % 100);
-    let year_dir = base.join(&dirname);
-    if !year_dir.is_dir() {
-        anyhow::bail!("FRS directory not found: {}", year_dir.display());
-    }
-    // Look for UKDA-XXXX-tab/tab/ inside the year directory
-    for entry in std::fs::read_dir(&year_dir)? {
-        let entry = entry?;
-        let name = entry.file_name().to_string_lossy().to_string();
-        if name.starts_with("UKDA-") && name.ends_with("-tab") {
-            let tab_dir = entry.path().join("tab");
-            if tab_dir.is_dir() {
-                return Ok(tab_dir);
-            }
-        }
-    }
-    // Fallback: tab files might be directly in the year directory
-    if year_dir.join("househol.tab").exists() || year_dir.join("adult.tab").exists() {
-        return Ok(year_dir);
-    }
-    anyhow::bail!("No tab directory found in {}", year_dir.display())
-}
-
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
@@ -276,75 +256,55 @@ fn main() -> anyhow::Result<()> {
 
     let json_mode = cli.output == "json";
 
-    // Extract FRS to clean CSVs if requested
-    if let Some(output_dir) = &cli.extract_frs {
-        let frs_path = cli.frs.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("--extract-frs requires --frs <raw-frs-dir>"))?;
-        eprintln!("Loading raw FRS from {}...", frs_path.display());
-        let mut dataset = load_frs(frs_path, cli.year)?;
+    // Extract raw survey data to clean CSVs if requested
+    if let Some(output_dir) = &cli.extract {
+        let mut dataset = if let Some(path) = &cli.frs {
+            eprintln!("Loading raw FRS from {}...", path.display());
+            load_frs(path, cli.year)?
+        } else if let Some(path) = &cli.spi {
+            eprintln!("Loading raw SPI from {}...", path.display());
+            load_spi(path, cli.year)?
+        } else if let Some(path) = &cli.lcfs {
+            eprintln!("Loading raw LCFS from {}...", path.display());
+            load_lcfs(path, cli.year)?
+        } else if let Some(path) = &cli.was {
+            eprintln!("Loading raw WAS from {}...", path.display());
+            load_was(path, cli.year)?
+        } else {
+            anyhow::bail!("--extract requires a raw data source: --frs, --spi, --lcfs, or --was");
+        };
         eprintln!("Loaded {} households, {} people", dataset.households.len(), dataset.people.len());
         write_clean_csvs(&mut dataset, output_dir)?;
         eprintln!("Wrote clean CSVs to {}", output_dir.display());
         return Ok(());
     }
 
-    // Load dataset
+    // Load dataset for simulation
     let dataset = if cli.stdin_data {
         load_dataset_from_reader(std::io::BufReader::new(std::io::stdin().lock()), cli.year)?
-    } else if let Some(dir) = &cli.data_dir {
-        load_clean_dataset(dir, cli.year)?
-    } else if let Some(base) = &cli.clean_frs_base {
-        // Per-year clean FRS directories: base/YYYY/
+    } else if let Some(base) = &cli.data {
+        // Base dir with per-year clean subdirs: base/YYYY/persons.csv etc.
         let year_dir = base.join(cli.year.to_string());
         if year_dir.is_dir() {
-            if !json_mode { println!("  {} Loading clean FRS {}/{}...", "▸".bright_cyan(), cli.year, (cli.year + 1) % 100); }
-            load_clean_frs(&year_dir)?
+            if !json_mode { println!("  {} Loading clean data {}/{}...", "▸".bright_cyan(), cli.year, (cli.year + 1) % 100); }
+            load_clean_dataset(&year_dir, cli.year)?
         } else {
             // Find latest available year and uprate
             let latest = (1994..=cli.year).rev()
                 .find(|y| base.join(y.to_string()).is_dir())
-                .ok_or_else(|| anyhow::anyhow!("No clean FRS data found in {}", base.display()))?;
+                .ok_or_else(|| anyhow::anyhow!("No clean data found in {}", base.display()))?;
             if !json_mode {
-                println!("  {} Loading clean FRS {}/{} and uprating to {}/{}...",
+                println!("  {} Loading clean data {}/{} and uprating to {}/{}...",
                     "▸".bright_cyan(), latest, (latest + 1) % 100,
                     cli.year, (cli.year + 1) % 100);
             }
-            let mut ds = load_clean_frs(&base.join(latest.to_string()))?;
+            let mut ds = load_clean_dataset(&base.join(latest.to_string()), latest)?;
             ds.uprate_to(cli.year);
             ds
         }
-    } else if let Some(clean_path) = &cli.clean_frs {
-        if !json_mode { println!("  {} Loading clean FRS from {}...", "▸".bright_cyan(), clean_path.display()); }
-        load_clean_frs(clean_path)?
-    } else if let Some(frs_path) = &cli.frs {
-        if !json_mode { println!("  {} Loading FRS microdata from {}...", "▸".bright_cyan(), frs_path.display()); }
-        load_frs(frs_path, cli.year)?
-    } else if let Some(raw_base) = &cli.frs_raw {
-        // Try to find this year's FRS; if not found, load latest available and uprate
-        let tab_dir_result = find_frs_tab_dir(raw_base, cli.year);
-        match tab_dir_result {
-            Ok(tab_dir) => {
-                if !json_mode { println!("  {} Loading raw FRS from {}...", "▸".bright_cyan(), tab_dir.display()); }
-                load_frs(&tab_dir, cli.year)?
-            }
-            Err(_) => {
-                // Find the latest available FRS year and uprate
-                let latest_frs_year = (1994..=cli.year).rev()
-                    .find(|y| find_frs_tab_dir(raw_base, *y).is_ok())
-                    .ok_or_else(|| anyhow::anyhow!("No FRS data found in {}", raw_base.display()))?;
-                let tab_dir = find_frs_tab_dir(raw_base, latest_frs_year)?;
-                if !json_mode {
-                    println!("  {} Loading FRS {}/{} and uprating to {}/{}...",
-                        "▸".bright_cyan(), latest_frs_year, (latest_frs_year + 1) % 100,
-                        cli.year, (cli.year + 1) % 100);
-                }
-                let mut ds = load_frs(&tab_dir, latest_frs_year)?;
-                ds.uprate_to(cli.year);
-                ds
-            }
-        }
     } else {
-        anyhow::bail!("No data source specified. Use --stdin-data, --data-dir, --clean-frs-base, --clean-frs, --frs-raw, or --frs.")
+        anyhow::bail!("No data source specified. Use --data <clean-data-base> or --stdin-data.\n\
+            To create clean data from raw surveys, use --extract with --frs, --spi, --lcfs, or --was.")
     };
 
     // Load policy (if none specified, policy = baseline)
@@ -763,18 +723,18 @@ mod obr_validation {
     /// These are gross sanity checks, not precision targets.
     #[test]
     fn obr_2025_revenue_and_spending() {
-        use crate::data::clean::load_clean_frs;
+        use crate::data::clean::load_clean_dataset;
         use crate::engine::Simulation;
         use crate::parameters::Parameters;
         use std::path::Path;
 
         if !Path::new("data/frs/2023").exists() {
-            eprintln!("Skipping OBR validation: data/frs/2023 not found (run --extract-frs first)");
+            eprintln!("Skipping OBR validation: data/frs/2023 not found");
             return;
         }
 
-        let dataset = load_clean_frs(Path::new("data/frs/2023"))
-            .expect("data/frs/2023 must exist — run --extract-frs first");
+        let dataset = load_clean_dataset(Path::new("data/frs/2023"), 2023)
+            .expect("data/frs/2023 must contain persons.csv, benunits.csv, households.csv");
         let params = Parameters::for_year(2025).unwrap();
         let sim = Simulation::new(
             dataset.people.clone(), dataset.benunits.clone(),

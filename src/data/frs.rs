@@ -99,9 +99,9 @@ pub fn load_frs(data_dir: &Path, fiscal_year: u32) -> anyhow::Result<Dataset> {
 
 // ── Table loading ────────────────────────────────────────────────────────
 
-type Table = Vec<HashMap<String, String>>;
+pub(crate) type Table = Vec<HashMap<String, String>>;
 
-fn load_table_cols(data_dir: &Path, name: &str, needed: Option<&[&str]>) -> anyhow::Result<Table> {
+pub(crate) fn load_table_cols(data_dir: &Path, name: &str, needed: Option<&[&str]>) -> anyhow::Result<Table> {
     let tab_path = data_dir.join(format!("{}.tab", name));
     let csv_path = data_dir.join(format!("{}.csv", name));
 
@@ -140,19 +140,19 @@ fn load_table_cols(data_dir: &Path, name: &str, needed: Option<&[&str]>) -> anyh
     Ok(table)
 }
 
-fn get_f64(row: &HashMap<String, String>, key: &str) -> f64 {
+pub(crate) fn get_f64(row: &HashMap<String, String>, key: &str) -> f64 {
     row.get(key)
         .and_then(|s| s.trim().parse::<f64>().ok())
         .unwrap_or(0.0)
 }
 
-fn get_i64(row: &HashMap<String, String>, key: &str) -> i64 {
+pub(crate) fn get_i64(row: &HashMap<String, String>, key: &str) -> i64 {
     row.get(key)
         .and_then(|s| s.trim().parse::<i64>().ok())
         .unwrap_or(0)
 }
 
-fn get_positive_f64(row: &HashMap<String, String>, key: &str) -> f64 {
+pub(crate) fn get_positive_f64(row: &HashMap<String, String>, key: &str) -> f64 {
     get_f64(row, key).max(0.0)
 }
 
@@ -227,7 +227,7 @@ struct HouseholdRecord {
     cvpay_weekly: f64,
 }
 
-fn region_from_gvtregno(code: i64) -> Region {
+pub(crate) fn region_from_gvtregno(code: i64) -> Region {
     match code {
         1 => Region::NorthEast,
         2 => Region::NorthWest,
@@ -917,6 +917,7 @@ fn assemble_dataset(
             region: hh.region,
             rent: hh.rent_weekly * WEEKS_IN_YEAR,
             council_tax: hh.council_tax_annual,
+            ..Household::default()
         });
     }
 

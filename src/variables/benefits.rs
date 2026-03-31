@@ -985,6 +985,7 @@ mod tests {
             region: Region::London,
             rent: 800.0 * 12.0,
             council_tax: 1500.0,
+            ..Household::default()
         };
         (people, bu, hh)
     }
@@ -1080,6 +1081,7 @@ mod tests {
         let hh = Household {
             id: 0, benunit_ids: vec![0], person_ids: vec![0],
             weight: 1.0, region: Region::London, rent: 0.0, council_tax: 0.0,
+            ..Household::default()
         };
         let pr: Vec<PersonResult> = people.iter()
             .map(|p| crate::variables::income_tax::calculate(p, &params))
@@ -1109,6 +1111,7 @@ mod tests {
         let hh = Household {
             id: 0, benunit_ids: vec![0], person_ids: vec![0],
             weight: 1.0, region: Region::London, rent: 7200.0, council_tax: 0.0,
+            ..Household::default()
         };
         let pr: Vec<PersonResult> = people.iter()
             .map(|p| crate::variables::income_tax::calculate(p, &params))
@@ -1140,6 +1143,7 @@ mod tests {
         let hh = Household {
             id: 0, benunit_ids: vec![0], person_ids: vec![0, 1],
             weight: 1.0, region: Region::London, rent: 0.0, council_tax: 0.0,
+            ..Household::default()
         };
         let pr: Vec<PersonResult> = people.iter()
             .map(|p| crate::variables::income_tax::calculate(p, &params))
@@ -1189,6 +1193,7 @@ mod tests {
         let hh = Household {
             id: 0, benunit_ids: vec![0], person_ids: vec![0, 1],
             weight: 1.0, region: Region::Scotland, rent: 0.0, council_tax: 0.0,
+            ..Household::default()
         };
         let pr: Vec<PersonResult> = people.iter()
             .map(|p| crate::variables::income_tax::calculate(p, &params))
@@ -1225,6 +1230,7 @@ mod parameter_impact_tests {
         let hh = Household {
             id: 0, benunit_ids: vec![0], person_ids: vec![0],
             weight: 1.0, region: Region::London, rent: 6000.0, council_tax: 0.0,
+            ..Household::default()
         };
         (params, p, bu, hh)
     }
@@ -1634,7 +1640,7 @@ mod parameter_impact_tests {
             migration_seed: 0.99, on_legacy: true, rent_monthly: 0.0,
             would_claim_ctc: true, would_claim_wtc: true, is_lone_parent: true, ..BenUnit::default() };
         let hh = Household { id: 0, benunit_ids: vec![0], person_ids: vec![0, 1],
-            weight: 1.0, region: Region::London, rent: 0.0, council_tax: 0.0 };
+            weight: 1.0, region: Region::London, rent: 0.0, council_tax: 0.0, ..Household::default() };
         (params, p, child, bu, hh)
     }
 
@@ -1772,7 +1778,7 @@ mod parameter_impact_tests {
         let bu = BenUnit { id: 0, household_id: 0, person_ids: vec![0, 1, 2],
             migration_seed: 0.0, on_uc: true, rent_monthly: 2000.0, would_claim_uc: true, is_lone_parent: true, ..BenUnit::default() };
         let hh = Household { id: 0, benunit_ids: vec![0], person_ids: vec![0, 1, 2],
-            weight: 1.0, region: Region::London, rent: 24000.0, council_tax: 0.0 };
+            weight: 1.0, region: Region::London, rent: 24000.0, council_tax: 0.0, ..Household::default() };
         let base = calc(&params, &[p.clone(), c1.clone(), c2.clone()], &bu, &hh).benefit_cap_reduction;
         params.benefit_cap.as_mut().unwrap().non_single_london += 2000.0;
         let reformed = calc(&params, &[p, c1, c2], &bu, &hh).benefit_cap_reduction;
@@ -1787,7 +1793,7 @@ mod parameter_impact_tests {
         let bu = BenUnit { id: 0, household_id: 0, person_ids: vec![0, 1],
             migration_seed: 0.0, on_uc: true, rent_monthly: 1500.0, would_claim_uc: true, is_lone_parent: true, ..BenUnit::default() };
         let hh = Household { id: 0, benunit_ids: vec![0], person_ids: vec![0, 1],
-            weight: 1.0, region: Region::NorthEast, rent: 18000.0, council_tax: 0.0 };
+            weight: 1.0, region: Region::NorthEast, rent: 18000.0, council_tax: 0.0, ..Household::default() };
         let base = calc(&params, &[p.clone(), c1.clone()], &bu, &hh).benefit_cap_reduction;
         params.benefit_cap.as_mut().unwrap().non_single_outside_london += 2000.0;
         let reformed = calc(&params, &[p, c1], &bu, &hh).benefit_cap_reduction;
@@ -1801,7 +1807,7 @@ mod parameter_impact_tests {
         let bu = BenUnit { id: 0, household_id: 0, person_ids: vec![0],
             migration_seed: 0.0, on_uc: true, rent_monthly: 1500.0, would_claim_uc: true, ..BenUnit::default() };
         let hh = Household { id: 0, benunit_ids: vec![0], person_ids: vec![0],
-            weight: 1.0, region: Region::London, rent: 18000.0, council_tax: 0.0 };
+            weight: 1.0, region: Region::London, rent: 18000.0, council_tax: 0.0, ..Household::default() };
         let base = calc(&params, &[p.clone()], &bu, &hh).benefit_cap_reduction;
         params.benefit_cap.as_mut().unwrap().single_london += 2000.0;
         let reformed = calc(&params, &[p], &bu, &hh).benefit_cap_reduction;
@@ -1815,7 +1821,7 @@ mod parameter_impact_tests {
         let bu = BenUnit { id: 0, household_id: 0, person_ids: vec![0],
             migration_seed: 0.0, on_uc: true, rent_monthly: 1200.0, would_claim_uc: true, ..BenUnit::default() };
         let hh = Household { id: 0, benunit_ids: vec![0], person_ids: vec![0],
-            weight: 1.0, region: Region::NorthEast, rent: 14400.0, council_tax: 0.0 };
+            weight: 1.0, region: Region::NorthEast, rent: 14400.0, council_tax: 0.0, ..Household::default() };
         let base = calc(&params, &[p.clone()], &bu, &hh).benefit_cap_reduction;
         params.benefit_cap.as_mut().unwrap().single_outside_london += 2000.0;
         let reformed = calc(&params, &[p], &bu, &hh).benefit_cap_reduction;
@@ -1830,7 +1836,7 @@ mod parameter_impact_tests {
         let bu = BenUnit { id: 0, household_id: 0, person_ids: vec![0, 1],
             migration_seed: 0.0, on_uc: true, rent_monthly: 1500.0, would_claim_uc: true, is_lone_parent: true, ..BenUnit::default() };
         let hh = Household { id: 0, benunit_ids: vec![0], person_ids: vec![0, 1],
-            weight: 1.0, region: Region::London, rent: 18000.0, council_tax: 0.0 };
+            weight: 1.0, region: Region::London, rent: 18000.0, council_tax: 0.0, ..Household::default() };
         // At £7,500 earnings, below the exemption threshold → cap applies
         params.benefit_cap.as_mut().unwrap().earnings_exemption_threshold = 10000.0;
         let base = calc(&params, &[p.clone(), c1.clone()], &bu, &hh).benefit_cap_reduction;
@@ -1849,7 +1855,7 @@ mod parameter_impact_tests {
         let bu = BenUnit { id: 0, household_id: 0, person_ids: vec![0, 1],
             migration_seed: 0.0, on_uc: true, would_claim_uc: true, is_lone_parent: true, ..BenUnit::default() };
         let hh = Household { id: 0, benunit_ids: vec![0], person_ids: vec![0, 1],
-            weight: 1.0, region: Region::Scotland, rent: 0.0, council_tax: 0.0 };
+            weight: 1.0, region: Region::Scotland, rent: 0.0, council_tax: 0.0, ..Household::default() };
         let base = calc(&params, &[p.clone(), child.clone()], &bu, &hh).scottish_child_payment;
         params.scottish_child_payment.as_mut().unwrap().weekly_amount += 5.0;
         let reformed = calc(&params, &[p, child], &bu, &hh).scottish_child_payment;
@@ -1863,7 +1869,7 @@ mod parameter_impact_tests {
         let bu = BenUnit { id: 0, household_id: 0, person_ids: vec![0, 1],
             migration_seed: 0.0, on_uc: true, would_claim_uc: true, is_lone_parent: true, ..BenUnit::default() };
         let hh = Household { id: 0, benunit_ids: vec![0], person_ids: vec![0, 1],
-            weight: 1.0, region: Region::Scotland, rent: 0.0, council_tax: 0.0 };
+            weight: 1.0, region: Region::Scotland, rent: 0.0, council_tax: 0.0, ..Household::default() };
         params.scottish_child_payment.as_mut().unwrap().max_age = 14.0;
         let base = calc(&params, &[p.clone(), child.clone()], &bu, &hh).scottish_child_payment;
         params.scottish_child_payment.as_mut().unwrap().max_age = 16.0;

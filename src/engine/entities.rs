@@ -3,6 +3,8 @@
 ///
 /// A household contains one or more benefit units, each containing one or more persons.
 
+use std::collections::HashMap;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Gender {
     Male,
@@ -268,7 +270,7 @@ impl BenUnit {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Household {
     pub id: usize,
     pub benunit_ids: Vec<usize>,
@@ -277,10 +279,32 @@ pub struct Household {
     pub region: Region,
     pub rent: f64,
     pub council_tax: f64,
+
+    // COICOP consumption (annual, household-level) — populated from LCFS, zero for other datasets
+    pub food_and_non_alcoholic_beverages: f64,    // COICOP 01 (P601)
+    pub alcohol_and_tobacco: f64,                  // COICOP 02 (P602)
+    pub clothing_and_footwear: f64,                // COICOP 03 (P603)
+    pub housing_water_and_fuel: f64,               // COICOP 04 (P604)
+    pub household_furnishings: f64,                // COICOP 05 (P605)
+    pub health: f64,                               // COICOP 06 (P606)
+    pub transport: f64,                            // COICOP 07 (P607)
+    pub communication: f64,                        // COICOP 08 (P608)
+    pub recreation_and_culture: f64,               // COICOP 09 (P609)
+    pub education: f64,                            // COICOP 10 (P610)
+    pub restaurants_and_hotels: f64,               // COICOP 11 (P611)
+    pub miscellaneous_goods_and_services: f64,     // COICOP 12 (P612)
+    pub petrol_spending: f64,                      // C72211
+    pub diesel_spending: f64,                      // C72212
+
+    /// Product-level COICOP expenditure (annual, household-level).
+    /// Keys are LCFS column codes e.g. "c11111" (bread), "c72211" (petrol).
+    /// Populated from LCFS microdata; empty HashMap for other datasets.
+    pub consumption_products: HashMap<String, f64>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Region {
+    #[default]
     NorthEast,
     NorthWest,
     Yorkshire,

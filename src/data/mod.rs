@@ -1,6 +1,9 @@
 pub mod frs;
 pub mod clean;
 pub mod stdin;
+pub mod spi;
+pub mod lcfs;
+pub mod was;
 
 use crate::engine::entities::*;
 
@@ -92,6 +95,25 @@ impl Dataset {
         for h in &mut self.households {
             h.rent *= rent;
             h.council_tax *= council_tax;
+            // Consumption (CPI-uprated)
+            h.food_and_non_alcoholic_beverages *= cpi;
+            h.alcohol_and_tobacco *= cpi;
+            h.clothing_and_footwear *= cpi;
+            h.housing_water_and_fuel *= cpi;
+            h.household_furnishings *= cpi;
+            h.health *= cpi;
+            h.transport *= cpi;
+            h.communication *= cpi;
+            h.recreation_and_culture *= cpi;
+            h.education *= cpi;
+            h.restaurants_and_hotels *= cpi;
+            h.miscellaneous_goods_and_services *= cpi;
+            h.petrol_spending *= cpi;
+            h.diesel_spending *= cpi;
+            // Product-level consumption (CPI-uprated)
+            for val in h.consumption_products.values_mut() {
+                *val *= cpi;
+            }
         }
         // Population growth adjusts weights
         for h in &mut self.households {
