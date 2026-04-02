@@ -1,0 +1,1 @@
+Sync SimulationResult Python model with Rust output (hbai_incomes, poverty headcounts) and add --persons-only support for SPI datasets.

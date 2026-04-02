@@ -14,7 +14,7 @@ try:
 except ImportError:
     HAS_PANDAS = False
 
-from policyengine_uk_compiled.models import MicrodataResult, Parameters, SimulationResult
+from policyengine_uk_compiled.models import MicrodataResult, Parameters, SimulationResult, HbaiIncomes, PovertyHeadcounts
 
 # The binary and parameters/ dir are bundled inside the package at build time.
 _PKG_DIR = Path(__file__).resolve().parent
@@ -122,6 +122,170 @@ def _parse_microdata_stdout(raw: str) -> MicrodataResult:
     )
 
 
+def _aggregate_persons_only(records: list[dict], year: int) -> SimulationResult:
+    """Aggregate person-level records (from --persons-only) into a SimulationResult.
+
+    Persons-only datasets (e.g. SPI) only have income tax and NI.
+    Household/benefit fields are zeroed.
+    """
+    from policyengine_uk_compiled.models import (
+        BudgetaryImpact, IncomeBreakdown, ProgramBreakdown, Caseloads,
+        DecileImpact, WinnersLosers,
+    )
+
+    total_baseline_tax = 0.0
+    total_reform_tax = 0.0
+    total_baseline_ni = 0.0
+    total_reform_ni = 0.0
+    total_baseline_employer_ni = 0.0
+    total_reform_employer_ni = 0.0
+    total_employment = 0.0
+    total_self_employment = 0.0
+    total_pension = 0.0
+    total_savings = 0.0
+    total_dividend = 0.0
+
+    weighted_records = []
+    for r in records:
+        w = r["weight"]
+        b_tax = r["baseline_income_tax"] * w
+        r_tax = r["reform_income_tax"] * w
+        b_ni = r["baseline_employee_ni"] * w
+        r_ni = r["reform_employee_ni"] * w
+        b_eni = r["baseline_employer_ni"] * w
+        r_eni = r["reform_employer_ni"] * w
+
+        total_baseline_tax += b_tax
+        total_reform_tax += r_tax
+        total_baseline_ni += b_ni
+        total_reform_ni += r_ni
+        total_baseline_employer_ni += b_eni
+        total_reform_employer_ni += r_eni
+        total_employment += r["employment_income"] * w
+        total_self_employment += r["self_employment_income"] * w
+        total_pension += r["pension_income"] * w
+        total_savings += r["savings_interest_income"] * w
+        total_dividend += r["dividend_income"] * w
+
+        baseline_total = r["baseline_income_tax"] + r["baseline_employee_ni"]
+        reform_total = r["reform_income_tax"] + r["reform_employee_ni"]
+        weighted_records.append((w, r["employment_income"], baseline_total, reform_total))
+
+    baseline_revenue = total_baseline_tax + total_baseline_ni + total_baseline_employer_ni
+    reform_revenue = total_reform_tax + total_reform_ni + total_reform_employer_ni
+
+    # Decile analysis by employment income
+    weighted_records.sort(key=lambda x: x[1])
+    n = len(weighted_records)
+    decile_size = n // 10
+    decile_impacts = []
+    for d in range(10):
+        start = d * decile_size
+        end = n if d == 9 else (d + 1) * decile_size
+        sl = weighted_records[start:end]
+        count = len(sl)
+        if count == 0:
+            decile_impacts.append(DecileImpact(decile=d + 1))
+            continue
+        avg_base = sum(r[2] for r in sl) / count
+        avg_reform = sum(r[3] for r in sl) / count
+        avg_change = avg_reform - avg_base
+        pct_change = 100.0 * avg_change / avg_base if avg_base != 0 else 0.0
+        decile_impacts.append(DecileImpact(
+            decile=d + 1,
+            avg_baseline_income=round(avg_base, 2),
+            avg_reform_income=round(avg_reform, 2),
+            avg_change=round(avg_change, 2),
+            pct_change=round(pct_change, 2),
+        ))
+
+    # Winners/losers
+    winners_w = losers_w = unchanged_w = total_gain = total_loss = 0.0
+    for w, _, bt, rt in weighted_records:
+        change = rt - bt  # positive = more tax = loss
+        net_change = -change  # income perspective
+        if net_change > 1.0:
+            winners_w += w
+            total_gain += w * net_change
+        elif net_change < -1.0:
+            losers_w += w
+            total_loss += w * abs(net_change)
+        else:
+            unchanged_w += w
+    total_w = winners_w + losers_w + unchanged_w
+
+    fiscal_year = f"{year}/{(year + 1) % 100:02d}"
+
+    return SimulationResult(
+        fiscal_year=fiscal_year,
+        budgetary_impact=BudgetaryImpact(
+            baseline_revenue=baseline_revenue,
+            reform_revenue=reform_revenue,
+            revenue_change=reform_revenue - baseline_revenue,
+            baseline_benefits=0.0,
+            reform_benefits=0.0,
+            benefit_spending_change=0.0,
+            net_cost=-(reform_revenue - baseline_revenue),
+        ),
+        income_breakdown=IncomeBreakdown(
+            employment_income=total_employment,
+            self_employment_income=total_self_employment,
+            pension_income=total_pension,
+            savings_interest_income=total_savings,
+            dividend_income=total_dividend,
+            property_income=0.0,
+            other_income=0.0,
+        ),
+        program_breakdown=ProgramBreakdown(
+            income_tax=total_reform_tax,
+            employee_ni=total_reform_ni,
+            employer_ni=total_reform_employer_ni,
+            universal_credit=0.0, child_benefit=0.0, state_pension=0.0,
+            pension_credit=0.0, housing_benefit=0.0, child_tax_credit=0.0,
+            working_tax_credit=0.0, income_support=0.0, esa_income_related=0.0,
+            jsa_income_based=0.0, carers_allowance=0.0,
+            scottish_child_payment=0.0, benefit_cap_reduction=0.0,
+            passthrough_benefits=0.0,
+        ),
+        caseloads=Caseloads(
+            income_tax_payers=sum(r["weight"] for r in records if r["reform_income_tax"] > 0),
+            ni_payers=sum(r["weight"] for r in records if r["reform_employee_ni"] > 0),
+            employer_ni_payers=sum(r["weight"] for r in records if r["reform_employer_ni"] > 0),
+            universal_credit=0.0, child_benefit=0.0, state_pension=0.0,
+            pension_credit=0.0, housing_benefit=0.0, child_tax_credit=0.0,
+            working_tax_credit=0.0, income_support=0.0, esa_income_related=0.0,
+            jsa_income_based=0.0, carers_allowance=0.0,
+            scottish_child_payment=0.0, benefit_cap_affected=0.0,
+        ),
+        decile_impacts=decile_impacts,
+        winners_losers=WinnersLosers(
+            winners_pct=round(100.0 * winners_w / total_w, 1) if total_w > 0 else 0.0,
+            losers_pct=round(100.0 * losers_w / total_w, 1) if total_w > 0 else 0.0,
+            unchanged_pct=round(100.0 * unchanged_w / total_w, 1) if total_w > 0 else 0.0,
+            avg_gain=round(total_gain / winners_w) if winners_w > 0 else 0.0,
+            avg_loss=round(total_loss / losers_w) if losers_w > 0 else 0.0,
+        ),
+        hbai_incomes=HbaiIncomes(
+            mean_equiv_bhc=0.0, mean_equiv_ahc=0.0,
+            mean_bhc=0.0, mean_ahc=0.0,
+            median_equiv_bhc=0.0, median_equiv_ahc=0.0,
+        ),
+        baseline_poverty=PovertyHeadcounts(
+            relative_bhc_children=0.0, relative_bhc_working_age=0.0, relative_bhc_pensioners=0.0,
+            relative_ahc_children=0.0, relative_ahc_working_age=0.0, relative_ahc_pensioners=0.0,
+            absolute_bhc_children=0.0, absolute_bhc_working_age=0.0, absolute_bhc_pensioners=0.0,
+            absolute_ahc_children=0.0, absolute_ahc_working_age=0.0, absolute_ahc_pensioners=0.0,
+        ),
+        reform_poverty=PovertyHeadcounts(
+            relative_bhc_children=0.0, relative_bhc_working_age=0.0, relative_bhc_pensioners=0.0,
+            relative_ahc_children=0.0, relative_ahc_working_age=0.0, relative_ahc_pensioners=0.0,
+            absolute_bhc_children=0.0, absolute_bhc_working_age=0.0, absolute_bhc_pensioners=0.0,
+            absolute_ahc_children=0.0, absolute_ahc_working_age=0.0, absolute_ahc_pensioners=0.0,
+        ),
+        cpi_index=100.0,
+    )
+
+
 class Simulation:
     """Run the PolicyEngine UK microsimulation engine.
 
@@ -175,6 +339,7 @@ class Simulation:
         self._clean_frs = clean_frs
         self._frs_raw = frs_raw
         self._dataset = dataset
+        self._persons_only = dataset in ("spi",)
 
         if persons is not None and benunits is not None and households is not None:
             # DataFrame or CSV string mode
@@ -224,6 +389,9 @@ class Simulation:
             if overlay:
                 cmd += ["--policy-json", json.dumps(overlay)]
 
+        if self._persons_only:
+            cmd.append("--persons-only")
+
         if extra_args:
             cmd += extra_args
 
@@ -238,6 +406,7 @@ class Simulation:
 
         Returns:
             SimulationResult with budgetary impact, program breakdown, decile impacts, etc.
+            For persons-only datasets (e.g. SPI), household/benefit fields are zeroed.
         """
         cmd = self._build_cmd(policy, extra_args=["--output", "json"])
         cwd = _find_cwd(self.binary_path)
@@ -254,6 +423,8 @@ class Simulation:
                 f"Simulation failed (exit {result.returncode}):\n{result.stderr}"
             )
         data = json.loads(result.stdout)
+        if self._persons_only:
+            return _aggregate_persons_only(data, self.year)
         return SimulationResult(**data)
 
     def run_microdata(

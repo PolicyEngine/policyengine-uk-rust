@@ -41,6 +41,8 @@ from policyengine_uk_compiled.models import (
     Caseloads,
     DecileImpact,
     WinnersLosers,
+    HbaiIncomes,
+    PovertyHeadcounts,
     IncomeTaxParams,
     NationalInsuranceParams,
     UniversalCreditParams,

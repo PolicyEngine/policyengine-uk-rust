@@ -73,6 +73,30 @@ export interface IncomeBreakdown {
   other_income: number;
 }
 
+export interface HbaiIncomes {
+  mean_equiv_bhc: number;
+  mean_equiv_ahc: number;
+  mean_bhc: number;
+  mean_ahc: number;
+  median_equiv_bhc: number;
+  median_equiv_ahc: number;
+}
+
+export interface PovertyHeadcounts {
+  relative_bhc_children: number;
+  relative_bhc_working_age: number;
+  relative_bhc_pensioners: number;
+  relative_ahc_children: number;
+  relative_ahc_working_age: number;
+  relative_ahc_pensioners: number;
+  absolute_bhc_children: number;
+  absolute_bhc_working_age: number;
+  absolute_bhc_pensioners: number;
+  absolute_ahc_children: number;
+  absolute_ahc_working_age: number;
+  absolute_ahc_pensioners: number;
+}
+
 export interface SimulationResult {
   fiscal_year: string;
   budgetary_impact: BudgetaryImpact;
@@ -81,7 +105,9 @@ export interface SimulationResult {
   caseloads: Caseloads;
   decile_impacts: DecileImpact[];
   winners_losers: WinnersLosers;
-  avg_hbai_net_income: number;
+  hbai_incomes: HbaiIncomes;
+  baseline_poverty: PovertyHeadcounts;
+  reform_poverty: PovertyHeadcounts;
   cpi_index: number;
 }
 
