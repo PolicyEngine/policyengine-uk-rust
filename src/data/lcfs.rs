@@ -37,7 +37,9 @@ pub fn load_lcfs(data_dir: &Path, fiscal_year: u32) -> anyhow::Result<Dataset> {
     let person_table = load_table_cols(data_dir, &person_file, Some(&[
         "case", "person",
         "a003", "a004", "a002",  // age (two variants), sex
-        "b303p", "b3262p",       // employment income, self-employment income
+        "wkgrossp",              // weekly gross pay (employee, well-populated)
+        "p047p", "b3262p",       // SE income: main job, subsidiary job
+        "p048p",                 // investment income (weekly)
         "b3381", "p049p",        // state pension, private pension income
     ]))?;
 
@@ -48,13 +50,19 @@ pub fn load_lcfs(data_dir: &Path, fiscal_year: u32) -> anyhow::Result<Dataset> {
         persons_by_case.entry(case).or_default().push(row);
     }
 
+    // weighta is a design weight summing to roughly the sample size (~28,000-30,000).
+    // Rescale to UK household population (~28.3m) so that weighted sums are population totals.
+    let weighta_sum: f64 = hh_table.iter().map(|r| get_f64(r, "weighta").max(0.0)).sum();
+    const UK_HOUSEHOLDS: f64 = 28_300_000.0;
+    let weight_scale = if weighta_sum > 0.0 { UK_HOUSEHOLDS / weighta_sum } else { 1.0 };
+
     let mut people = Vec::new();
     let mut benunits = Vec::new();
     let mut households = Vec::new();
 
     for hh_row in &hh_table {
         let case = get_i64(hh_row, "case");
-        let weight = get_f64(hh_row, "weighta");
+        let weight = get_f64(hh_row, "weighta") * weight_scale;
         if weight <= 0.0 { continue; }
 
         let region = region_from_gvtregno(get_i64(hh_row, "gorx"));
@@ -96,8 +104,9 @@ pub fn load_lcfs(data_dir: &Path, fiscal_year: u32) -> anyhow::Result<Dataset> {
                     is_benunit_head: is_head,
                     is_household_head: is_head,
                     is_in_scotland: region.is_scotland(),
-                    employment_income: get_f64(prow, "b303p").max(0.0) * WEEKS_IN_YEAR,
-                    self_employment_income: get_f64(prow, "b3262p").max(0.0) * WEEKS_IN_YEAR,
+                    employment_income: get_f64(prow, "wkgrossp").max(0.0) * WEEKS_IN_YEAR,
+                    self_employment_income: (get_f64(prow, "p047p") + get_f64(prow, "b3262p")).max(0.0) * WEEKS_IN_YEAR,
+                    savings_interest_income: get_f64(prow, "p048p").max(0.0) * WEEKS_IN_YEAR,
                     state_pension: get_f64(prow, "b3381").max(0.0) * WEEKS_IN_YEAR,
                     pension_income: get_f64(prow, "p049p").max(0.0) * WEEKS_IN_YEAR,
                     // Allocate total household benefit income to head as passthrough
