@@ -1,3 +1,14 @@
+## [0.4.0] - 2026-04-02
+
+### Added
+
+- Add GCS download support for LCFS, SPI, and WAS datasets. New ensure_dataset(dataset, year) and updated download_all() support all four datasets (frs, lcfs, spi, was) from gs://policyengine-uk-microdata.
+
+### Fixed
+
+- Fix Python interface CLI flags: --data-dir/--clean-frs-base/--clean-frs → --data, --frs-raw → --frs, matching the binary's current flag names. Fixes all economy-wide simulations failing with "unexpected argument '--clean-frs-base' found".
+
+
 ## [0.3.6] - 2026-04-02
 
 ### Changed

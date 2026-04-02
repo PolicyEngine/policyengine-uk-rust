@@ -1,1 +1,0 @@
-Fix Python interface CLI flags: --data-dir/--clean-frs-base/--clean-frs → --data, --frs-raw → --frs, matching the binary's current flag names. Fixes all economy-wide simulations failing with "unexpected argument '--clean-frs-base' found".
