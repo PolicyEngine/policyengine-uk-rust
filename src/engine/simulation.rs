@@ -52,8 +52,12 @@ pub struct HouseholdResult {
     pub gross_income: f64,
     /// Modified OECD equivalisation factor for the household
     pub equivalisation_factor: f64,
-    /// HBAI-definition equivalised net income BHC
+    /// HBAI net income BHC (before housing costs)
     pub equivalised_net_income: f64,
+    /// HBAI net income AHC (after housing costs = BHC - rent - council tax)
+    pub net_income_ahc: f64,
+    /// HBAI equivalised net income AHC
+    pub equivalised_net_income_ahc: f64,
 }
 
 /// Complete simulation result set
@@ -163,6 +167,10 @@ impl Simulation {
                 0.67 + (adults.saturating_sub(1) as f64) * 0.33 + (children as f64) * 0.20
             };
 
+            // AHC: subtract rent and council tax (housing costs)
+            let housing_costs = hh.rent + hh.council_tax;
+            let net_income_ahc = net_income - housing_costs;
+
             HouseholdResult {
                 gross_income: gross,
                 total_tax,
@@ -170,6 +178,8 @@ impl Simulation {
                 net_income,
                 equivalisation_factor: eq_factor,
                 equivalised_net_income: net_income / eq_factor,
+                net_income_ahc,
+                equivalised_net_income_ahc: net_income_ahc / eq_factor,
             }
         }).collect();
         household_results = hr;

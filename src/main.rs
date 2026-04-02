@@ -126,6 +126,50 @@ struct Cli {
 }
 
 #[derive(Serialize)]
+struct HbaiIncomes {
+    /// Weighted mean equivalised net income BHC
+    mean_equiv_bhc: f64,
+    /// Weighted mean equivalised net income AHC
+    mean_equiv_ahc: f64,
+    /// Weighted mean net income BHC (non-equivalised)
+    mean_bhc: f64,
+    /// Weighted mean net income AHC (non-equivalised)
+    mean_ahc: f64,
+    /// Median equivalised net income BHC (poverty reference line = 60% of this)
+    median_equiv_bhc: f64,
+    /// Median equivalised net income AHC
+    median_equiv_ahc: f64,
+}
+
+#[derive(Serialize)]
+struct PovertyHeadcounts {
+    /// Relative poverty (60% median BHC equiv), children
+    relative_bhc_children: f64,
+    /// Relative poverty (60% median BHC equiv), working-age adults
+    relative_bhc_working_age: f64,
+    /// Relative poverty (60% median BHC equiv), pensioners
+    relative_bhc_pensioners: f64,
+    /// Relative poverty (60% median AHC equiv), children
+    relative_ahc_children: f64,
+    /// Relative poverty (60% median AHC equiv), working-age adults
+    relative_ahc_working_age: f64,
+    /// Relative poverty (60% median AHC equiv), pensioners
+    relative_ahc_pensioners: f64,
+    /// Absolute poverty (60% median BHC equiv fixed at 2010/11 baseline), BHC, children
+    absolute_bhc_children: f64,
+    /// Absolute poverty BHC, working-age adults
+    absolute_bhc_working_age: f64,
+    /// Absolute poverty BHC, pensioners
+    absolute_bhc_pensioners: f64,
+    /// Absolute poverty AHC, children
+    absolute_ahc_children: f64,
+    /// Absolute poverty AHC, working-age adults
+    absolute_ahc_working_age: f64,
+    /// Absolute poverty AHC, pensioners
+    absolute_ahc_pensioners: f64,
+}
+
+#[derive(Serialize)]
 struct JsonOutput {
     fiscal_year: String,
     budgetary_impact: BudgetaryImpact,
@@ -134,8 +178,9 @@ struct JsonOutput {
     caseloads: Caseloads,
     decile_impacts: Vec<DecileImpact>,
     winners_losers: WinnersLosers,
-    /// Weighted mean HBAI equivalised net income BHC across all households.
-    avg_hbai_net_income: f64,
+    hbai_incomes: HbaiIncomes,
+    baseline_poverty: PovertyHeadcounts,
+    reform_poverty: PovertyHeadcounts,
     /// CPI index (2025/26 = 100) for deflating nominal values to real terms.
     cpi_index: f64,
 }
@@ -638,14 +683,121 @@ fn main() -> anyhow::Result<()> {
         })
     };
 
-    // Weighted mean HBAI equivalised net income (baseline)
+    // ── HBAI income aggregates ────────────────────────────────────────────────
     let total_weight: f64 = households.iter().map(|h| h.weight).sum();
-    let avg_hbai_net_income = if total_weight > 0.0 {
-        let weighted_sum: f64 = households.iter()
+
+    let hbai_incomes = {
+        let weighted_median = |vals: &mut Vec<(f64, f64)>| -> f64 {
+            vals.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+            let half = total_weight / 2.0;
+            let mut cum = 0.0;
+            for &(v, w) in vals.iter() {
+                cum += w;
+                if cum >= half { return v; }
+            }
+            vals.last().map(|&(v, _)| v).unwrap_or(0.0)
+        };
+
+        let mut equiv_bhc: Vec<(f64, f64)> = households.iter()
+            .map(|h| (baseline.household_results[h.id].equivalised_net_income, h.weight))
+            .collect();
+        let mut equiv_ahc: Vec<(f64, f64)> = households.iter()
+            .map(|h| (baseline.household_results[h.id].equivalised_net_income_ahc, h.weight))
+            .collect();
+
+        let median_equiv_bhc = weighted_median(&mut equiv_bhc);
+        let median_equiv_ahc = weighted_median(&mut equiv_ahc);
+
+        let mean_equiv_bhc = households.iter()
             .map(|h| h.weight * baseline.household_results[h.id].equivalised_net_income)
-            .sum();
-        (weighted_sum / total_weight).round()
-    } else { 0.0 };
+            .sum::<f64>() / total_weight;
+        let mean_equiv_ahc = households.iter()
+            .map(|h| h.weight * baseline.household_results[h.id].equivalised_net_income_ahc)
+            .sum::<f64>() / total_weight;
+        let mean_bhc = households.iter()
+            .map(|h| h.weight * baseline.household_results[h.id].net_income)
+            .sum::<f64>() / total_weight;
+        let mean_ahc = households.iter()
+            .map(|h| h.weight * baseline.household_results[h.id].net_income_ahc)
+            .sum::<f64>() / total_weight;
+
+        HbaiIncomes { mean_equiv_bhc, mean_equiv_ahc, mean_bhc, mean_ahc,
+                      median_equiv_bhc, median_equiv_ahc }
+    };
+
+    // ── Poverty headcounts ────────────────────────────────────────────────────
+    // Relative lines: 60% of baseline weighted median equivalised income
+    let rel_line_bhc = 0.60 * hbai_incomes.median_equiv_bhc;
+    let rel_line_ahc = 0.60 * hbai_incomes.median_equiv_ahc;
+    // Absolute lines: 60% of median in 2010/11 (ONS HBAI reference, uprated by CPI to nominal)
+    // 2010/11 median equivalised BHC ~£14,400/yr; AHC ~£11,600/yr (2010/11 prices)
+    // Uprate to simulation year using CPI index
+    let cpi = cpi_index_for_year(cli.year) / 100.0;
+    let abs_line_bhc = 14_400.0 * cpi;
+    let abs_line_ahc = 11_600.0 * cpi;
+
+    let compute_poverty = |results: &crate::engine::simulation::SimulationResults| -> PovertyHeadcounts {
+        let mut rc_children = 0.0f64; let mut rc_working = 0.0f64; let mut rc_pensioners = 0.0f64;
+        let mut ra_children = 0.0f64; let mut ra_working = 0.0f64; let mut ra_pensioners = 0.0f64;
+        let mut ac_children = 0.0f64; let mut ac_working = 0.0f64; let mut ac_pensioners = 0.0f64;
+        let mut aa_children = 0.0f64; let mut aa_working = 0.0f64; let mut aa_pensioners = 0.0f64;
+        let mut total_children = 0.0f64; let mut total_working = 0.0f64; let mut total_pensioners = 0.0f64;
+
+        for hh in households {
+            let hr = &results.household_results[hh.id];
+            let eq_bhc = hr.equivalised_net_income;
+            let eq_ahc = hr.equivalised_net_income_ahc;
+            let w = hh.weight;
+
+            for &pid in &hh.person_ids {
+                let age = dataset.people[pid].age;
+                let pw = w; // person weight = household weight (no person-level weights)
+                let (child, working, pensioner) = if age < 16.0 {
+                    (true, false, false)
+                } else if age < 66.0 {
+                    (false, true, false)
+                } else {
+                    (false, false, true)
+                };
+
+                if child   { total_children   += pw; }
+                if working { total_working    += pw; }
+                if pensioner { total_pensioners += pw; }
+
+                if eq_bhc < rel_line_bhc {
+                    if child { rc_children += pw; } else if working { rc_working += pw; } else { rc_pensioners += pw; }
+                }
+                if eq_ahc < rel_line_ahc {
+                    if child { ra_children += pw; } else if working { ra_working += pw; } else { ra_pensioners += pw; }
+                }
+                if eq_bhc < abs_line_bhc {
+                    if child { ac_children += pw; } else if working { ac_working += pw; } else { ac_pensioners += pw; }
+                }
+                if eq_ahc < abs_line_ahc {
+                    if child { aa_children += pw; } else if working { aa_working += pw; } else { aa_pensioners += pw; }
+                }
+            }
+        }
+
+        let pct = |n: f64, d: f64| if d > 0.0 { (n / d * 1000.0).round() / 10.0 } else { 0.0 };
+        PovertyHeadcounts {
+            relative_bhc_children:    pct(rc_children,    total_children),
+            relative_bhc_working_age: pct(rc_working,     total_working),
+            relative_bhc_pensioners:  pct(rc_pensioners,  total_pensioners),
+            relative_ahc_children:    pct(ra_children,    total_children),
+            relative_ahc_working_age: pct(ra_working,     total_working),
+            relative_ahc_pensioners:  pct(ra_pensioners,  total_pensioners),
+            absolute_bhc_children:    pct(ac_children,    total_children),
+            absolute_bhc_working_age: pct(ac_working,     total_working),
+            absolute_bhc_pensioners:  pct(ac_pensioners,  total_pensioners),
+            absolute_ahc_children:    pct(aa_children,    total_children),
+            absolute_ahc_working_age: pct(aa_working,     total_working),
+            absolute_ahc_pensioners:  pct(aa_pensioners,  total_pensioners),
+        }
+    };
+
+    let baseline_poverty = compute_poverty(&baseline);
+    let reform_poverty   = compute_poverty(&reformed);
 
     // JSON output mode
     if json_mode {
@@ -665,7 +817,9 @@ fn main() -> anyhow::Result<()> {
             caseloads,
             decile_impacts,
             winners_losers,
-            avg_hbai_net_income,
+            hbai_incomes,
+            baseline_poverty,
+            reform_poverty,
             cpi_index: cpi_index_for_year(cli.year),
         };
         println!("{}", serde_json::to_string(&output)?);
