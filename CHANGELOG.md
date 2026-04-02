@@ -1,3 +1,16 @@
+## [0.3.6] - 2026-04-02
+
+### Changed
+
+- Fix LCFS income columns and weights; add --uprate-to flag; generate 2026/27 clean data for FRS, LCFS, SPI, and WAS.
+
+  LCFS loader: switch employment income to wkgrossp (weekly gross pay, well-populated), add p047p for main SE income, add p048p for investment income, and rescale weighta to UK household population (~28.3m) so weighted aggregates are correct.
+
+  Add --uprate-to flag to --extract mode, allowing raw survey data to be extracted and uprated to a target fiscal year in one step (e.g. --frs raw/ --year 2023 --uprate-to 2026 --extract data/frs/2026/).
+
+  Update SKILL.md to document --uprate-to and the UKDS project ID for LCFS/WAS/SPI downloads.
+
+
 ## [0.3.5] - 2026-03-30
 
 ### Changed
