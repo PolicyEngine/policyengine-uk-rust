@@ -104,18 +104,28 @@ DELTA = 100  # £100 increment
 # Use "reform_net_income" column when policy is passed, "baseline_net_income" otherwise
 ```
 
-## Full FRS population runs
+## Full population runs (FRS, SPI, LCFS, WAS)
 
-If `POLICYENGINE_UK_DATA_TOKEN` is set, FRS data auto-downloads on demand (only the year needed, 3 files per year) to `~/.policyengine-uk-data/frs/`:
+If `POLICYENGINE_UK_DATA_TOKEN` is set, data auto-downloads on demand to `~/.policyengine-uk-data/<dataset>/`.
+
+Available datasets: `"frs"` (default), `"spi"`, `"lcfs"`, `"was"`.
 
 ```python
-# Auto-downloads frs/2025/ on first use (persons.csv, benunits.csv, households.csv)
+# FRS (default — no dataset= needed)
 sim = Simulation(year=2025)
 result = sim.run()
 
-# Download all years explicitly
+# SPI, LCFS, or WAS — pass dataset=
+sim = Simulation(year=2025, dataset="spi")
+result = sim.run()
+
+sim = Simulation(year=2025, dataset="lcfs")
+result = sim.run()
+
+# Download all datasets/years explicitly
 from policyengine_uk_compiled import download_all
-download_all()
+download_all()                        # all datasets
+download_all(datasets=("spi", "was")) # specific datasets
 ```
 
 Or with an explicit local path:

@@ -158,6 +158,7 @@ class Simulation:
         benunits=None,
         households=None,
         data_dir: Optional[Union[str, Path]] = None,
+        dataset: Optional[str] = None,
         # Legacy FRS interface
         clean_frs_base: Optional[str] = None,
         clean_frs: Optional[str] = None,
@@ -173,6 +174,7 @@ class Simulation:
         self._clean_frs_base = clean_frs_base
         self._clean_frs = clean_frs
         self._frs_raw = frs_raw
+        self._dataset = dataset
 
         if persons is not None and benunits is not None and households is not None:
             # DataFrame or CSV string mode
@@ -207,6 +209,10 @@ class Simulation:
             cmd += ["--data", self._clean_frs]
         elif self._frs_raw:
             cmd += ["--frs", self._frs_raw]
+        elif self._dataset is not None:
+            from policyengine_uk_compiled.data import ensure_dataset
+            data_path = ensure_dataset(self._dataset, self.year)
+            cmd += ["--data", data_path]
         else:
             # No data source specified — try auto-resolving FRS data
             from policyengine_uk_compiled.data import ensure_frs
