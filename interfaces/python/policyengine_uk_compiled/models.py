@@ -268,6 +268,30 @@ class WinnersLosers(BaseModel):
     avg_loss: float
 
 
+class HbaiIncomes(BaseModel):
+    mean_equiv_bhc: float
+    mean_equiv_ahc: float
+    mean_bhc: float
+    mean_ahc: float
+    median_equiv_bhc: float
+    median_equiv_ahc: float
+
+
+class PovertyHeadcounts(BaseModel):
+    relative_bhc_children: float
+    relative_bhc_working_age: float
+    relative_bhc_pensioners: float
+    relative_ahc_children: float
+    relative_ahc_working_age: float
+    relative_ahc_pensioners: float
+    absolute_bhc_children: float
+    absolute_bhc_working_age: float
+    absolute_bhc_pensioners: float
+    absolute_ahc_children: float
+    absolute_ahc_working_age: float
+    absolute_ahc_pensioners: float
+
+
 class SimulationResult(BaseModel):
     fiscal_year: str
     budgetary_impact: BudgetaryImpact
@@ -276,7 +300,9 @@ class SimulationResult(BaseModel):
     caseloads: Caseloads
     decile_impacts: list[DecileImpact]
     winners_losers: WinnersLosers
-    avg_hbai_net_income: float
+    hbai_incomes: HbaiIncomes
+    baseline_poverty: PovertyHeadcounts
+    reform_poverty: PovertyHeadcounts
     cpi_index: float
 
 
