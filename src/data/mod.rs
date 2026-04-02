@@ -110,10 +110,6 @@ impl Dataset {
             h.miscellaneous_goods_and_services *= cpi;
             h.petrol_spending *= cpi;
             h.diesel_spending *= cpi;
-            // Product-level consumption (CPI-uprated)
-            for val in h.consumption_products.values_mut() {
-                *val *= cpi;
-            }
         }
         // Population growth adjusts weights
         for h in &mut self.households {

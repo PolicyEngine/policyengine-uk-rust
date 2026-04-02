@@ -3,8 +3,6 @@
 ///
 /// A household contains one or more benefit units, each containing one or more persons.
 
-use std::collections::HashMap;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Gender {
     Male,
@@ -296,10 +294,11 @@ pub struct Household {
     pub petrol_spending: f64,                      // C72211
     pub diesel_spending: f64,                      // C72212
 
-    /// Product-level COICOP expenditure (annual, household-level).
-    /// Keys are LCFS column codes e.g. "c11111" (bread), "c72211" (petrol).
-    /// Populated from LCFS microdata; empty HashMap for other datasets.
-    pub consumption_products: HashMap<String, f64>,
+    // Wealth (annual, household-level) — populated from WAS, zero for other datasets
+    pub financial_wealth: f64,       // Net financial wealth (HFINWR_SUM)
+    pub property_wealth: f64,        // Net property wealth (HPropWR)
+    pub physical_wealth: f64,        // Physical wealth — vehicles, collectibles etc (HphysWR)
+    pub total_wealth: f64,           // Total net wealth (TotWlth_old)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]

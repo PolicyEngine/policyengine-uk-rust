@@ -202,8 +202,8 @@ fn write_households(dataset: &Dataset, output_dir: &Path) -> anyhow::Result<()> 
         "recreation_and_culture", "education",
         "restaurants_and_hotels", "miscellaneous_goods_and_services",
         "petrol_spending", "diesel_spending",
-        // Product-level consumption (JSON blob)
-        "consumption_products",
+        // Wealth (present in WAS clean CSVs, zero for others)
+        "financial_wealth", "property_wealth", "physical_wealth", "total_wealth",
     ])?;
 
     for hh in &dataset.households {
@@ -215,9 +215,6 @@ fn write_households(dataset: &Dataset, output_dir: &Path) -> anyhow::Result<()> 
             .map(|id| id.to_string())
             .collect::<Vec<_>>()
             .join(";");
-
-        // Serialize product-level consumption as JSON
-        let products_json = serde_json::to_string(&hh.consumption_products).unwrap_or_else(|_| "{}".to_string());
 
         wtr.write_record(&[
             hh.id.to_string(),
@@ -241,7 +238,10 @@ fn write_households(dataset: &Dataset, output_dir: &Path) -> anyhow::Result<()> 
             format!("{:.2}", hh.miscellaneous_goods_and_services),
             format!("{:.2}", hh.petrol_spending),
             format!("{:.2}", hh.diesel_spending),
-            products_json,
+            format!("{:.2}", hh.financial_wealth),
+            format!("{:.2}", hh.property_wealth),
+            format!("{:.2}", hh.physical_wealth),
+            format!("{:.2}", hh.total_wealth),
         ])?;
     }
 
@@ -909,14 +909,6 @@ pub fn parse_households_csv<R: std::io::Read>(reader: R) -> anyhow::Result<Vec<H
 
     for result in rdr.records() {
         let r = result?;
-        // Parse product-level consumption from JSON blob (empty map if missing/malformed)
-        let products_str = h.get_str(&r, "consumption_products");
-        let consumption_products: HashMap<String, f64> = if products_str.is_empty() {
-            HashMap::new()
-        } else {
-            serde_json::from_str(&products_str).unwrap_or_default()
-        };
-
         households.push(Household {
             id: h.get_usize(&r, "household_id"),
             benunit_ids: parse_id_list(&h.get_str(&r, "benunit_ids")),
@@ -940,7 +932,11 @@ pub fn parse_households_csv<R: std::io::Read>(reader: R) -> anyhow::Result<Vec<H
             miscellaneous_goods_and_services: h.get_f64(&r, "miscellaneous_goods_and_services"),
             petrol_spending: h.get_f64(&r, "petrol_spending"),
             diesel_spending: h.get_f64(&r, "diesel_spending"),
-            consumption_products,
+            // Wealth (present in WAS clean CSVs, zero for others)
+            financial_wealth: h.get_f64(&r, "financial_wealth"),
+            property_wealth: h.get_f64(&r, "property_wealth"),
+            physical_wealth: h.get_f64(&r, "physical_wealth"),
+            total_wealth: h.get_f64(&r, "total_wealth"),
         });
     }
 

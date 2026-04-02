@@ -35,6 +35,7 @@ DATA CREATION (raw survey → clean CSVs):
   SPI:  policyengine-uk --spi  raw_tab_dir/ --year 2022 --extract data/spi/2022/
   LCFS: policyengine-uk --lcfs raw_tab_dir/ --year 2023 --extract data/lcfs/2023/
   WAS:  policyengine-uk --was  raw_tab_dir/ --year 2020 --extract data/was/2020/
+  Uprated: policyengine-uk --frs raw_tab_dir/ --year 2023 --uprate-to 2026 --extract data/frs/2026/
 
 PARAMETER INSPECTION:
   Export as JSON:     policyengine-uk --year 2025 --export-params-json
@@ -73,6 +74,10 @@ struct Cli {
     /// Output directory for extracted clean CSVs. Requires --frs, --spi, --lcfs, or --was.
     #[arg(long)]
     extract: Option<PathBuf>,
+
+    /// When used with --extract, uprate the extracted dataset to this fiscal year before writing.
+    #[arg(long)]
+    uprate_to: Option<u32>,
 
     // ── Year ──
 
@@ -113,6 +118,11 @@ struct Cli {
     /// Export baseline parameters as YAML.
     #[arg(long)]
     export_baseline: bool,
+
+    /// Only simulate person-level variables (income tax, NI). Skips benefit unit and
+    /// household calculations. Suitable for SPI and other datasets without household structure.
+    #[arg(long)]
+    persons_only: bool,
 }
 
 #[derive(Serialize)]
@@ -274,6 +284,12 @@ fn main() -> anyhow::Result<()> {
             anyhow::bail!("--extract requires a raw data source: --frs, --spi, --lcfs, or --was");
         };
         eprintln!("Loaded {} households, {} people", dataset.households.len(), dataset.people.len());
+        if let Some(target_year) = cli.uprate_to {
+            eprintln!("Uprating from {}/{} to {}/{}...",
+                dataset.year, (dataset.year + 1) % 100,
+                target_year, (target_year + 1) % 100);
+            dataset.uprate_to(target_year);
+        }
         write_clean_csvs(&mut dataset, output_dir)?;
         eprintln!("Wrote clean CSVs to {}", output_dir.display());
         return Ok(());
@@ -337,6 +353,53 @@ fn main() -> anyhow::Result<()> {
         policy_params.clone(),
     );
     let reformed = policy_sim.run();
+
+    // Persons-only output: per-person tax results, no household/benefit analysis
+    if cli.persons_only {
+        if cli.output == "json" {
+            #[derive(Serialize)]
+            struct PersonRecord {
+                person_id: usize,
+                weight: f64,
+                employment_income: f64,
+                self_employment_income: f64,
+                pension_income: f64,
+                savings_interest_income: f64,
+                dividend_income: f64,
+                baseline_income_tax: f64,
+                baseline_employee_ni: f64,
+                baseline_employer_ni: f64,
+                reform_income_tax: f64,
+                reform_employee_ni: f64,
+                reform_employer_ni: f64,
+            }
+            let mut records: Vec<PersonRecord> = Vec::new();
+            for hh in &dataset.households {
+                for &pid in &hh.person_ids {
+                    let p = &dataset.people[pid];
+                    let bp = &baseline.person_results[pid];
+                    let rp = &reformed.person_results[pid];
+                    records.push(PersonRecord {
+                        person_id: pid,
+                        weight: hh.weight,
+                        employment_income: p.employment_income,
+                        self_employment_income: p.self_employment_income,
+                        pension_income: p.pension_income,
+                        savings_interest_income: p.savings_interest_income,
+                        dividend_income: p.dividend_income,
+                        baseline_income_tax: bp.income_tax,
+                        baseline_employee_ni: bp.national_insurance,
+                        baseline_employer_ni: bp.employer_ni,
+                        reform_income_tax: rp.income_tax,
+                        reform_employee_ni: rp.national_insurance,
+                        reform_employer_ni: rp.employer_ni,
+                    });
+                }
+            }
+            println!("{}", serde_json::to_string(&records)?);
+        }
+        return Ok(());
+    }
 
     // Enhanced microdata output
     if let Some(micro_dir) = &cli.output_microdata {

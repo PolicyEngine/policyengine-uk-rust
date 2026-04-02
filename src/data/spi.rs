@@ -14,9 +14,12 @@ use crate::data::frs::{load_table_cols, get_f64, get_i64, region_from_gvtregno};
 /// Expected file: `put{YYYY}uk.tab` where YYYY = fiscal_year + 1 (e.g. put2023uk.tab for 2022/23).
 /// Also tries `put{YYYY}uk.csv` as fallback.
 pub fn load_spi(data_dir: &Path, fiscal_year: u32) -> anyhow::Result<Dataset> {
-    // SPI files are named putYYYYuk where YYYY is the end-year of the fiscal year
+    // SPI files use two naming conventions:
+    //   put{end_year}uk  (e.g. put2023uk for 2022/23) — older files
+    //   put{yy}{yy+1}uk  (e.g. put2223uk for 2022/23) — newer files
     let end_year = fiscal_year + 1;
-    let file_name = format!("put{}uk", end_year);
+    let file_name = find_spi_file(data_dir, fiscal_year)
+        .unwrap_or_else(|| format!("put{}uk", end_year));
 
     let table = load_table_cols(data_dir, &file_name, Some(&[
         "fact", "pay", "epb", "profits", "pension", "srp",
@@ -106,6 +109,27 @@ pub fn load_spi(data_dir: &Path, fiscal_year: u32) -> anyhow::Result<Dataset> {
         name: format!("Survey of Personal Incomes {}/{:02}", fiscal_year, (fiscal_year + 1) % 100),
         year: fiscal_year,
     })
+}
+
+/// Find the SPI tab file in the directory, trying both naming conventions.
+fn find_spi_file(data_dir: &Path, fiscal_year: u32) -> Option<String> {
+    let end_year = fiscal_year + 1;
+    // Try two-digit-year range format first: put{yy}{yy+1}uk (e.g. put2223uk)
+    let short_start = fiscal_year % 100;
+    let short_end = end_year % 100;
+    let two_digit = format!("put{:02}{:02}uk", short_start, short_end);
+    // Full end-year format: put{YYYY}uk (e.g. put2023uk)
+    let full_year = format!("put{}uk", end_year);
+
+    let entries = std::fs::read_dir(data_dir).ok()?;
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_lowercase();
+        let stem = name.rsplit_once('.').map(|(s, _)| s).unwrap_or(&name);
+        if stem == two_digit || stem == full_year {
+            return Some(stem.to_string());
+        }
+    }
+    None
 }
 
 /// Map SPI AGERANGE code to age midpoint.
