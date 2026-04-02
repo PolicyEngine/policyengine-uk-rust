@@ -60,12 +60,15 @@ def _get_credentials() -> tuple[str, str]:
     return token.split(":", 1)
 
 
-def ensure_year(year: int) -> Path:
-    """Ensure FRS data for a specific year is available locally, downloading if needed.
+DATASETS = ("frs", "lcfs", "spi", "was")
 
-    Returns the path to the year directory (e.g. ~/.policyengine-uk-data/frs/2023/).
+
+def ensure_dataset_year(dataset: str, year: int) -> Path:
+    """Ensure clean CSVs for a dataset/year are available locally, downloading if needed.
+
+    Returns the path to the year directory (e.g. ~/.policyengine-uk-data/frs/2026/).
     """
-    year_dir = LOCAL_CACHE / "frs" / str(year)
+    year_dir = LOCAL_CACHE / dataset / str(year)
     expected_files = ["persons.csv", "benunits.csv", "households.csv"]
     if all((year_dir / f).exists() for f in expected_files):
         return year_dir
@@ -73,7 +76,7 @@ def ensure_year(year: int) -> Path:
     access_key, secret_key = _get_credentials()
     year_dir.mkdir(parents=True, exist_ok=True)
     for f in expected_files:
-        key = f"frs/{year}/{f}"
+        key = f"{dataset}/{year}/{f}"
         dest = year_dir / f
         if dest.exists():
             continue
@@ -84,16 +87,13 @@ def ensure_year(year: int) -> Path:
     return year_dir
 
 
+# Keep old name for backwards compatibility
+def ensure_year(year: int) -> Path:
+    return ensure_dataset_year("frs", year)
+
+
 def ensure_frs(year: int, clean_frs_base: str | None = None) -> str:
-    """Return a path to FRS data base dir, downloading the needed year if missing.
-
-    Args:
-        year: The fiscal year to ensure data for.
-        clean_frs_base: Explicit path. If it exists with data for this year, returned as-is.
-
-    Returns:
-        Path string to the FRS base directory (containing year subdirs).
-    """
+    """Return a path to FRS data base dir, downloading the needed year if missing."""
     if clean_frs_base:
         year_dir = Path(clean_frs_base) / str(year)
         if year_dir.is_dir():
@@ -111,42 +111,64 @@ def ensure_frs(year: int, clean_frs_base: str | None = None) -> str:
             f"a directory with a {year}/ subdirectory, or set {ENV_TOKEN} to "
             f"auto-download from GCS."
         )
-    ensure_year(year)
+    ensure_dataset_year("frs", year)
     return str(local_base)
 
 
-def download_all(force: bool = False) -> Path:
-    """Download all available FRS years. Returns the base frs directory."""
+def ensure_dataset(dataset: str, year: int) -> str:
+    """Return a path to a dataset base dir, downloading the needed year if missing.
+
+    Supports: frs, lcfs, spi, was.
+    """
+    if dataset not in DATASETS:
+        raise ValueError(f"Unknown dataset {dataset!r}. Choose from: {DATASETS}")
+
+    local_base = LOCAL_CACHE / dataset
+    year_dir = local_base / str(year)
+    expected = ["persons.csv", "benunits.csv", "households.csv"]
+    if all((year_dir / f).exists() for f in expected):
+        return str(local_base)
+
+    if not os.environ.get(ENV_TOKEN):
+        raise FileNotFoundError(
+            f"No {dataset.upper()} data found for {year}. Set {ENV_TOKEN} to auto-download."
+        )
+    ensure_dataset_year(dataset, year)
+    return str(local_base)
+
+
+def download_all(force: bool = False, datasets: tuple = DATASETS) -> None:
+    """Download all available years for the given datasets (default: all)."""
     import re
     access_key, secret_key = _get_credentials()
 
-    # List all objects to discover years
-    keys = []
-    marker = ""
-    while True:
-        path = f"/?prefix=frs/&marker={marker}"
-        headers = _sign_request("GET", "/", access_key, secret_key)
-        url = f"https://{GCS_HOST}/{GCS_BUCKET}{path}"
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req) as resp:
-            body = resp.read().decode()
-        found = re.findall(r"<Key>([^<]+)</Key>", body)
-        if not found:
-            break
-        keys.extend(found)
-        if "<IsTruncated>true</IsTruncated>" not in body:
-            break
-        marker = found[-1]
+    for dataset in datasets:
+        keys = []
+        marker = ""
+        while True:
+            path = f"/?prefix={dataset}/&marker={marker}"
+            headers = _sign_request("GET", "/", access_key, secret_key)
+            url = f"https://{GCS_HOST}/{GCS_BUCKET}{path}"
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req) as resp:
+                body = resp.read().decode()
+            found = re.findall(r"<Key>([^<]+)</Key>", body)
+            if not found:
+                break
+            keys.extend(found)
+            if "<IsTruncated>true</IsTruncated>" not in body:
+                break
+            marker = found[-1]
 
-    total = len(keys)
-    for i, key in enumerate(keys, 1):
-        rel = key[len("frs/"):]
-        if not rel:
-            continue
-        dest = LOCAL_CACHE / "frs" / rel
-        if dest.exists() and not force:
-            continue
-        _download_object(key, dest, access_key, secret_key)
-        print(f"\r  Downloading frs: {i}/{total}", end="", flush=True)
-    print()
-    return LOCAL_CACHE / "frs"
+        total = len(keys)
+        for i, key in enumerate(keys, 1):
+            rel = key[len(f"{dataset}/"):]
+            if not rel:
+                continue
+            dest = LOCAL_CACHE / dataset / rel
+            if dest.exists() and not force:
+                continue
+            _download_object(key, dest, access_key, secret_key)
+            print(f"\r  Downloading {dataset}: {i}/{total}", end="", flush=True)
+        if keys:
+            print()

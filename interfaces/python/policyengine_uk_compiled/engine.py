@@ -200,18 +200,18 @@ class Simulation:
         if self._stdin_payload is not None:
             cmd.append("--stdin-data")
         elif self._data_dir:
-            cmd += ["--data-dir", self._data_dir]
+            cmd += ["--data", self._data_dir]
         elif self._clean_frs_base:
-            cmd += ["--clean-frs-base", self._clean_frs_base]
+            cmd += ["--data", self._clean_frs_base]
         elif self._clean_frs:
-            cmd += ["--clean-frs", self._clean_frs]
+            cmd += ["--data", self._clean_frs]
         elif self._frs_raw:
-            cmd += ["--frs-raw", self._frs_raw]
+            cmd += ["--frs", self._frs_raw]
         else:
             # No data source specified — try auto-resolving FRS data
             from policyengine_uk_compiled.data import ensure_frs
             frs_path = ensure_frs(self.year)
-            cmd += ["--clean-frs-base", frs_path]
+            cmd += ["--data", frs_path]
 
         if policy:
             overlay = policy.model_dump(exclude_none=True)
