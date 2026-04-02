@@ -1,3 +1,10 @@
+## [0.6.2] - 2026-04-02
+
+### Fixed
+
+- Republish with correct SimulationResult model and SPI support.
+
+
 ## [0.6.1] - 2026-04-02
 
 ### Fixed
