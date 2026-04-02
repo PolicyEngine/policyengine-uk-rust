@@ -1,0 +1,1 @@
+Add GCS download support for LCFS, SPI, and WAS datasets. New ensure_dataset(dataset, year) and updated download_all() support all four datasets (frs, lcfs, spi, was) from gs://policyengine-uk-microdata.
