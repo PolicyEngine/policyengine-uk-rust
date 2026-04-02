@@ -1,3 +1,10 @@
+## [0.6.0] - 2026-04-02
+
+### Added
+
+- Add `dataset` parameter to `Simulation` to run simulations against SPI, LCFS, or WAS microdata. Pass `dataset="spi"`, `dataset="lcfs"`, or `dataset="was"` — data auto-downloads from GCS on first use. Also exports `ensure_dataset` and `DATASETS` from the package top-level.
+
+
 ## [0.5.0] - 2026-04-02
 
 ### Added
