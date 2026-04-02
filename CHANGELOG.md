@@ -1,3 +1,10 @@
+## [0.5.0] - 2026-04-02
+
+### Added
+
+- Added HBAI income definitions (BHC/AHC, equivalised/non-equivalised means and medians) and four poverty definitions (relative/absolute × BHC/AHC) with headcounts for child, working-age, and pensioner poverty to JSON output.
+
+
 ## [0.4.0] - 2026-04-02
 
 ### Added
