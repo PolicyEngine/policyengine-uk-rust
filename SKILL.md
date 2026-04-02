@@ -38,6 +38,7 @@ For microdata (per-entity DataFrames): use `--output-microdata-stdout` and parse
 | `--output json` | Machine-readable aggregate output |
 | `--output-microdata-stdout` | Per-entity CSVs to stdout |
 | `--export-params-json` | Dump baseline parameters |
+| `--uprate-to YYYY` | With `--extract`: uprate dataset to target year before writing clean CSVs |
 
 ## Data
 
@@ -94,6 +95,25 @@ Four raw survey inputs are supported. All use the same two-step flow: `--extract
 **SPI file naming**: Newer files use `put{yy}{yy+1}uk.tab` (e.g. `put2223uk.tab` for 2022/23); older files use `put{YYYY}uk.tab`. The loader detects both automatically.
 
 **UKDS data**: LCFS (SN 9468), WAS (SN 7215), SPI (SN 9422) are all under project `ecf0b3c4-29d2-4d8a-931d-0e3773a4ac0b`. Download tab zips from UKDS MCP and unzip before extracting.
+
+## Versioning and releasing
+
+Versions are managed via `pyproject.toml` (the source of truth) and towncrier-style changelog fragments in `changelog.d/`.
+
+- **Do not** edit `CHANGELOG.md` or `Cargo.toml` versions directly — they are updated automatically by CI.
+- To ship a change, drop a fragment file in `changelog.d/` with the naming convention `<slug>.<type>`:
+
+| File suffix | Semver bump |
+|---|---|
+| `.fixed` | patch |
+| `.changed` | patch |
+| `.added` | minor |
+| `.removed` | minor |
+| `.breaking` | major |
+
+Example: `changelog.d/parse-id-list-delimiters.fixed`
+
+The content of the file is the human-readable changelog entry. CI runs `.github/bump_version.py` to infer the bump from fragment types, update `pyproject.toml`, then `publish-git-tag.sh` to tag and release.
 
 ## Building
 

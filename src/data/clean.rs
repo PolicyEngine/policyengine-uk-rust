@@ -687,7 +687,32 @@ fn parse_id_list(s: &str) -> Vec<usize> {
     if s.is_empty() {
         return Vec::new();
     }
-    s.split(';').filter_map(|x| x.trim().parse::<usize>().ok()).collect()
+    s.split(|c| c == ';' || c == ',').filter_map(|x| x.trim().parse::<usize>().ok()).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_id_list;
+
+    #[test]
+    fn parse_id_list_semicolons() {
+        assert_eq!(parse_id_list("0;1;2"), vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn parse_id_list_commas() {
+        assert_eq!(parse_id_list("0,1"), vec![0, 1]);
+    }
+
+    #[test]
+    fn parse_id_list_single() {
+        assert_eq!(parse_id_list("3"), vec![3]);
+    }
+
+    #[test]
+    fn parse_id_list_empty() {
+        assert_eq!(parse_id_list(""), Vec::<usize>::new());
+    }
 }
 
 fn parse_region(s: &str) -> Region {
