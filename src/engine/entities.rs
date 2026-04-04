@@ -268,7 +268,7 @@ impl BenUnit {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Household {
     pub id: usize,
     pub benunit_ids: Vec<usize>,
@@ -278,27 +278,194 @@ pub struct Household {
     pub rent: f64,
     pub council_tax: f64,
 
-    // COICOP consumption (annual, household-level) — populated from LCFS, zero for other datasets
-    pub food_and_non_alcoholic_beverages: f64,    // COICOP 01 (P601)
-    pub alcohol_and_tobacco: f64,                  // COICOP 02 (P602)
-    pub clothing_and_footwear: f64,                // COICOP 03 (P603)
-    pub housing_water_and_fuel: f64,               // COICOP 04 (P604)
-    pub household_furnishings: f64,                // COICOP 05 (P605)
-    pub health: f64,                               // COICOP 06 (P606)
-    pub transport: f64,                            // COICOP 07 (P607)
-    pub communication: f64,                        // COICOP 08 (P608)
-    pub recreation_and_culture: f64,               // COICOP 09 (P609)
-    pub education: f64,                            // COICOP 10 (P610)
-    pub restaurants_and_hotels: f64,               // COICOP 11 (P611)
-    pub miscellaneous_goods_and_services: f64,     // COICOP 12 (P612)
-    pub petrol_spending: f64,                      // C72211
-    pub diesel_spending: f64,                      // C72212
+    // Auxiliary (FRS housing variables, used as RF predictors)
+    pub num_bedrooms: u32,
+    pub tenure_type: TenureType,
+    pub accommodation_type: AccommodationType,
 
-    // Wealth (annual, household-level) — populated from WAS, zero for other datasets
-    pub financial_wealth: f64,       // Net financial wealth (HFINWR_SUM)
-    pub property_wealth: f64,        // Net property wealth (HPropWR)
-    pub physical_wealth: f64,        // Physical wealth — vehicles, collectibles etc (HphysWR)
-    pub total_wealth: f64,           // Total net wealth (TotWlth_old)
+    // Wealth (from WAS imputation)
+    pub owned_land: f64,
+    pub property_wealth: f64,
+    pub corporate_wealth: f64,
+    pub gross_financial_wealth: f64,
+    pub net_financial_wealth: f64,
+    pub main_residence_value: f64,
+    pub other_residential_property_value: f64,
+    pub non_residential_property_value: f64,
+    pub savings: f64,
+    pub num_vehicles: f64,
+
+    // Consumption (from LCFS imputation, annual)
+    pub food_consumption: f64,
+    pub alcohol_tobacco_consumption: f64,
+    pub clothing_consumption: f64,
+    pub housing_water_electricity_consumption: f64,
+    pub furnishings_consumption: f64,
+    pub health_consumption: f64,
+    pub transport_consumption: f64,
+    pub communication_consumption: f64,
+    pub recreation_consumption: f64,
+    pub education_consumption: f64,
+    pub restaurants_consumption: f64,
+    pub miscellaneous_consumption: f64,
+    pub petrol_spending: f64,
+    pub diesel_spending: f64,
+    pub domestic_energy_consumption: f64,
+    pub electricity_consumption: f64,
+    pub gas_consumption: f64,
+}
+
+impl Default for Household {
+    fn default() -> Self {
+        Household {
+            id: 0,
+            benunit_ids: Vec::new(),
+            person_ids: Vec::new(),
+            weight: 0.0,
+            region: Region::London,
+            rent: 0.0,
+            council_tax: 0.0,
+            num_bedrooms: 0,
+            tenure_type: TenureType::default(),
+            accommodation_type: AccommodationType::default(),
+            owned_land: 0.0,
+            property_wealth: 0.0,
+            corporate_wealth: 0.0,
+            gross_financial_wealth: 0.0,
+            net_financial_wealth: 0.0,
+            main_residence_value: 0.0,
+            other_residential_property_value: 0.0,
+            non_residential_property_value: 0.0,
+            savings: 0.0,
+            num_vehicles: 0.0,
+            food_consumption: 0.0,
+            alcohol_tobacco_consumption: 0.0,
+            clothing_consumption: 0.0,
+            housing_water_electricity_consumption: 0.0,
+            furnishings_consumption: 0.0,
+            health_consumption: 0.0,
+            transport_consumption: 0.0,
+            communication_consumption: 0.0,
+            recreation_consumption: 0.0,
+            education_consumption: 0.0,
+            restaurants_consumption: 0.0,
+            miscellaneous_consumption: 0.0,
+            petrol_spending: 0.0,
+            diesel_spending: 0.0,
+            domestic_energy_consumption: 0.0,
+            electricity_consumption: 0.0,
+            gas_consumption: 0.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TenureType {
+    OwnedOutright,
+    OwnedWithMortgage,
+    RentFromCouncil,
+    RentFromHA,
+    RentPrivately,
+    Other,
+}
+
+impl Default for TenureType {
+    fn default() -> Self { TenureType::Other }
+}
+
+impl TenureType {
+    /// Map FRS TENTYP2 codes to enum.
+    pub fn from_frs_code(code: i32) -> Self {
+        match code {
+            1 => TenureType::RentFromCouncil,
+            2 => TenureType::RentFromHA,
+            3 => TenureType::RentPrivately,
+            4 => TenureType::RentPrivately,  // rent-free treated as private
+            5 => TenureType::OwnedWithMortgage,
+            6 => TenureType::OwnedWithMortgage,  // shared ownership
+            7 => TenureType::OwnedOutright,
+            _ => TenureType::Other,
+        }
+    }
+
+    /// Integer code for RF feature encoding.
+    pub fn to_rf_code(&self) -> f64 {
+        match self {
+            TenureType::OwnedOutright => 0.0,
+            TenureType::OwnedWithMortgage => 1.0,
+            TenureType::RentFromCouncil => 2.0,
+            TenureType::RentFromHA => 3.0,
+            TenureType::RentPrivately => 4.0,
+            TenureType::Other => 5.0,
+        }
+    }
+
+    pub fn is_renting(&self) -> bool {
+        matches!(self, TenureType::RentFromCouncil | TenureType::RentFromHA | TenureType::RentPrivately)
+    }
+
+    /// NEED calibration category (3 groups).
+    pub fn need_category(&self) -> usize {
+        match self {
+            TenureType::OwnedOutright | TenureType::OwnedWithMortgage => 0, // owner
+            TenureType::RentPrivately => 1,                                  // private rent
+            TenureType::RentFromCouncil | TenureType::RentFromHA => 2,       // social rent
+            TenureType::Other => 0,
+        }
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AccommodationType {
+    HouseDetached,
+    HouseSemiDetached,
+    HouseTerraced,
+    Flat,
+    Mobile,
+    Other,
+}
+
+impl Default for AccommodationType {
+    fn default() -> Self { AccommodationType::Other }
+}
+
+#[allow(dead_code)]
+impl AccommodationType {
+    /// Map FRS TYPEACC codes to enum.
+    pub fn from_frs_code(code: i32) -> Self {
+        match code {
+            1 => AccommodationType::HouseDetached,
+            2 => AccommodationType::HouseSemiDetached,
+            3 => AccommodationType::HouseTerraced,
+            4 | 5 => AccommodationType::Flat,   // purpose-built + converted
+            6 => AccommodationType::Mobile,      // caravan/mobile home
+            _ => AccommodationType::Other,
+        }
+    }
+
+    /// Integer code for RF feature encoding.
+    pub fn to_rf_code(&self) -> f64 {
+        match self {
+            AccommodationType::HouseDetached => 0.0,
+            AccommodationType::HouseSemiDetached => 1.0,
+            AccommodationType::HouseTerraced => 2.0,
+            AccommodationType::Flat => 3.0,
+            AccommodationType::Mobile => 4.0,
+            AccommodationType::Other => 5.0,
+        }
+    }
+
+    /// NEED calibration category (5 groups).
+    pub fn need_category(&self) -> usize {
+        match self {
+            AccommodationType::HouseDetached => 0,
+            AccommodationType::HouseSemiDetached => 1,
+            AccommodationType::HouseTerraced => 2,
+            AccommodationType::Flat => 3,
+            AccommodationType::Mobile | AccommodationType::Other => 4,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -339,6 +506,41 @@ impl Region {
             12 => Region::Scotland,
             13 => Region::NorthernIreland,
             _ => Region::London,
+        }
+    }
+
+    /// Integer code for RF feature encoding.
+    pub fn to_rf_code(&self) -> f64 {
+        match self {
+            Region::NorthEast => 0.0,
+            Region::NorthWest => 1.0,
+            Region::Yorkshire => 2.0,
+            Region::EastMidlands => 3.0,
+            Region::WestMidlands => 4.0,
+            Region::EastOfEngland => 5.0,
+            Region::London => 6.0,
+            Region::SouthEast => 7.0,
+            Region::SouthWest => 8.0,
+            Region::Wales => 9.0,
+            Region::Scotland => 10.0,
+            Region::NorthernIreland => 11.0,
+        }
+    }
+
+    /// NEED calibration region index (0-10, NI mapped to Wales).
+    pub fn need_region(&self) -> usize {
+        match self {
+            Region::NorthEast => 0,
+            Region::NorthWest => 1,
+            Region::Yorkshire => 2,
+            Region::EastMidlands => 3,
+            Region::WestMidlands => 4,
+            Region::EastOfEngland => 5,
+            Region::London => 6,
+            Region::SouthEast => 7,
+            Region::SouthWest => 8,
+            Region::Wales | Region::NorthernIreland => 9,
+            Region::Scotland => 10,
         }
     }
 

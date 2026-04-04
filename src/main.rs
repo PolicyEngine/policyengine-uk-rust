@@ -19,6 +19,7 @@ use crate::data::lcfs::load_lcfs;
 use crate::data::was::load_was;
 use crate::data::clean::{write_clean_csvs, load_clean_dataset, write_microdata, write_microdata_to_stdout};
 use crate::data::stdin::load_dataset_from_reader;
+use crate::data::efrs;
 
 #[derive(Parser)]
 #[command(name = "policyengine-uk")]
@@ -108,6 +109,19 @@ struct Cli {
     /// Write enhanced microdata to stdout (concatenated CSV protocol).
     #[arg(long)]
     output_microdata_stdout: bool,
+
+    /// Extract Enhanced FRS (wealth + consumption imputation) to clean CSVs.
+    /// Requires a base FRS dataset plus --was-dir and --lcfs-dir.
+    #[arg(long)]
+    extract_efrs: Option<PathBuf>,
+
+    /// WAS Round 7 TAB file directory (for EFRS wealth imputation).
+    #[arg(long)]
+    was_dir: Option<PathBuf>,
+
+    /// LCFS 2021/22 TAB file directory (for EFRS consumption imputation).
+    #[arg(long)]
+    lcfs_dir: Option<PathBuf>,
 
     // ── Parameter inspection ──
 
@@ -239,6 +253,7 @@ struct ProgramBreakdown {
     income_tax: f64,
     employee_ni: f64,
     employer_ni: f64,
+    vat: f64,
     universal_credit: f64,
     child_benefit: f64,
     state_pension: f64,
@@ -340,6 +355,48 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
+    // Extract Enhanced FRS if requested
+    if let Some(efrs_output) = &cli.extract_efrs {
+        let was_dir = cli.was_dir.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("--extract-efrs requires --was-dir <was-tab-dir>"))?;
+        let lcfs_dir = cli.lcfs_dir.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("--extract-efrs requires --lcfs-dir <lcfs-tab-dir>"))?;
+
+        // Load base FRS dataset
+        let mut dataset = if let Some(frs_path) = &cli.frs {
+            eprintln!("Loading raw FRS from {}...", frs_path.display());
+            load_frs(frs_path, cli.year)?
+        } else if let Some(base) = &cli.data {
+            let year_dir = base.join(cli.year.to_string());
+            if year_dir.is_dir() {
+                eprintln!("Loading clean FRS {}/{}...", cli.year, (cli.year + 1) % 100);
+                load_clean_dataset(&year_dir, cli.year)?
+            } else {
+                let latest = (1994..=cli.year).rev()
+                    .find(|y| base.join(y.to_string()).is_dir())
+                    .ok_or_else(|| anyhow::anyhow!("No clean FRS data found in {}", base.display()))?;
+                eprintln!("Loading clean FRS {}/{} and uprating...", latest, (latest + 1) % 100);
+                let mut ds = load_clean_dataset(&base.join(latest.to_string()), latest)?;
+                ds.uprate_to(cli.year);
+                ds
+            }
+        } else {
+            anyhow::bail!("--extract-efrs requires a base FRS dataset (--frs or --data)")
+        };
+
+        eprintln!("Loaded {} households, {} people", dataset.households.len(), dataset.people.len());
+
+        // Run EFRS imputation pipeline
+        efrs::enhance_dataset(&mut dataset, was_dir, lcfs_dir)?;
+
+        // Write enhanced clean CSVs
+        std::fs::create_dir_all(efrs_output)?;
+        eprintln!("Writing enhanced CSVs...");
+        write_clean_csvs(&mut dataset, efrs_output)?;
+        eprintln!("Wrote Enhanced FRS to {}", efrs_output.display());
+        return Ok(());
+    }
+
     // Load dataset for simulation
     let dataset = if cli.stdin_data {
         load_dataset_from_reader(std::io::BufReader::new(std::io::stdin().lock()), cli.year)?
@@ -390,12 +447,14 @@ fn main() -> anyhow::Result<()> {
     );
     let baseline = baseline_sim.run();
 
-    // Run policy simulation
-    let policy_sim = Simulation::new(
+    // Run policy simulation (pass baseline SP rates so reported amounts scale correctly)
+    let policy_sim = Simulation::new_with_baseline_sp(
         dataset.people.clone(),
         dataset.benunits.clone(),
         dataset.households.clone(),
         policy_params.clone(),
+        baseline_params.state_pension.new_state_pension_weekly,
+        baseline_params.state_pension.old_basic_pension_weekly,
     );
     let reformed = policy_sim.run();
 
@@ -556,10 +615,12 @@ fn main() -> anyhow::Result<()> {
         let mut income_tax = 0.0f64;
         let mut employee_ni = 0.0f64;
         let mut employer_ni = 0.0f64;
+        let mut vat_total = 0.0f64;
         let mut it_payers = 0.0f64;
         let mut ni_payers = 0.0f64;
         let mut eni_payers = 0.0f64;
         for hh in households {
+            vat_total += hh.weight * reformed.household_results[hh.id].vat;
             for &pid in &hh.person_ids {
                 let person = &people[pid];
                 total_employment += hh.weight * person.employment_income;
@@ -649,6 +710,7 @@ fn main() -> anyhow::Result<()> {
             income_tax,
             employee_ni,
             employer_ni,
+            vat: vat_total,
             universal_credit: uc,
             child_benefit: cb,
             state_pension: sp,

@@ -142,6 +142,12 @@ uc_migration:
   tax_credits: 0.20
   income_support: 0.12
 
+
+vat:
+  standard_rate: 0.20
+  reduced_rate: 0.05
+  zero_rate: 0.0
+
 growth_factors:
   cpi_rate: 0.03073          # CPI Sept 2021: 3.073%
   gdp_deflator: 0.01592
