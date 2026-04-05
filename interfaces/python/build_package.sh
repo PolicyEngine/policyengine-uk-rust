@@ -3,6 +3,10 @@
 # Usage: ./interfaces/python/build_package.sh
 set -euo pipefail
 
+# Ensure cargo is on PATH (needed in non-interactive shells like Modal image builds)
+# shellcheck disable=SC1091
+[ -f "$HOME/.cargo/env" ] && source "$HOME/.cargo/env"
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$SCRIPT_DIR/../.."
 PKG_DIR="$SCRIPT_DIR/policyengine_uk_compiled"
