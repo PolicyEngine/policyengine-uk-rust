@@ -4,6 +4,7 @@ pub mod stdin;
 pub mod spi;
 pub mod lcfs;
 pub mod was;
+pub mod efrs;
 
 use crate::engine::entities::*;
 
@@ -95,21 +96,35 @@ impl Dataset {
         for h in &mut self.households {
             h.rent *= rent;
             h.council_tax *= council_tax;
+            // Wealth (uprated by earnings as rough proxy)
+            h.owned_land *= earnings;
+            h.property_wealth *= earnings;
+            h.corporate_wealth *= earnings;
+            h.gross_financial_wealth *= earnings;
+            h.net_financial_wealth *= earnings;
+            h.main_residence_value *= earnings;
+            h.other_residential_property_value *= earnings;
+            h.non_residential_property_value *= earnings;
+            h.savings *= earnings;
+            // num_vehicles: count, not uprated
             // Consumption (CPI-uprated)
-            h.food_and_non_alcoholic_beverages *= cpi;
-            h.alcohol_and_tobacco *= cpi;
-            h.clothing_and_footwear *= cpi;
-            h.housing_water_and_fuel *= cpi;
-            h.household_furnishings *= cpi;
-            h.health *= cpi;
-            h.transport *= cpi;
-            h.communication *= cpi;
-            h.recreation_and_culture *= cpi;
-            h.education *= cpi;
-            h.restaurants_and_hotels *= cpi;
-            h.miscellaneous_goods_and_services *= cpi;
+            h.food_consumption *= cpi;
+            h.alcohol_tobacco_consumption *= cpi;
+            h.clothing_consumption *= cpi;
+            h.housing_water_electricity_consumption *= cpi;
+            h.furnishings_consumption *= cpi;
+            h.health_consumption *= cpi;
+            h.transport_consumption *= cpi;
+            h.communication_consumption *= cpi;
+            h.recreation_consumption *= cpi;
+            h.education_consumption *= cpi;
+            h.restaurants_consumption *= cpi;
+            h.miscellaneous_consumption *= cpi;
             h.petrol_spending *= cpi;
             h.diesel_spending *= cpi;
+            h.domestic_energy_consumption *= cpi;
+            h.electricity_consumption *= cpi;
+            h.gas_consumption *= cpi;
         }
         // Population growth adjusts weights
         for h in &mut self.households {

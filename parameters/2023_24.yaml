@@ -143,6 +143,12 @@ uc_migration:
   tax_credits: 0.70      # CTC/WTC claimants migrated
   income_support: 0.30   # IS claimants migrated
 
+
+vat:
+  standard_rate: 0.20
+  reduced_rate: 0.05
+  zero_rate: 0.0
+
 growth_factors:
   # OBR Economic and Fiscal Outlook, March 2026
   cpi_rate: 0.05670        # 5.670% CPI inflation (FY 2023/24)

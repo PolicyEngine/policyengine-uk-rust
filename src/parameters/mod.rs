@@ -34,6 +34,9 @@ pub struct Parameters {
     /// Income-related benefits: ESA(IR), JSA(IB), Carers Allowance.
     #[serde(default)]
     pub income_related_benefits: Option<IncomeRelatedBenefitParams>,
+    /// VAT parameters. Standard rate 20%, reduced rate 5% (energy), zero rate 0% (food).
+    #[serde(default)]
+    pub vat: Option<VatParams>,
 }
 
 
@@ -282,6 +285,31 @@ pub struct IncomeRelatedBenefitParams {
     /// Minimum age of care recipient for CA: 16.
     pub ca_care_recipient_min_age: f64,
 }
+
+/// VAT parameters.
+///
+/// UK VAT (Value Added Tax Act 1994 c.23) applies to most goods and services.
+/// Three rate bands: standard (20%), reduced (5% — domestic energy), zero (0% — food, children's clothing).
+/// The VAT paid by a household is computed from COICOP consumption categories.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VatParams {
+    /// Standard rate (VATA 1994 s.2(1)): 20% since 4 Jan 2011.
+    pub standard_rate: f64,
+    /// Reduced rate (VATA 1994 s.29A, Sch.7A): 5% on domestic energy.
+    pub reduced_rate: f64,
+    /// Zero rate (VATA 1994 Sch.8): 0% on food, children's clothing, books.
+    pub zero_rate: f64,
+    /// Fraction of total consumption subject to standard rate (for non-EFRS estimation).
+    /// ONS 2023: ~60% of household spending is standard-rated.
+    #[serde(default = "default_standard_share")]
+    pub standard_rated_share: f64,
+    /// Fraction subject to reduced rate (domestic energy ~5% of spending).
+    #[serde(default = "default_reduced_share")]
+    pub reduced_rated_share: f64,
+}
+
+fn default_standard_share() -> f64 { 0.60 }
+fn default_reduced_share() -> f64 { 0.05 }
 
 /// Convert a fiscal year start year (e.g. 2029) to the YAML filename format
 fn fiscal_year_filename(year: u32) -> String {

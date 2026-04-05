@@ -37,13 +37,21 @@ def _download_object(key: str, dest: Path, access_key: str, secret_key: str):
     url = f"https://{GCS_HOST}/{GCS_BUCKET}{path}"
     req = urllib.request.Request(url, headers=headers)
     dest.parent.mkdir(parents=True, exist_ok=True)
-    with urllib.request.urlopen(req) as resp:
+    with urllib.request.urlopen(req, timeout=300) as resp:
+        expected = int(resp.headers.get("Content-Length", 0))
+        written = 0
         with open(dest, "wb") as f:
             while True:
                 chunk = resp.read(1 << 20)
                 if not chunk:
                     break
                 f.write(chunk)
+                written += len(chunk)
+        if expected and written != expected:
+            dest.unlink(missing_ok=True)
+            raise IOError(
+                f"Incomplete download for {key}: got {written} of {expected} bytes"
+            )
 
 
 def _get_credentials() -> tuple[str, str]:
@@ -60,7 +68,7 @@ def _get_credentials() -> tuple[str, str]:
     return token.split(":", 1)
 
 
-DATASETS = ("frs", "lcfs", "spi", "was")
+DATASETS = ("frs", "efrs", "lcfs", "spi", "was")
 
 
 def ensure_dataset_year(dataset: str, year: int) -> Path:

@@ -131,6 +131,12 @@ uc_migration:
   tax_credits: 0.0
   income_support: 0.0
 
+
+vat:
+  standard_rate: 0.20
+  reduced_rate: 0.05
+  zero_rate: 0.0
+
 growth_factors:
   cpi_rate: 0.026
   gdp_deflator: 0.018

@@ -30,6 +30,7 @@ pub fn load_frs(data_dir: &Path, fiscal_year: u32) -> anyhow::Result<Dataset> {
     let household_table = load_table_cols(data_dir, "househol", Some(&[
         "sernum", "gross3", "gross4", "stdregn", "gvtregn", "gvtregno",
         "ctannual", "hhrent", "subrent", "cvpay",
+        "bedroom6", "tentyp2", "typeacc",
     ]))?;
     let benunit_table = load_table_cols(data_dir, "benunit", Some(&[
         "sernum", "benunit", "buuc", "burent",
@@ -225,6 +226,10 @@ struct HouseholdRecord {
     subrent_weekly: f64,
     /// Boarders/lodgers income net of HB (CVPAY, weekly) — assigned to HRP
     cvpay_weekly: f64,
+    // Housing characteristics for EFRS imputation
+    num_bedrooms: u32,
+    tenure_type: TenureType,
+    accommodation_type: AccommodationType,
 }
 
 pub(crate) fn region_from_gvtregno(code: i64) -> Region {
@@ -268,6 +273,9 @@ fn parse_households(table: &Table, era: FrsEra) -> Vec<HouseholdRecord> {
             council_tax_annual: if ct > 0.0 { ct } else { 1800.0 },
             subrent_weekly: get_positive_f64(row, "subrent"),
             cvpay_weekly: get_positive_f64(row, "cvpay"),
+            num_bedrooms: get_i64(row, "bedroom6").max(0) as u32,
+            tenure_type: TenureType::from_frs_code(get_i64(row, "tentyp2") as i32),
+            accommodation_type: AccommodationType::from_frs_code(get_i64(row, "typeacc") as i32),
         }
     }).collect()
 }
@@ -917,6 +925,9 @@ fn assemble_dataset(
             region: hh.region,
             rent: hh.rent_weekly * WEEKS_IN_YEAR,
             council_tax: hh.council_tax_annual,
+            num_bedrooms: hh.num_bedrooms,
+            tenure_type: hh.tenure_type,
+            accommodation_type: hh.accommodation_type,
             ..Household::default()
         });
     }

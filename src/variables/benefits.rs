@@ -14,10 +14,14 @@ pub fn calculate_benunit(
     person_results: &[PersonResult],
     household: &Household,
     params: &Parameters,
+    baseline_old_sp_weekly: f64,
+    fiscal_year: u32,
 ) -> BenUnitResult {
     // Non-means-tested / universal benefits (available regardless of UC/legacy)
     let child_benefit = calculate_child_benefit(bu, people, person_results, params);
-    let state_pension = calculate_state_pension(bu, people, params);
+    let state_pension = calculate_state_pension(
+        bu, people, params, baseline_old_sp_weekly, fiscal_year,
+    );
     // Carers Allowance: non-means-tested flat rate for informal carers.
     // Paid to individual, regardless of UC/legacy system.
     let carers_allowance = calculate_carers_allowance(bu, people, person_results, params);
@@ -132,11 +136,12 @@ pub fn calculate_benunit(
 }
 
 /// Child Benefit: eldest child gets higher rate, others get additional rate.
-/// Subject to High Income Child Benefit Charge (HICBC).
+/// HICBC is now a separate income tax charge (applied in simulation Phase 2b),
+/// so child benefit is paid in full here.
 fn calculate_child_benefit(
     bu: &BenUnit,
     people: &[Person],
-    person_results: &[PersonResult],
+    _person_results: &[PersonResult],
     params: &Parameters,
 ) -> f64 {
     let num_children = bu.num_children(people);
@@ -148,24 +153,8 @@ fn calculate_child_benefit(
         + params.child_benefit.additional_weekly * (num_children as f64 - 1.0).max(0.0);
     let annual = weekly * 52.0;
 
-    // HICBC: clawed back between threshold and taper_end based on highest earner
-    let max_income: f64 = bu.person_ids.iter()
-        .filter(|&&pid| people[pid].is_adult())
-        .map(|&pid| person_results[pid].adjusted_net_income)
-        .fold(0.0_f64, f64::max);
-
-    let amount = if max_income <= params.child_benefit.hicbc_threshold {
-        annual
-    } else if max_income >= params.child_benefit.hicbc_taper_end {
-        0.0
-    } else {
-        let fraction = (max_income - params.child_benefit.hicbc_threshold)
-            / (params.child_benefit.hicbc_taper_end - params.child_benefit.hicbc_threshold);
-        annual * (1.0 - fraction)
-    };
-
-    if amount > 0.0 && !bu.would_claim_cb { return 0.0; }
-    amount
+    if annual > 0.0 && !bu.would_claim_cb { return 0.0; }
+    annual
 }
 
 /// Universal Credit calculation.
@@ -305,25 +294,56 @@ fn calculate_universal_credit(
     (uc_amount, max_amount_annual, total_reduction)
 }
 
-/// State Pension: passthrough from reported amounts.
-fn calculate_state_pension(bu: &BenUnit, people: &[Person], params: &Parameters) -> f64 {
-    // State pension is taken as reported from FRS. Where not reported but person is SP age,
-    // we use the new state pension rate as a floor (catches those whose entitlement isn't in FRS).
+/// State Pension calculation following policyengine-uk logic.
+///
+/// New SP (reached SP age after April 2016): full parameter rate directly.
+/// Basic SP (reached SP age before April 2016): reported amount, capped at
+/// basic SP max, scaled by reform_rate/baseline_rate for basic SP parameter.
+///
+/// New SP started April 2016. SP age is 66. So in fiscal year Y, the cutoff
+/// is: anyone aged > 66 + (Y - 2016) was already SP-age when new SP began,
+/// and is therefore on basic SP. Everyone else on SP is on new SP.
+/// Calculate reform-adjusted state pension for a single person.
+/// New SP recipients get the full parameter rate; basic SP recipients get
+/// their reported amount scaled by the reform ratio.
+pub fn person_state_pension(
+    person: &Person,
+    params: &Parameters,
+    baseline_old_sp_weekly: f64,
+    fiscal_year: u32,
+) -> f64 {
+    if !person.is_sp_age() || !person.is_adult() {
+        return 0.0;
+    }
+
     let sp = &params.state_pension;
-    let new_sp_annual = sp.new_state_pension_weekly * 52.0;
-    let old_sp_annual = sp.old_basic_pension_weekly * 52.0;
+    let basic_sp_min_age = 66.0 + (fiscal_year as f64 - 2016.0);
+
+    if person.age >= basic_sp_min_age {
+        // Basic SP: scale reported amount by reform ratio
+        let old_sp_scale = if baseline_old_sp_weekly > 0.0 {
+            sp.old_basic_pension_weekly / baseline_old_sp_weekly
+        } else { 1.0 };
+        if person.state_pension > 0.0 {
+            person.state_pension * old_sp_scale
+        } else {
+            sp.old_basic_pension_weekly * 52.0
+        }
+    } else {
+        // New SP: use full parameter rate directly
+        sp.new_state_pension_weekly * 52.0
+    }
+}
+
+fn calculate_state_pension(
+    bu: &BenUnit,
+    people: &[Person],
+    params: &Parameters,
+    baseline_old_sp_weekly: f64,
+    fiscal_year: u32,
+) -> f64 {
     bu.person_ids.iter()
-        .map(|&pid| {
-            let p = &people[pid];
-            if p.state_pension > 0.0 {
-                p.state_pension
-            } else if p.is_sp_age() && p.is_adult() {
-                // Assume new state pension for post-2016 cohort (simplified)
-                if p.age < 80.0 { new_sp_annual } else { old_sp_annual }
-            } else {
-                0.0
-            }
-        })
+        .map(|&pid| person_state_pension(&people[pid], params, baseline_old_sp_weekly, fiscal_year))
         .sum()
 }
 
@@ -995,9 +1015,9 @@ mod tests {
         let params = Parameters::for_year(2025).unwrap();
         let (people, bu, hh) = make_single_bu(25000.0, 2);
         let person_results: Vec<PersonResult> = people.iter()
-            .map(|p| crate::variables::income_tax::calculate(p, &params))
+            .map(|p| crate::variables::income_tax::calculate(p, &params, p.state_pension))
             .collect();
-        let result = calculate_benunit(&bu, &people, &person_results, &hh, &params);
+        let result = calculate_benunit(&bu, &people, &person_results, &hh, &params, params.state_pension.old_basic_pension_weekly, 2025);
         let expected_cb = params.child_benefit.eldest_weekly * 52.0
             + params.child_benefit.additional_weekly * 52.0;
         assert!((result.child_benefit - expected_cb).abs() < 1.0);
@@ -1008,9 +1028,9 @@ mod tests {
         let params = Parameters::for_year(2025).unwrap();
         let (people, bu, hh) = make_single_bu(10000.0, 1);
         let person_results: Vec<PersonResult> = people.iter()
-            .map(|p| crate::variables::income_tax::calculate(p, &params))
+            .map(|p| crate::variables::income_tax::calculate(p, &params, p.state_pension))
             .collect();
-        let result = calculate_benunit(&bu, &people, &person_results, &hh, &params);
+        let result = calculate_benunit(&bu, &people, &person_results, &hh, &params, params.state_pension.old_basic_pension_weekly, 2025);
         assert!(result.universal_credit > 0.0, "Low earner should receive UC");
     }
 
@@ -1020,16 +1040,16 @@ mod tests {
         let (mut people, bu, hh) = make_single_bu(10000.0, 1);
         people[1].is_disabled = true;
         let person_results: Vec<PersonResult> = people.iter()
-            .map(|p| crate::variables::income_tax::calculate(p, &params))
+            .map(|p| crate::variables::income_tax::calculate(p, &params, p.state_pension))
             .collect();
-        let result = calculate_benunit(&bu, &people, &person_results, &hh, &params);
+        let result = calculate_benunit(&bu, &people, &person_results, &hh, &params, params.state_pension.old_basic_pension_weekly, 2025);
         assert!(result.uc_max_amount > 0.0);
 
         let (people2, bu2, hh2) = make_single_bu(10000.0, 1);
         let pr2: Vec<PersonResult> = people2.iter()
-            .map(|p| crate::variables::income_tax::calculate(p, &params))
+            .map(|p| crate::variables::income_tax::calculate(p, &params, p.state_pension))
             .collect();
-        let result2 = calculate_benunit(&bu2, &people2, &pr2, &hh2, &params);
+        let result2 = calculate_benunit(&bu2, &people2, &pr2, &hh2, &params, params.state_pension.old_basic_pension_weekly, 2025);
         assert!(result.uc_max_amount > result2.uc_max_amount,
             "Disabled child should increase UC max amount");
     }
@@ -1041,9 +1061,9 @@ mod tests {
         people[0].is_disabled = true;
         people[0].pip_dl_std = true; // PIP DL standard rate → LCWRA eligible
         let person_results: Vec<PersonResult> = people.iter()
-            .map(|p| crate::variables::income_tax::calculate(p, &params))
+            .map(|p| crate::variables::income_tax::calculate(p, &params, p.state_pension))
             .collect();
-        let result = calculate_benunit(&bu, &people, &person_results, &hh, &params);
+        let result = calculate_benunit(&bu, &people, &person_results, &hh, &params, params.state_pension.old_basic_pension_weekly, 2025);
         let expected_min = (params.universal_credit.standard_allowance_single_over25
             + params.universal_credit.lcwra_element
             + 800.0) * 12.0;
@@ -1057,9 +1077,9 @@ mod tests {
         let (mut people, bu, hh) = make_single_bu(0.0, 0);
         people[0].savings_interest_income = 5000.0;
         let person_results: Vec<PersonResult> = people.iter()
-            .map(|p| crate::variables::income_tax::calculate(p, &params))
+            .map(|p| crate::variables::income_tax::calculate(p, &params, p.state_pension))
             .collect();
-        let result = calculate_benunit(&bu, &people, &person_results, &hh, &params);
+        let result = calculate_benunit(&bu, &people, &person_results, &hh, &params, params.state_pension.old_basic_pension_weekly, 2025);
         assert!(result.uc_income_reduction >= 5000.0,
             "£5000 unearned income should reduce UC by at least £5000, got {}", result.uc_income_reduction);
     }
@@ -1084,9 +1104,9 @@ mod tests {
             ..Household::default()
         };
         let pr: Vec<PersonResult> = people.iter()
-            .map(|p| crate::variables::income_tax::calculate(p, &params))
+            .map(|p| crate::variables::income_tax::calculate(p, &params, p.state_pension))
             .collect();
-        let result = calculate_benunit(&bu, &people, &pr, &hh, &params);
+        let result = calculate_benunit(&bu, &people, &pr, &hh, &params, params.state_pension.old_basic_pension_weekly, 2025);
         let mg_annual = params.pension_credit.standard_minimum_single * 52.0;
         // GC = mg - income
         assert!(result.pension_credit > 0.0, "Should receive pension credit");
@@ -1114,9 +1134,9 @@ mod tests {
             ..Household::default()
         };
         let pr: Vec<PersonResult> = people.iter()
-            .map(|p| crate::variables::income_tax::calculate(p, &params))
+            .map(|p| crate::variables::income_tax::calculate(p, &params, p.state_pension))
             .collect();
-        let result = calculate_benunit(&bu, &people, &pr, &hh, &params);
+        let result = calculate_benunit(&bu, &people, &pr, &hh, &params, params.state_pension.old_basic_pension_weekly, 2025);
         // seed=0.85 > migration rate 0.70 → not yet migrated, still on HB
         assert!(result.housing_benefit > 0.0, "Low earner not yet migrated should get HB");
         assert!(result.housing_benefit <= 7200.0, "HB should not exceed rent");
@@ -1146,9 +1166,9 @@ mod tests {
             ..Household::default()
         };
         let pr: Vec<PersonResult> = people.iter()
-            .map(|p| crate::variables::income_tax::calculate(p, &params))
+            .map(|p| crate::variables::income_tax::calculate(p, &params, p.state_pension))
             .collect();
-        let result = calculate_benunit(&bu, &people, &pr, &hh, &params);
+        let result = calculate_benunit(&bu, &people, &pr, &hh, &params, params.state_pension.old_basic_pension_weekly, 2025);
         // seed=0.85 < migration rate 0.95 → migrated to UC
         assert!(result.universal_credit > 0.0,
             "Low-income lone parent migrated from tax credits should receive UC. UC={}",
@@ -1162,9 +1182,9 @@ mod tests {
         let (people, mut bu, hh) = make_single_bu(0.0, 4);
         bu.rent_monthly = 3000.0; // Very high rent to push above cap
         let pr: Vec<PersonResult> = people.iter()
-            .map(|p| crate::variables::income_tax::calculate(p, &params))
+            .map(|p| crate::variables::income_tax::calculate(p, &params, p.state_pension))
             .collect();
-        let result = calculate_benunit(&bu, &people, &pr, &hh, &params);
+        let result = calculate_benunit(&bu, &people, &pr, &hh, &params, params.state_pension.old_basic_pension_weekly, 2025);
         // With 4 children and £3000/month rent, total benefits should hit cap
         if let Some(bc) = &params.benefit_cap {
             let cap = bc.non_single_london;
@@ -1196,9 +1216,9 @@ mod tests {
             ..Household::default()
         };
         let pr: Vec<PersonResult> = people.iter()
-            .map(|p| crate::variables::income_tax::calculate(p, &params))
+            .map(|p| crate::variables::income_tax::calculate(p, &params, p.state_pension))
             .collect();
-        let result = calculate_benunit(&bu, &people, &pr, &hh, &params);
+        let result = calculate_benunit(&bu, &people, &pr, &hh, &params, params.state_pension.old_basic_pension_weekly, 2025);
         if let Some(scp) = &params.scottish_child_payment {
             let expected = scp.weekly_amount * 52.0;
             assert!((result.scottish_child_payment - expected).abs() < 1.0,
@@ -1237,9 +1257,9 @@ mod parameter_impact_tests {
 
     fn calc(params: &Parameters, people: &[Person], bu: &BenUnit, hh: &Household) -> BenUnitResult {
         let pr: Vec<PersonResult> = people.iter()
-            .map(|p| crate::variables::income_tax::calculate(p, params))
+            .map(|p| crate::variables::income_tax::calculate(p, params, p.state_pension))
             .collect();
-        calculate_benunit(bu, people, &pr, hh, params)
+        calculate_benunit(bu, people, &pr, hh, params, params.state_pension.old_basic_pension_weekly, 2025)
     }
 
     // ── UC parameters ────────────────────────────────────────────────────────
@@ -1439,35 +1459,7 @@ mod parameter_impact_tests {
         assert!(reformed > base, "Increasing additional child CB rate should increase CB");
     }
 
-    #[test]
-    fn param_cb_hicbc_threshold() {
-        let (mut params, mut p, _, hh) = base_person_uc();
-        // Income between threshold (60000) and taper_end (80000) — clawback active
-        p.employment_income = 65000.0;
-        let mut child = Person::default(); child.id = 1; child.age = 5.0;
-        let bu = BenUnit { id: 0, household_id: 0, person_ids: vec![0, 1],
-            migration_seed: 0.0, would_claim_cb: true, ..BenUnit::default() };
-        let base = calc(&params, &[p.clone(), child.clone()], &bu, &hh).child_benefit;
-        // Raise threshold to 68000 — income still above, but less clawback
-        params.child_benefit.hicbc_threshold += 3000.0;
-        let reformed = calc(&params, &[p, child], &bu, &hh).child_benefit;
-        assert!(reformed > base, "Raising HICBC threshold should reduce clawback, increasing net CB");
-    }
-
-    #[test]
-    fn param_cb_hicbc_taper_end() {
-        let (mut params, mut p, _, hh) = base_person_uc();
-        // Income in partial taper zone (above threshold 60000, below taper_end 80000)
-        p.employment_income = 70000.0;
-        let mut child = Person::default(); child.id = 1; child.age = 5.0;
-        let bu = BenUnit { id: 0, household_id: 0, person_ids: vec![0, 1],
-            migration_seed: 0.0, would_claim_cb: true, ..BenUnit::default() };
-        let base = calc(&params, &[p.clone(), child.clone()], &bu, &hh).child_benefit;
-        // Raising taper_end reduces fraction clawed back at this income level
-        params.child_benefit.hicbc_taper_end += 10000.0;
-        let reformed = calc(&params, &[p, child], &bu, &hh).child_benefit;
-        assert!(reformed > base, "Raising HICBC taper end should reduce marginal clawback rate");
-    }
+    // HICBC parameter tests moved to simulation-level tests (see simulation.rs)
 
     // ── State Pension parameters ──────────────────────────────────────────────
 

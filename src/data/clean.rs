@@ -194,16 +194,20 @@ fn write_households(dataset: &Dataset, output_dir: &Path) -> anyhow::Result<()> 
         "benunit_ids", "person_ids",
         "weight", "region",
         "rent_annual", "council_tax_annual",
-        // COICOP consumption
-        "food_and_non_alcoholic_beverages", "alcohol_and_tobacco",
-        "clothing_and_footwear", "housing_water_and_fuel",
-        "household_furnishings", "health",
-        "transport", "communication",
-        "recreation_and_culture", "education",
-        "restaurants_and_hotels", "miscellaneous_goods_and_services",
-        "petrol_spending", "diesel_spending",
-        // Wealth (present in WAS clean CSVs, zero for others)
-        "financial_wealth", "property_wealth", "physical_wealth", "total_wealth",
+        // Auxiliary
+        "num_bedrooms", "tenure_type", "accommodation_type",
+        // Wealth
+        "owned_land", "property_wealth", "corporate_wealth",
+        "gross_financial_wealth", "net_financial_wealth",
+        "main_residence_value", "other_residential_property_value",
+        "non_residential_property_value", "savings", "num_vehicles",
+        // Consumption
+        "food_consumption", "alcohol_tobacco_consumption", "clothing_consumption",
+        "housing_water_electricity_consumption", "furnishings_consumption",
+        "health_consumption", "transport_consumption", "communication_consumption",
+        "recreation_consumption", "education_consumption", "restaurants_consumption",
+        "miscellaneous_consumption", "petrol_spending", "diesel_spending",
+        "domestic_energy_consumption", "electricity_consumption", "gas_consumption",
     ])?;
 
     for hh in &dataset.households {
@@ -224,24 +228,39 @@ fn write_households(dataset: &Dataset, output_dir: &Path) -> anyhow::Result<()> 
             hh.region.name().to_string(),
             format!("{:.2}", hh.rent),
             format!("{:.2}", hh.council_tax),
-            format!("{:.2}", hh.food_and_non_alcoholic_beverages),
-            format!("{:.2}", hh.alcohol_and_tobacco),
-            format!("{:.2}", hh.clothing_and_footwear),
-            format!("{:.2}", hh.housing_water_and_fuel),
-            format!("{:.2}", hh.household_furnishings),
-            format!("{:.2}", hh.health),
-            format!("{:.2}", hh.transport),
-            format!("{:.2}", hh.communication),
-            format!("{:.2}", hh.recreation_and_culture),
-            format!("{:.2}", hh.education),
-            format!("{:.2}", hh.restaurants_and_hotels),
-            format!("{:.2}", hh.miscellaneous_goods_and_services),
+            // Auxiliary
+            hh.num_bedrooms.to_string(),
+            (hh.tenure_type.to_rf_code() as i32).to_string(),
+            (hh.accommodation_type.to_rf_code() as i32).to_string(),
+            // Wealth
+            format!("{:.2}", hh.owned_land),
+            format!("{:.2}", hh.property_wealth),
+            format!("{:.2}", hh.corporate_wealth),
+            format!("{:.2}", hh.gross_financial_wealth),
+            format!("{:.2}", hh.net_financial_wealth),
+            format!("{:.2}", hh.main_residence_value),
+            format!("{:.2}", hh.other_residential_property_value),
+            format!("{:.2}", hh.non_residential_property_value),
+            format!("{:.2}", hh.savings),
+            format!("{:.2}", hh.num_vehicles),
+            // Consumption
+            format!("{:.2}", hh.food_consumption),
+            format!("{:.2}", hh.alcohol_tobacco_consumption),
+            format!("{:.2}", hh.clothing_consumption),
+            format!("{:.2}", hh.housing_water_electricity_consumption),
+            format!("{:.2}", hh.furnishings_consumption),
+            format!("{:.2}", hh.health_consumption),
+            format!("{:.2}", hh.transport_consumption),
+            format!("{:.2}", hh.communication_consumption),
+            format!("{:.2}", hh.recreation_consumption),
+            format!("{:.2}", hh.education_consumption),
+            format!("{:.2}", hh.restaurants_consumption),
+            format!("{:.2}", hh.miscellaneous_consumption),
             format!("{:.2}", hh.petrol_spending),
             format!("{:.2}", hh.diesel_spending),
-            format!("{:.2}", hh.financial_wealth),
-            format!("{:.2}", hh.property_wealth),
-            format!("{:.2}", hh.physical_wealth),
-            format!("{:.2}", hh.total_wealth),
+            format!("{:.2}", hh.domestic_energy_consumption),
+            format!("{:.2}", hh.electricity_consumption),
+            format!("{:.2}", hh.gas_consumption),
         ])?;
     }
 
@@ -675,6 +694,11 @@ fn parse_f64(s: &str) -> f64 {
     s.parse::<f64>().unwrap_or(0.0)
 }
 
+/// Parse f64 from an optional column (returns 0.0 if absent or unparseable).
+fn parse_f64_opt(s: Option<&str>) -> f64 {
+    s.and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0)
+}
+
 fn parse_usize(s: &str) -> usize {
     s.parse::<usize>().unwrap_or(0)
 }
@@ -942,26 +966,39 @@ pub fn parse_households_csv<R: std::io::Read>(reader: R) -> anyhow::Result<Vec<H
             region: parse_region(&h.get_str(&r, "region")),
             rent: h.get_f64(&r, "rent_annual"),
             council_tax: h.get_f64(&r, "council_tax_annual"),
-            // COICOP consumption (present in LCFS clean CSVs, zero for others)
-            food_and_non_alcoholic_beverages: h.get_f64(&r, "food_and_non_alcoholic_beverages"),
-            alcohol_and_tobacco: h.get_f64(&r, "alcohol_and_tobacco"),
-            clothing_and_footwear: h.get_f64(&r, "clothing_and_footwear"),
-            housing_water_and_fuel: h.get_f64(&r, "housing_water_and_fuel"),
-            household_furnishings: h.get_f64(&r, "household_furnishings"),
-            health: h.get_f64(&r, "health"),
-            transport: h.get_f64(&r, "transport"),
-            communication: h.get_f64(&r, "communication"),
-            recreation_and_culture: h.get_f64(&r, "recreation_and_culture"),
-            education: h.get_f64(&r, "education"),
-            restaurants_and_hotels: h.get_f64(&r, "restaurants_and_hotels"),
-            miscellaneous_goods_and_services: h.get_f64(&r, "miscellaneous_goods_and_services"),
+            // Auxiliary
+            num_bedrooms: h.get_usize(&r, "num_bedrooms") as u32,
+            tenure_type: TenureType::from_frs_code(h.get_i64(&r, "tenure_type") as i32),
+            accommodation_type: AccommodationType::from_frs_code(h.get_i64(&r, "accommodation_type") as i32),
+            // Wealth
+            owned_land: h.get_f64(&r, "owned_land"),
+            property_wealth: h.get_f64(&r, "property_wealth"),
+            corporate_wealth: h.get_f64(&r, "corporate_wealth"),
+            gross_financial_wealth: h.get_f64(&r, "gross_financial_wealth"),
+            net_financial_wealth: h.get_f64(&r, "net_financial_wealth"),
+            main_residence_value: h.get_f64(&r, "main_residence_value"),
+            other_residential_property_value: h.get_f64(&r, "other_residential_property_value"),
+            non_residential_property_value: h.get_f64(&r, "non_residential_property_value"),
+            savings: h.get_f64(&r, "savings"),
+            num_vehicles: h.get_f64(&r, "num_vehicles"),
+            // Consumption
+            food_consumption: h.get_f64(&r, "food_consumption"),
+            alcohol_tobacco_consumption: h.get_f64(&r, "alcohol_tobacco_consumption"),
+            clothing_consumption: h.get_f64(&r, "clothing_consumption"),
+            housing_water_electricity_consumption: h.get_f64(&r, "housing_water_electricity_consumption"),
+            furnishings_consumption: h.get_f64(&r, "furnishings_consumption"),
+            health_consumption: h.get_f64(&r, "health_consumption"),
+            transport_consumption: h.get_f64(&r, "transport_consumption"),
+            communication_consumption: h.get_f64(&r, "communication_consumption"),
+            recreation_consumption: h.get_f64(&r, "recreation_consumption"),
+            education_consumption: h.get_f64(&r, "education_consumption"),
+            restaurants_consumption: h.get_f64(&r, "restaurants_consumption"),
+            miscellaneous_consumption: h.get_f64(&r, "miscellaneous_consumption"),
             petrol_spending: h.get_f64(&r, "petrol_spending"),
             diesel_spending: h.get_f64(&r, "diesel_spending"),
-            // Wealth (present in WAS clean CSVs, zero for others)
-            financial_wealth: h.get_f64(&r, "financial_wealth"),
-            property_wealth: h.get_f64(&r, "property_wealth"),
-            physical_wealth: h.get_f64(&r, "physical_wealth"),
-            total_wealth: h.get_f64(&r, "total_wealth"),
+            domestic_energy_consumption: h.get_f64(&r, "domestic_energy_consumption"),
+            electricity_consumption: h.get_f64(&r, "electricity_consumption"),
+            gas_consumption: h.get_f64(&r, "gas_consumption"),
         });
     }
 

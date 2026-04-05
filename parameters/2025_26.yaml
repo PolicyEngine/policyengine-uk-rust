@@ -205,6 +205,15 @@ uc_migration:
   tax_credits: 0.95      # CTC/WTC claimants migrated
   income_support: 0.65   # IS claimants migrated
 
+vat:
+  # Value Added Tax Act 1994 c.23
+  # Standard rate: s.2(1), 20% since 4 Jan 2011 (SI 2010/3025)
+  # Reduced rate: s.29A / Sch.7A, 5% on domestic fuel & power
+  # Zero rate: Sch.8 (food, children's clothing, books, public transport)
+  standard_rate: 0.20
+  reduced_rate: 0.05
+  zero_rate: 0.0
+
 growth_factors:
   # OBR Economic and Fiscal Outlook, March 2026
   # Table 1.7 (Inflation) and Table 1.6 (Labour Market)
