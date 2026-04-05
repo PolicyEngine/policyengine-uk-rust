@@ -3,8 +3,17 @@ use crate::engine::simulation::PersonResult;
 use crate::parameters::{Parameters, TaxBracket};
 
 /// Calculate all person-level tax results: income tax (earned + savings + dividend) + NI.
-pub fn calculate(person: &Person, params: &Parameters) -> PersonResult {
-    let total_income = person.total_income();
+///
+/// `state_pension` is the calculated (reform-adjusted) annual state pension for this person,
+/// computed upstream by `benefits::person_state_pension`. This replaces the raw reported
+/// amount so that SP reforms flow through to income tax correctly.
+pub fn calculate(person: &Person, params: &Parameters, state_pension: f64) -> PersonResult {
+    // Total income using calculated SP instead of reported
+    let total_income = person.employment_income + person.self_employment_income
+        + person.pension_income + state_pension
+        + person.savings_interest_income + person.dividend_income
+        + person.property_income + person.maintenance_income
+        + person.miscellaneous_income + person.other_income;
 
     // Step 1: Adjusted net income (for PA taper)
     let pension_relief = person.employee_pension_contributions + person.personal_pension_contributions;
@@ -15,7 +24,7 @@ pub fn calculate(person: &Person, params: &Parameters) -> PersonResult {
 
     // Step 3: Allocate PA across income types (earned first, then savings, then dividends)
     let earned_income = person.employment_income + person.self_employment_income
-        + person.pension_income + person.state_pension
+        + person.pension_income + state_pension
         + person.property_income + person.maintenance_income
         + person.miscellaneous_income + person.other_income;
 
@@ -357,7 +366,7 @@ mod tests {
     #[test]
     fn test_basic_rate_taxpayer() {
         let params = Parameters::for_year(2025).unwrap();
-        let result = calculate(&test_person(30000.0), &params);
+        let result = calculate(&test_person(30000.0), &params, 0.0);
         assert!((result.income_tax - 3486.0).abs() < 1.0);
         assert!((result.personal_allowance - 12570.0).abs() < 0.01);
     }
@@ -365,28 +374,28 @@ mod tests {
     #[test]
     fn test_higher_rate_taxpayer() {
         let params = Parameters::for_year(2025).unwrap();
-        let result = calculate(&test_person(60000.0), &params);
+        let result = calculate(&test_person(60000.0), &params, 0.0);
         assert!((result.income_tax - 11432.0).abs() < 1.0);
     }
 
     #[test]
     fn test_pa_taper() {
         let params = Parameters::for_year(2025).unwrap();
-        let result = calculate(&test_person(125140.0), &params);
+        let result = calculate(&test_person(125140.0), &params, 0.0);
         assert!(result.personal_allowance < 1.0);
     }
 
     #[test]
     fn test_ni_class1() {
         let params = Parameters::for_year(2025).unwrap();
-        let result = calculate(&test_person(30000.0), &params);
+        let result = calculate(&test_person(30000.0), &params, 0.0);
         assert!((result.national_insurance - 1394.40).abs() < 1.0);
     }
 
     #[test]
     fn test_ni_class4() {
         let params = Parameters::for_year(2025).unwrap();
-        let result = calculate(&test_person_se(40000.0), &params);
+        let result = calculate(&test_person_se(40000.0), &params, 0.0);
         // Class 4: (40000 - 12570) × 0.06 = £1,645.80
         // Class 2: £3.45 × 52.18 = ~£179.96
         let expected = 1645.80 + params.national_insurance.class2_flat_rate_weekly * (365.25 / 7.0);
@@ -401,7 +410,7 @@ mod tests {
         p.age = 35.0;
         p.employment_income = 30000.0;
         p.dividend_income = 5000.0;
-        let result = calculate(&p, &params);
+        let result = calculate(&p, &params, p.state_pension);
         // Earned taxable: 17430 at 20% = 3486
         // Dividend: 5000 - 500 allowance = 4500 at 8.75% = 393.75
         assert!((result.income_tax - 3879.75).abs() < 2.0,
@@ -415,7 +424,7 @@ mod tests {
         p.age = 35.0;
         p.employment_income = 30000.0;
         p.savings_interest_income = 3000.0;
-        let result = calculate(&p, &params);
+        let result = calculate(&p, &params, p.state_pension);
         // Savings: 3000 - 1000 PSA = 2000 at 20% = 400
         assert!((result.income_tax - 3886.0).abs() < 2.0,
             "Expected ~3886, got {}", result.income_tax);
@@ -424,7 +433,7 @@ mod tests {
     #[test]
     fn test_employer_ni() {
         let params = Parameters::for_year(2025).unwrap();
-        let result = calculate(&test_person(50000.0), &params);
+        let result = calculate(&test_person(50000.0), &params, 0.0);
         assert!(result.employer_ni > 0.0);
     }
 
@@ -432,7 +441,7 @@ mod tests {
     fn test_unused_personal_allowance() {
         let params = Parameters::for_year(2025).unwrap();
         // Person earning £5,000 — well below PA of £12,570
-        let result = calculate(&test_person(5000.0), &params);
+        let result = calculate(&test_person(5000.0), &params, 0.0);
         assert!((result.unused_personal_allowance - 7570.0).abs() < 1.0,
             "Expected ~7570 unused PA, got {}", result.unused_personal_allowance);
         assert!(result.income_tax < 0.01, "Should pay no tax");
@@ -467,7 +476,7 @@ mod tests {
         };
 
         let mut results: Vec<PersonResult> = people.iter()
-            .map(|p| calculate(p, &params))
+            .map(|p| calculate(p, &params, p.state_pension))
             .collect();
 
         let tax_before = results[1].income_tax;
@@ -510,7 +519,7 @@ mod tests {
         };
 
         let mut results: Vec<PersonResult> = people.iter()
-            .map(|p| calculate(p, &params))
+            .map(|p| calculate(p, &params, p.state_pension))
             .collect();
 
         let tax_before_b = results[1].income_tax;
@@ -528,7 +537,7 @@ mod parameter_impact_tests {
     use crate::parameters::Parameters;
 
     fn calc(p: &Person, params: &Parameters) -> PersonResult {
-        calculate(p, params)
+        calculate(p, params, p.state_pension)
     }
 
     fn basic_earner() -> Person {
@@ -691,12 +700,12 @@ mod parameter_impact_tests {
             id: 0, household_id: 0, person_ids: vec![0, 1], ..Default::default()
         };
         let people = vec![pa.clone(), pb.clone()];
-        let mut results_base: Vec<PersonResult> = people.iter().map(|p| calculate(p, &params)).collect();
+        let mut results_base: Vec<PersonResult> = people.iter().map(|p| calculate(p, &params, p.state_pension)).collect();
         apply_marriage_allowance(&bu, &people, &mut results_base, &params);
         let base_tax = results_base[1].income_tax;
 
         params.income_tax.marriage_allowance_max_fraction = 0.15;
-        let mut results_reformed: Vec<PersonResult> = people.iter().map(|p| calculate(p, &params)).collect();
+        let mut results_reformed: Vec<PersonResult> = people.iter().map(|p| calculate(p, &params, p.state_pension)).collect();
         apply_marriage_allowance(&bu, &people, &mut results_reformed, &params);
         assert!(results_reformed[1].income_tax < base_tax,
             "Raising MA fraction should reduce recipient's tax");
@@ -711,17 +720,17 @@ mod parameter_impact_tests {
             id: 0, household_id: 0, person_ids: vec![0, 1], ..Default::default()
         };
         let people = vec![pa.clone(), pb.clone()];
-        let mut results_r1: Vec<PersonResult> = people.iter().map(|p| calculate(p, &params)).collect();
+        let mut results_r1: Vec<PersonResult> = people.iter().map(|p| calculate(p, &params, p.state_pension)).collect();
         apply_marriage_allowance(&bu, &people, &mut results_r1, &params);
 
         params.income_tax.marriage_allowance_rounding = 1.0; // finer rounding → slightly different amount
-        let mut results_r2: Vec<PersonResult> = people.iter().map(|p| calculate(p, &params)).collect();
+        let mut results_r2: Vec<PersonResult> = people.iter().map(|p| calculate(p, &params, p.state_pension)).collect();
         apply_marriage_allowance(&bu, &people, &mut results_r2, &params);
         // With rounding=10 vs rounding=1, the transferred amount differs (1257 vs 1257 exactly)
         // This may or may not differ at integer PA; check that rounding field is at least used
         // by verifying rounding=1000 gives a different result
         params.income_tax.marriage_allowance_rounding = 1000.0;
-        let mut results_r3: Vec<PersonResult> = people.iter().map(|p| calculate(p, &params)).collect();
+        let mut results_r3: Vec<PersonResult> = people.iter().map(|p| calculate(p, &params, p.state_pension)).collect();
         apply_marriage_allowance(&bu, &people, &mut results_r3, &params);
         assert!(results_r1[1].income_tax != results_r3[1].income_tax
             || results_r1[0].income_tax != results_r3[0].income_tax,

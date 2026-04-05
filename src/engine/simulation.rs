@@ -124,13 +124,24 @@ impl Simulation {
         let mut benunit_results = vec![BenUnitResult::default(); self.benunits.len()];
         let mut household_results = vec![HouseholdResult::default(); self.households.len()];
 
-        // Phase 1: Person-level calculations (parallelised)
-        let pr: Vec<PersonResult> = self.people.par_iter().map(|person| {
-            variables::income_tax::calculate(person, &self.parameters)
+        // Phase 1a: Calculate each person's state pension under the current policy.
+        // State pension is taxable income so must be computed before income tax.
+        let baseline_old_sp = self.baseline_old_sp_weekly;
+        let fiscal_year = self.fiscal_year;
+        let person_sp: Vec<f64> = self.people.par_iter().map(|p| {
+            variables::benefits::person_state_pension(
+                p, &self.parameters, baseline_old_sp, fiscal_year,
+            )
+        }).collect();
+
+        // Phase 1b: Person-level tax calculations (parallelised).
+        // Income tax receives the calculated SP amount so reforms flow through correctly.
+        let pr: Vec<PersonResult> = self.people.par_iter().enumerate().map(|(i, person)| {
+            variables::income_tax::calculate(person, &self.parameters, person_sp[i])
         }).collect();
         person_results = pr;
 
-        // Phase 1b: Marriage allowance (benunit-level adjustment to person tax)
+        // Phase 1c: Marriage allowance (benunit-level adjustment to person tax)
         // Cannot be parallelised as it mutates person_results across benunits
         for bu in &self.benunits {
             variables::income_tax::apply_marriage_allowance(
@@ -139,8 +150,6 @@ impl Simulation {
         }
 
         // Phase 2: BenUnit-level calculations (parallelised)
-        let baseline_old_sp = self.baseline_old_sp_weekly;
-        let fiscal_year = self.fiscal_year;
         let br: Vec<BenUnitResult> = self.benunits.par_iter().map(|bu| {
             let hh = &self.households[bu.household_id];
             variables::benefits::calculate_benunit(
@@ -189,20 +198,17 @@ impl Simulation {
 
         // Phase 3: Household-level aggregation (parallelised)
         let hr: Vec<HouseholdResult> = self.households.par_iter().map(|hh| {
-            // Gross income uses reported amounts. When SP parameters change,
-            // we need to adjust the reported SP component to match the reform.
-            let reported_sp: f64 = hh.person_ids.iter()
-                .map(|&pid| self.people[pid].state_pension)
-                .sum();
-            let calculated_sp: f64 = hh.benunit_ids.iter()
-                .map(|&bid| benunit_results[bid].state_pension)
-                .sum();
-            // SP adjustment = difference between calculated (reform-scaled) and reported
-            let sp_adjustment = calculated_sp - reported_sp;
-
+            // Gross income uses calculated SP (from Phase 1a) instead of reported amounts,
+            // so SP reforms flow through to gross/net income correctly.
             let gross: f64 = hh.person_ids.iter()
-                .map(|&pid| self.people[pid].total_income())
-                .sum::<f64>() + sp_adjustment;
+                .map(|&pid| {
+                    person_results[pid].total_income
+                })
+                .sum::<f64>();
+
+            let calculated_sp: f64 = hh.person_ids.iter()
+                .map(|&pid| person_sp[pid])
+                .sum();
 
             let direct_tax: f64 = hh.person_ids.iter()
                 .map(|&pid| person_results[pid].income_tax + person_results[pid].national_insurance)
