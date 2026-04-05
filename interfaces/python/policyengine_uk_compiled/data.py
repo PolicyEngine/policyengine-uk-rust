@@ -60,7 +60,7 @@ def _get_credentials() -> tuple[str, str]:
     return token.split(":", 1)
 
 
-DATASETS = ("frs", "lcfs", "spi", "was")
+DATASETS = ("frs", "efrs", "lcfs", "spi", "was")
 
 
 def ensure_dataset_year(dataset: str, year: int) -> Path:

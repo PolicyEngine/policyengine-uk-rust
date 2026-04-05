@@ -80,9 +80,10 @@ pub struct Simulation {
     pub benunits: Vec<BenUnit>,
     pub households: Vec<Household>,
     pub parameters: Parameters,
-    /// Baseline SP weekly rates for scaling reported amounts under reforms.
-    pub baseline_new_sp_weekly: f64,
+    /// Baseline old basic SP weekly rate for scaling reported amounts under reforms.
     pub baseline_old_sp_weekly: f64,
+    /// Fiscal year (e.g. 2025 for 2025/26) — used for new/basic SP cutoff.
+    pub fiscal_year: u32,
 }
 
 impl Simulation {
@@ -91,28 +92,28 @@ impl Simulation {
         benunits: Vec<BenUnit>,
         households: Vec<Household>,
         parameters: Parameters,
+        fiscal_year: u32,
     ) -> Self {
-        let baseline_new_sp_weekly = parameters.state_pension.new_state_pension_weekly;
         let baseline_old_sp_weekly = parameters.state_pension.old_basic_pension_weekly;
         Simulation {
             people, benunits, households, parameters,
-            baseline_new_sp_weekly, baseline_old_sp_weekly,
+            baseline_old_sp_weekly, fiscal_year,
         }
     }
 
-    /// Create a simulation with explicit baseline SP rates (for reform simulations
-    /// where the baseline rates differ from the reform parameters).
+    /// Create a simulation with explicit baseline old SP rate (for reform simulations
+    /// where the baseline rate differs from the reform parameters).
     pub fn new_with_baseline_sp(
         people: Vec<Person>,
         benunits: Vec<BenUnit>,
         households: Vec<Household>,
         parameters: Parameters,
-        baseline_new_sp_weekly: f64,
         baseline_old_sp_weekly: f64,
+        fiscal_year: u32,
     ) -> Self {
         Simulation {
             people, benunits, households, parameters,
-            baseline_new_sp_weekly, baseline_old_sp_weekly,
+            baseline_old_sp_weekly, fiscal_year,
         }
     }
 
@@ -138,13 +139,13 @@ impl Simulation {
         }
 
         // Phase 2: BenUnit-level calculations (parallelised)
-        let baseline_new_sp = self.baseline_new_sp_weekly;
         let baseline_old_sp = self.baseline_old_sp_weekly;
+        let fiscal_year = self.fiscal_year;
         let br: Vec<BenUnitResult> = self.benunits.par_iter().map(|bu| {
             let hh = &self.households[bu.household_id];
             variables::benefits::calculate_benunit(
                 bu, &self.people, &person_results, hh, &self.parameters,
-                baseline_new_sp, baseline_old_sp,
+                baseline_old_sp, fiscal_year,
             )
         }).collect();
         benunit_results = br;
@@ -299,16 +300,16 @@ mod tests {
 
         let bu = BenUnit {
             id: 0, household_id: 0, person_ids: vec![0, 1],
-            take_up_seed: 0.0, reported_cb: true,
+            migration_seed: 0.0, would_claim_cb: true,
             ..BenUnit::default()
         };
         let hh = Household {
             id: 0, person_ids: vec![0, 1], benunit_ids: vec![0],
             weight: 1.0, region: Region::London, council_tax: 1500.0,
-            ..Default::default()
+            ..Household::default()
         };
 
-        Simulation::new(vec![adult, child], vec![bu], vec![hh], params)
+        Simulation::new(vec![adult, child], vec![bu], vec![hh], params, 2025)
     }
 
     #[test]

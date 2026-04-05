@@ -445,17 +445,18 @@ fn main() -> anyhow::Result<()> {
         dataset.benunits.clone(),
         dataset.households.clone(),
         baseline_params.clone(),
+        cli.year,
     );
     let baseline = baseline_sim.run();
 
-    // Run policy simulation (pass baseline SP rates so reported amounts scale correctly)
+    // Run policy simulation (pass baseline old SP rate so reported amounts scale correctly)
     let policy_sim = Simulation::new_with_baseline_sp(
         dataset.people.clone(),
         dataset.benunits.clone(),
         dataset.households.clone(),
         policy_params.clone(),
-        baseline_params.state_pension.new_state_pension_weekly,
         baseline_params.state_pension.old_basic_pension_weekly,
+        cli.year,
     );
     let reformed = policy_sim.run();
 
@@ -1021,7 +1022,7 @@ mod obr_validation {
         let params = Parameters::for_year(2025).unwrap();
         let sim = Simulation::new(
             dataset.people.clone(), dataset.benunits.clone(),
-            dataset.households.clone(), params,
+            dataset.households.clone(), params, 2025,
         );
         let results = sim.run();
 
@@ -1163,7 +1164,7 @@ mod historical_frs_tests {
 
             let sim = Simulation::new(
                 dataset.people.clone(), dataset.benunits.clone(),
-                dataset.households.clone(), params,
+                dataset.households.clone(), params, year,
             );
             let results = sim.run();
 

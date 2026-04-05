@@ -106,8 +106,8 @@ pub fn load_was(data_dir: &Path, fiscal_year: u32) -> anyhow::Result<Dataset> {
         // Wealth (zero if column absent in older waves)
         let financial_wealth = get_f64(row, &fin_wealth_col);
         let property_wealth  = get_f64(row, &prop_wealth_col);
-        let physical_wealth  = get_f64(row, &phys_wealth_col);
-        let total_wealth     = get_f64(row, &tot_wealth_col);
+        let _physical_wealth  = get_f64(row, &phys_wealth_col);
+        let _total_wealth     = get_f64(row, &tot_wealth_col);
 
         let hh_id = households.len();
         let bu_id = benunits.len();
@@ -177,10 +177,8 @@ pub fn load_was(data_dir: &Path, fiscal_year: u32) -> anyhow::Result<Dataset> {
             region,
             rent: rent_annual,
             council_tax,
-            financial_wealth,
+            net_financial_wealth: financial_wealth,
             property_wealth,
-            physical_wealth,
-            total_wealth,
             ..Household::default()
         });
     }

@@ -125,6 +125,7 @@ fn simulate_weighted_net_income(dataset: &Dataset, params: &Parameters) -> f64 {
         dataset.benunits.clone(),
         dataset.households.clone(),
         params.clone(),
+        2025,
     );
     let results = sim.run();
     results.household_results.iter()
