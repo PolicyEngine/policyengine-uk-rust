@@ -160,11 +160,12 @@ fn takes_up_reform(bu: &BenUnit, rate: f64, reported: bool, is_enr: bool, new_en
 }
 
 /// Child Benefit: eldest child gets higher rate, others get additional rate.
-/// Subject to High Income Child Benefit Charge (HICBC).
+/// HICBC is now a separate income tax charge (applied in simulation Phase 2b),
+/// so child benefit is paid in full here.
 fn calculate_child_benefit(
     bu: &BenUnit,
     people: &[Person],
-    person_results: &[PersonResult],
+    _person_results: &[PersonResult],
     params: &Parameters,
 ) -> f64 {
     let num_children = bu.num_children(people);
@@ -176,28 +177,12 @@ fn calculate_child_benefit(
         + params.child_benefit.additional_weekly * (num_children as f64 - 1.0).max(0.0);
     let annual = weekly * 52.0;
 
-    // HICBC: clawed back between threshold and taper_end based on highest earner
-    let max_income: f64 = bu.person_ids.iter()
-        .filter(|&&pid| people[pid].is_adult())
-        .map(|&pid| person_results[pid].adjusted_net_income)
-        .fold(0.0_f64, f64::max);
-
-    let amount = if max_income <= params.child_benefit.hicbc_threshold {
-        annual
-    } else if max_income >= params.child_benefit.hicbc_taper_end {
-        0.0
-    } else {
-        let fraction = (max_income - params.child_benefit.hicbc_threshold)
-            / (params.child_benefit.hicbc_taper_end - params.child_benefit.hicbc_threshold);
-        annual * (1.0 - fraction)
-    };
-
-    if amount > 0.0 {
+    if annual > 0.0 {
         let tu = params.take_up.child_benefit;
         let ne = params.take_up.new_entrant_rate;
         if !takes_up_reform(bu, tu, bu.reported_cb, bu.is_enr_cb, ne, params.baseline_mode) { return 0.0; }
     }
-    amount
+    annual
 }
 
 /// Universal Credit calculation.
@@ -1494,35 +1479,8 @@ mod parameter_impact_tests {
         assert!(reformed > base, "Increasing additional child CB rate should increase CB");
     }
 
-    #[test]
-    fn param_cb_hicbc_threshold() {
-        let (mut params, mut p, _, hh) = base_person_uc();
-        // Income between threshold (60000) and taper_end (80000) — clawback active
-        p.employment_income = 65000.0;
-        let mut child = Person::default(); child.id = 1; child.age = 5.0;
-        let bu = BenUnit { id: 0, household_id: 0, person_ids: vec![0, 1],
-            take_up_seed: 0.0, reported_cb: true, ..BenUnit::default() };
-        let base = calc(&params, &[p.clone(), child.clone()], &bu, &hh).child_benefit;
-        // Raise threshold to 68000 — income still above, but less clawback
-        params.child_benefit.hicbc_threshold += 3000.0;
-        let reformed = calc(&params, &[p, child], &bu, &hh).child_benefit;
-        assert!(reformed > base, "Raising HICBC threshold should reduce clawback, increasing net CB");
-    }
-
-    #[test]
-    fn param_cb_hicbc_taper_end() {
-        let (mut params, mut p, _, hh) = base_person_uc();
-        // Income in partial taper zone (above threshold 60000, below taper_end 80000)
-        p.employment_income = 70000.0;
-        let mut child = Person::default(); child.id = 1; child.age = 5.0;
-        let bu = BenUnit { id: 0, household_id: 0, person_ids: vec![0, 1],
-            take_up_seed: 0.0, reported_cb: true, ..BenUnit::default() };
-        let base = calc(&params, &[p.clone(), child.clone()], &bu, &hh).child_benefit;
-        // Raising taper_end reduces fraction clawed back at this income level
-        params.child_benefit.hicbc_taper_end += 10000.0;
-        let reformed = calc(&params, &[p, child], &bu, &hh).child_benefit;
-        assert!(reformed > base, "Raising HICBC taper end should reduce marginal clawback rate");
-    }
+    // HICBC parameter tests moved to simulation-level tests (see simulation.rs)
+    // since HICBC is now an income tax charge applied in Phase 2b of the simulation.
 
     // ── State Pension parameters ──────────────────────────────────────────────
 

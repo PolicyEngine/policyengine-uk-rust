@@ -251,6 +251,7 @@ struct IncomeBreakdown {
 #[derive(Serialize)]
 struct ProgramBreakdown {
     income_tax: f64,
+    hicbc: f64,
     employee_ni: f64,
     employer_ni: f64,
     vat: f64,
@@ -613,6 +614,7 @@ fn main() -> anyhow::Result<()> {
         let mut total_other = 0.0f64;
         // Tax spending and caseloads
         let mut income_tax = 0.0f64;
+        let mut hicbc_total = 0.0f64;
         let mut employee_ni = 0.0f64;
         let mut employer_ni = 0.0f64;
         let mut vat_total = 0.0f64;
@@ -632,6 +634,7 @@ fn main() -> anyhow::Result<()> {
                 total_other += hh.weight * (person.maintenance_income + person.miscellaneous_income + person.other_income);
                 let pr = &reformed.person_results[pid];
                 income_tax += hh.weight * pr.income_tax;
+                hicbc_total += hh.weight * pr.hicbc;
                 employee_ni += hh.weight * pr.national_insurance;
                 employer_ni += hh.weight * pr.employer_ni;
                 if pr.income_tax > 0.0 { it_payers += hh.weight; }
@@ -708,6 +711,7 @@ fn main() -> anyhow::Result<()> {
             other_income: total_other,
         }, ProgramBreakdown {
             income_tax,
+            hicbc: hicbc_total,
             employee_ni,
             employer_ni,
             vat: vat_total,

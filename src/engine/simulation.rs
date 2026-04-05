@@ -16,6 +16,9 @@ pub struct PersonResult {
     pub adjusted_net_income: f64,
     pub unused_personal_allowance: f64,
     pub marriage_allowance_deduction: f64,
+    /// High Income Child Benefit Charge — income tax charge on the highest
+    /// earner in a benefit unit receiving child benefit.
+    pub hicbc: f64,
 }
 
 /// Results for a benefit unit
@@ -146,6 +149,43 @@ impl Simulation {
         }).collect();
         benunit_results = br;
 
+        // Phase 2b: HICBC — the highest earner in each benunit pays back child
+        // benefit as an income tax charge, tapered between hicbc_threshold and
+        // hicbc_taper_end based on adjusted net income.
+        for bu in &self.benunits {
+            let cb = benunit_results[bu.id].child_benefit;
+            if cb <= 0.0 { continue; }
+
+            let threshold = self.parameters.child_benefit.hicbc_threshold;
+            let taper_end = self.parameters.child_benefit.hicbc_taper_end;
+
+            // Find the highest earner among adults
+            let highest_pid = bu.person_ids.iter()
+                .copied()
+                .filter(|&pid| self.people[pid].is_adult())
+                .max_by(|&a, &b| {
+                    person_results[a].adjusted_net_income
+                        .partial_cmp(&person_results[b].adjusted_net_income)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
+
+            if let Some(pid) = highest_pid {
+                let ani = person_results[pid].adjusted_net_income;
+                let charge = if ani <= threshold {
+                    0.0
+                } else if ani >= taper_end {
+                    cb
+                } else {
+                    let fraction = (ani - threshold) / (taper_end - threshold);
+                    cb * fraction
+                };
+                if charge > 0.0 {
+                    person_results[pid].hicbc = charge;
+                    person_results[pid].income_tax += charge;
+                }
+            }
+        }
+
         // Phase 3: Household-level aggregation (parallelised)
         let hr: Vec<HouseholdResult> = self.households.par_iter().map(|hh| {
             // Gross income uses reported amounts. When SP parameters change,
@@ -238,5 +278,114 @@ impl Simulation {
             benunit_results,
             household_results,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::entities::{Person, BenUnit, Household, Region};
+
+    fn make_hicbc_sim(income: f64, params: Parameters) -> Simulation {
+        let mut adult = Person::default();
+        adult.id = 0;
+        adult.age = 35.0;
+        adult.employment_income = income;
+        adult.hours_worked = 37.5 * 52.0;
+
+        let mut child = Person::default();
+        child.id = 1;
+        child.age = 5.0;
+
+        let bu = BenUnit {
+            id: 0, household_id: 0, person_ids: vec![0, 1],
+            take_up_seed: 0.0, reported_cb: true,
+            ..BenUnit::default()
+        };
+        let hh = Household {
+            id: 0, person_ids: vec![0, 1], benunit_ids: vec![0],
+            weight: 1.0, region: Region::London, council_tax: 1500.0,
+            ..Default::default()
+        };
+
+        Simulation::new(vec![adult, child], vec![bu], vec![hh], params)
+    }
+
+    #[test]
+    fn hicbc_zero_below_threshold() {
+        let params = Parameters::for_year(2025).unwrap();
+        let sim = make_hicbc_sim(50000.0, params);
+        let results = sim.run();
+        assert!(results.person_results[0].hicbc < 0.01,
+            "No HICBC below threshold, got {}", results.person_results[0].hicbc);
+        assert!(results.benunit_results[0].child_benefit > 0.0,
+            "Should receive full child benefit");
+    }
+
+    #[test]
+    fn hicbc_full_above_taper_end() {
+        let params = Parameters::for_year(2025).unwrap();
+        let sim = make_hicbc_sim(90000.0, params);
+        let results = sim.run();
+        let cb = results.benunit_results[0].child_benefit;
+        assert!(cb > 0.0, "Full child benefit should be paid");
+        assert!((results.person_results[0].hicbc - cb).abs() < 1.0,
+            "HICBC should equal full CB above taper end: hicbc={}, cb={}",
+            results.person_results[0].hicbc, cb);
+    }
+
+    #[test]
+    fn hicbc_partial_in_taper_zone() {
+        let params = Parameters::for_year(2025).unwrap();
+        // £70k is halfway between threshold (60k) and taper_end (80k)
+        let sim = make_hicbc_sim(70000.0, params);
+        let results = sim.run();
+        let cb = results.benunit_results[0].child_benefit;
+        let hicbc = results.person_results[0].hicbc;
+        assert!(hicbc > 0.0, "HICBC should be positive in taper zone");
+        assert!(hicbc < cb, "HICBC should be less than full CB in taper zone");
+        // Roughly 50% clawback at midpoint (adjusted net income may differ slightly from gross)
+        assert!(hicbc > cb * 0.3 && hicbc < cb * 0.7,
+            "HICBC should be roughly 50% of CB at midpoint: hicbc={}, cb={}", hicbc, cb);
+    }
+
+    #[test]
+    fn hicbc_threshold_param_responsive() {
+        let mut params = Parameters::for_year(2025).unwrap();
+        let sim_base = make_hicbc_sim(65000.0, params.clone());
+        let base_hicbc = sim_base.run().person_results[0].hicbc;
+
+        params.child_benefit.hicbc_threshold += 3000.0;
+        let sim_reform = make_hicbc_sim(65000.0, params);
+        let reform_hicbc = sim_reform.run().person_results[0].hicbc;
+
+        assert!(reform_hicbc < base_hicbc,
+            "Raising HICBC threshold should reduce charge: base={}, reform={}", base_hicbc, reform_hicbc);
+    }
+
+    #[test]
+    fn hicbc_taper_end_param_responsive() {
+        let mut params = Parameters::for_year(2025).unwrap();
+        let sim_base = make_hicbc_sim(70000.0, params.clone());
+        let base_hicbc = sim_base.run().person_results[0].hicbc;
+
+        params.child_benefit.hicbc_taper_end += 10000.0;
+        let sim_reform = make_hicbc_sim(70000.0, params);
+        let reform_hicbc = sim_reform.run().person_results[0].hicbc;
+
+        assert!(reform_hicbc < base_hicbc,
+            "Raising HICBC taper end should reduce charge: base={}, reform={}", base_hicbc, reform_hicbc);
+    }
+
+    #[test]
+    fn hicbc_included_in_income_tax() {
+        let params = Parameters::for_year(2025).unwrap();
+        let sim = make_hicbc_sim(90000.0, params);
+        let results = sim.run();
+        let hicbc = results.person_results[0].hicbc;
+        let it = results.person_results[0].income_tax;
+        assert!(hicbc > 0.0);
+        // Income tax should include HICBC
+        assert!(it > hicbc, "Income tax ({}) should be greater than HICBC ({}) alone", it, hicbc);
     }
 }

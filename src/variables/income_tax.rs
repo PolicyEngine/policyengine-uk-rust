@@ -72,6 +72,7 @@ pub fn calculate(person: &Person, params: &Parameters) -> PersonResult {
         adjusted_net_income,
         unused_personal_allowance: unused_pa,
         marriage_allowance_deduction: 0.0, // Set later by apply_marriage_allowance
+        hicbc: 0.0, // Set later by simulation Phase 2b
     }
 }
 
