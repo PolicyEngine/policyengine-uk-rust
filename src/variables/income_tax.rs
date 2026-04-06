@@ -82,6 +82,7 @@ pub fn calculate(person: &Person, params: &Parameters, state_pension: f64) -> Pe
         unused_personal_allowance: unused_pa,
         marriage_allowance_deduction: 0.0, // Set later by apply_marriage_allowance
         hicbc: 0.0, // Set later by simulation Phase 2b
+        capital_gains_tax: 0.0, // Set later by simulation Phase 2c
     }
 }
 

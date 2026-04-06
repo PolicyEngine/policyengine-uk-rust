@@ -1,0 +1,1 @@
+Parallelised EFRS Random Forest training and prediction with Rayon. The 28 wealth and consumption RF models now train in parallel across cores and share a single DenseMatrix, cutting EFRS build time substantially. Tree count reduced from 100 to 50, which keeps accuracy while halving per-model cost.

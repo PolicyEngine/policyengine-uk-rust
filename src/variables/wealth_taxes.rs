@@ -1,0 +1,215 @@
+use crate::engine::entities::{Household, Person};
+use crate::parameters::{CouncilTaxParams, CapitalGainsTaxParams, StampDutyParams, WealthTaxParams};
+
+/// Determine the council tax band (0=A .. 7=H) from a 1991 property value.
+///
+/// The WAS `main_residence_value` is in current prices, not 1991 values, so this
+/// is an approximation. For baseline runs we use the reported FRS council_tax; this
+/// function is used for reform modelling (e.g. changing Band D rate).
+pub fn council_tax_band(property_value: f64, thresholds: &[f64]) -> usize {
+    for (i, &t) in thresholds.iter().enumerate().rev() {
+        if property_value >= t {
+            return i;
+        }
+    }
+    0
+}
+
+/// Calculate council tax from parameters (for reform modelling).
+///
+/// Returns the Band D rate multiplied by the band multiplier for this household's
+/// property value. For baseline runs, the simulation uses the reported `hh.council_tax`
+/// instead.
+pub fn calculate_council_tax(hh: &Household, params: &CouncilTaxParams) -> f64 {
+    let band = council_tax_band(hh.main_residence_value, &params.band_thresholds);
+    let multiplier = params.band_multipliers.get(band).copied().unwrap_or(1.0);
+    params.average_band_d * multiplier
+}
+
+/// Calculate capital gains tax for a person.
+///
+/// Since the FRS/WAS don't record actual capital gains, we proxy gains from
+/// investment income (savings interest + dividends) scaled by a realisation rate.
+/// The `is_higher_rate` flag should be true if the person's taxable income exceeds
+/// the basic rate limit (i.e. they pay income tax at the higher/additional rate).
+pub fn calculate_capital_gains_tax(
+    person: &Person,
+    params: &CapitalGainsTaxParams,
+    is_higher_rate: bool,
+) -> f64 {
+    let investment_income = person.savings_interest_income + person.dividend_income;
+    let gains = investment_income * params.realisation_rate;
+    let taxable_gains = (gains - params.annual_exempt_amount).max(0.0);
+
+    if taxable_gains <= 0.0 {
+        return 0.0;
+    }
+
+    let rate = if is_higher_rate { params.higher_rate } else { params.basic_rate };
+    taxable_gains * rate
+}
+
+/// Calculate stamp duty land tax on a property value using marginal bands.
+///
+/// SDLT is a slab/marginal tax: each band's rate applies only to the portion of the
+/// price within that band (not to the entire price).
+fn marginal_sdlt(property_value: f64, bands: &[crate::parameters::StampDutyBand]) -> f64 {
+    if bands.is_empty() || property_value <= 0.0 {
+        return 0.0;
+    }
+
+    let mut tax = 0.0;
+    for i in 0..bands.len() {
+        let lower = bands[i].threshold;
+        let upper = if i + 1 < bands.len() { bands[i + 1].threshold } else { f64::MAX };
+        let rate = bands[i].rate;
+
+        if property_value <= lower {
+            break;
+        }
+
+        let taxable = property_value.min(upper) - lower;
+        tax += taxable.max(0.0) * rate;
+    }
+
+    tax
+}
+
+/// Calculate annualised stamp duty for a household.
+///
+/// Multiplies the one-off SDLT liability by the annual purchase probability
+/// (1 / average holding period) to get an expected annual amount.
+pub fn calculate_stamp_duty(hh: &Household, params: &StampDutyParams) -> f64 {
+    let sdlt = marginal_sdlt(hh.main_residence_value, &params.bands);
+    sdlt * params.annual_purchase_probability
+}
+
+/// Calculate annual wealth tax for a household.
+///
+/// Hypothetical flat-rate tax on net wealth above a threshold.
+pub fn calculate_wealth_tax(hh: &Household, params: &WealthTaxParams) -> f64 {
+    if !params.enabled {
+        return 0.0;
+    }
+
+    let total_wealth = hh.property_wealth + hh.corporate_wealth + hh.gross_financial_wealth;
+    let taxable = (total_wealth - params.threshold).max(0.0);
+    taxable * params.rate
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::entities::{Household, Person};
+    use crate::parameters::{
+        CouncilTaxParams, CapitalGainsTaxParams, StampDutyParams, StampDutyBand, WealthTaxParams,
+    };
+
+    #[test]
+    fn council_tax_band_lookup() {
+        let thresholds = vec![0.0, 40001.0, 52001.0, 68001.0, 88001.0, 120001.0, 160001.0, 320001.0];
+        assert_eq!(council_tax_band(30000.0, &thresholds), 0); // Band A
+        assert_eq!(council_tax_band(50000.0, &thresholds), 1); // Band B
+        assert_eq!(council_tax_band(100000.0, &thresholds), 4); // Band E
+        assert_eq!(council_tax_band(500000.0, &thresholds), 7); // Band H
+    }
+
+    #[test]
+    fn council_tax_calculation() {
+        let params = CouncilTaxParams {
+            average_band_d: 2280.0,
+            band_multipliers: vec![6.0/9.0, 7.0/9.0, 8.0/9.0, 1.0, 11.0/9.0, 13.0/9.0, 15.0/9.0, 18.0/9.0],
+            band_thresholds: vec![0.0, 40001.0, 52001.0, 68001.0, 88001.0, 120001.0, 160001.0, 320001.0],
+        };
+        let mut hh = Household::default();
+        hh.main_residence_value = 80000.0; // Band D
+        let ct = calculate_council_tax(&hh, &params);
+        assert!((ct - 2280.0).abs() < 1.0); // Band D = 1.0 * band_d
+    }
+
+    #[test]
+    fn cgt_basic_rate() {
+        let params = CapitalGainsTaxParams {
+            annual_exempt_amount: 3000.0,
+            basic_rate: 0.18,
+            higher_rate: 0.24,
+            realisation_rate: 0.50,
+        };
+        let mut p = Person::default();
+        p.savings_interest_income = 10000.0;
+        p.dividend_income = 6000.0;
+        // gains = 16000 * 0.5 = 8000; taxable = 8000 - 3000 = 5000
+        // cgt = 5000 * 0.18 = 900
+        let cgt = calculate_capital_gains_tax(&p, &params, false);
+        assert!((cgt - 900.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn cgt_higher_rate() {
+        let params = CapitalGainsTaxParams {
+            annual_exempt_amount: 3000.0,
+            basic_rate: 0.18,
+            higher_rate: 0.24,
+            realisation_rate: 0.50,
+        };
+        let mut p = Person::default();
+        p.savings_interest_income = 10000.0;
+        p.dividend_income = 6000.0;
+        // gains = 8000; taxable = 5000; cgt = 5000 * 0.24 = 1200
+        let cgt = calculate_capital_gains_tax(&p, &params, true);
+        assert!((cgt - 1200.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn cgt_below_exempt() {
+        let params = CapitalGainsTaxParams {
+            annual_exempt_amount: 3000.0,
+            basic_rate: 0.18,
+            higher_rate: 0.24,
+            realisation_rate: 0.50,
+        };
+        let mut p = Person::default();
+        p.savings_interest_income = 2000.0; // gains = 1000, below AEA
+        assert_eq!(calculate_capital_gains_tax(&p, &params, false), 0.0);
+    }
+
+    #[test]
+    fn stamp_duty_marginal() {
+        let params = StampDutyParams {
+            bands: vec![
+                StampDutyBand { rate: 0.0, threshold: 0.0 },
+                StampDutyBand { rate: 0.02, threshold: 125001.0 },
+                StampDutyBand { rate: 0.05, threshold: 250001.0 },
+                StampDutyBand { rate: 0.10, threshold: 925001.0 },
+                StampDutyBand { rate: 0.12, threshold: 1500001.0 },
+            ],
+            annual_purchase_probability: 1.0, // set to 1 for testing one-off amount
+        };
+        let mut hh = Household::default();
+        hh.main_residence_value = 500000.0;
+        // 0% on first £125k, 2% on £125k-£250k = £2,500, 5% on £250k-£500k = £12,500
+        // total = £15,000
+        let sdlt = calculate_stamp_duty(&hh, &params);
+        assert!((sdlt - 15000.0).abs() < 1.0);
+    }
+
+    #[test]
+    fn wealth_tax_disabled() {
+        let params = WealthTaxParams { enabled: false, threshold: 10_000_000.0, rate: 0.01 };
+        let mut hh = Household::default();
+        hh.property_wealth = 50_000_000.0;
+        assert_eq!(calculate_wealth_tax(&hh, &params), 0.0);
+    }
+
+    #[test]
+    fn wealth_tax_above_threshold() {
+        let params = WealthTaxParams { enabled: true, threshold: 10_000_000.0, rate: 0.01 };
+        let mut hh = Household::default();
+        hh.property_wealth = 12_000_000.0;
+        hh.corporate_wealth = 3_000_000.0;
+        hh.gross_financial_wealth = 0.0;
+        // total = 15m; taxable = 5m; tax = 50,000
+        let tax = calculate_wealth_tax(&hh, &params);
+        assert!((tax - 50_000.0).abs() < 0.01);
+    }
+}

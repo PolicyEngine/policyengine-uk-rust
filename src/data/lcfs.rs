@@ -30,6 +30,7 @@ pub fn load_lcfs(data_dir: &Path, fiscal_year: u32) -> anyhow::Result<Dataset> {
         "p601", "p602", "p603", "p604", "p605", "p606",
         "p607", "p608", "p609", "p610", "p611", "p612",
         "c72211", "c72212",  // petrol, diesel
+        "c021", "c022",      // alcohol subtotal, tobacco subtotal (COICOP 02.1, 02.2)
     ];
 
     let hh_table = load_table_cols(data_dir, &hh_file, Some(hh_cols))?;
@@ -182,7 +183,17 @@ pub fn load_lcfs(data_dir: &Path, fiscal_year: u32) -> anyhow::Result<Dataset> {
             region,
             rent: rent_annual,
             food_consumption:                          get_f64(hh_row, "p601").max(0.0) * WEEKS_IN_YEAR,
-            alcohol_tobacco_consumption:               get_f64(hh_row, "p602").max(0.0) * WEEKS_IN_YEAR,
+            alcohol_consumption: {
+                // Try COICOP subcodes first; fall back to 70/30 split of p602 (ONS avg)
+                let c021 = get_f64(hh_row, "c021");
+                let p602 = get_f64(hh_row, "p602").max(0.0);
+                if c021 > 0.0 { c021.max(0.0) * WEEKS_IN_YEAR } else { p602 * 0.70 * WEEKS_IN_YEAR }
+            },
+            tobacco_consumption: {
+                let c022 = get_f64(hh_row, "c022");
+                let p602 = get_f64(hh_row, "p602").max(0.0);
+                if c022 > 0.0 { c022.max(0.0) * WEEKS_IN_YEAR } else { p602 * 0.30 * WEEKS_IN_YEAR }
+            },
             clothing_consumption:                      get_f64(hh_row, "p603").max(0.0) * WEEKS_IN_YEAR,
             housing_water_electricity_consumption:     get_f64(hh_row, "p604").max(0.0) * WEEKS_IN_YEAR,
             furnishings_consumption:                   get_f64(hh_row, "p605").max(0.0) * WEEKS_IN_YEAR,

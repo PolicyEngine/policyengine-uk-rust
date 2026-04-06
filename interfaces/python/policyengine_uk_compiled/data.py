@@ -71,10 +71,61 @@ def _get_credentials() -> tuple[str, str]:
 DATASETS = ("frs", "efrs", "lcfs", "spi", "was")
 
 
+def _list_available_years(dataset: str, access_key: str, secret_key: str) -> list[int]:
+    """List years available on the bucket for a given dataset.
+
+    Returns a sorted list of integer years found under the `<dataset>/` prefix.
+    """
+    import re
+    keys = []
+    marker = ""
+    while True:
+        path = f"/?prefix={dataset}/&marker={marker}"
+        headers = _sign_request("GET", "/", access_key, secret_key)
+        url = f"https://{GCS_HOST}/{GCS_BUCKET}{path}"
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req) as resp:
+            body = resp.read().decode()
+        found = re.findall(r"<Key>([^<]+)</Key>", body)
+        if not found:
+            break
+        keys.extend(found)
+        if "<IsTruncated>true</IsTruncated>" not in body:
+            break
+        marker = found[-1]
+
+    years = set()
+    year_re = re.compile(rf"^{dataset}/(\d{{4}})/")
+    for key in keys:
+        m = year_re.match(key)
+        if m:
+            years.add(int(m.group(1)))
+    return sorted(years)
+
+
+def _pick_nearest_year(available: list[int], requested: int) -> int:
+    """Pick the nearest year to requested from available.
+
+    Prefers the latest year ≤ requested (so uprating moves forward), falling
+    back to the earliest available year if none is ≤ requested.
+    """
+    if not available:
+        raise FileNotFoundError("No years available on bucket")
+    candidates = [y for y in available if y <= requested]
+    if candidates:
+        return max(candidates)
+    return min(available)
+
+
 def ensure_dataset_year(dataset: str, year: int) -> Path:
     """Ensure clean CSVs for a dataset/year are available locally, downloading if needed.
 
-    Returns the path to the year directory (e.g. ~/.policyengine-uk-data/frs/2026/).
+    If the requested year isn't on the bucket, downloads the nearest available
+    year and returns its directory. The Rust engine handles uprating from the
+    downloaded year to the requested year at run time.
+
+    Returns the path to the year directory actually downloaded (may differ from
+    the requested year).
     """
     year_dir = LOCAL_CACHE / dataset / str(year)
     expected_files = ["persons.csv", "benunits.csv", "households.csv"]
@@ -82,9 +133,24 @@ def ensure_dataset_year(dataset: str, year: int) -> Path:
         return year_dir
 
     access_key, secret_key = _get_credentials()
+
+    # Determine which year to download. If the requested year isn't on the
+    # bucket, fall back to the nearest available.
+    available = _list_available_years(dataset, access_key, secret_key)
+    # If we already cached the nearest year locally, use that.
+    if available:
+        download_year = _pick_nearest_year(available, year)
+        if download_year != year:
+            near_dir = LOCAL_CACHE / dataset / str(download_year)
+            if all((near_dir / f).exists() for f in expected_files):
+                return near_dir
+            year_dir = near_dir
+    else:
+        download_year = year
+
     year_dir.mkdir(parents=True, exist_ok=True)
     for f in expected_files:
-        key = f"{dataset}/{year}/{f}"
+        key = f"{dataset}/{download_year}/{f}"
         dest = year_dir / f
         if dest.exists():
             continue

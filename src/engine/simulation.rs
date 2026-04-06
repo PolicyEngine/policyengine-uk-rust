@@ -19,6 +19,8 @@ pub struct PersonResult {
     /// High Income Child Benefit Charge — income tax charge on the highest
     /// earner in a benefit unit receiving child benefit.
     pub hicbc: f64,
+    /// Capital gains tax (proxied from investment income).
+    pub capital_gains_tax: f64,
 }
 
 /// Results for a benefit unit
@@ -55,6 +57,20 @@ pub struct HouseholdResult {
     pub gross_income: f64,
     /// VAT paid by the household (estimated from consumption or disposable income)
     pub vat: f64,
+    /// Fuel duty on petrol and diesel
+    pub fuel_duty: f64,
+    /// Alcohol duty
+    pub alcohol_duty: f64,
+    /// Tobacco duty
+    pub tobacco_duty: f64,
+    /// Capital gains tax (aggregated from persons in this household)
+    pub capital_gains_tax: f64,
+    /// Stamp duty land tax (annualised)
+    pub stamp_duty: f64,
+    /// Annual wealth tax (hypothetical)
+    pub wealth_tax: f64,
+    /// Council tax (calculated from parameters, for reform modelling)
+    pub council_tax_calculated: f64,
     /// Modified OECD equivalisation factor for the household
     pub equivalisation_factor: f64,
     /// HBAI net income BHC (before housing costs)
@@ -196,6 +212,22 @@ impl Simulation {
             }
         }
 
+        // Phase 2c: Capital gains tax (person-level, needs income tax band info)
+        if let Some(ref cgt_params) = self.parameters.capital_gains_tax {
+            for person in &self.people {
+                // Higher/additional rate if taxable income exceeds basic rate limit
+                let basic_rate_limit = self.parameters.income_tax.uk_brackets
+                    .get(1)
+                    .map(|b| b.threshold)
+                    .unwrap_or(37700.0);
+                let is_higher = person_results[person.id].taxable_income > basic_rate_limit;
+                let cgt = variables::wealth_taxes::calculate_capital_gains_tax(
+                    person, cgt_params, is_higher,
+                );
+                person_results[person.id].capital_gains_tax = cgt;
+            }
+        }
+
         // Phase 3: Household-level aggregation (parallelised)
         let hr: Vec<HouseholdResult> = self.households.par_iter().map(|hh| {
             // Gross income uses calculated SP (from Phase 1a) instead of reported amounts,
@@ -244,7 +276,43 @@ impl Simulation {
                 hh, net_income_before_vat, &self.parameters,
             );
 
-            let total_tax = direct_tax + vat;
+            // Fuel duty
+            let fuel_duty = self.parameters.fuel_duty.as_ref()
+                .map(|p| variables::consumption_taxes::calculate_fuel_duty(hh, p))
+                .unwrap_or(0.0);
+
+            // Alcohol duty
+            let alcohol_duty = self.parameters.alcohol_duty.as_ref()
+                .map(|p| variables::consumption_taxes::calculate_alcohol_duty(hh, p))
+                .unwrap_or(0.0);
+
+            // Tobacco duty
+            let tobacco_duty = self.parameters.tobacco_duty.as_ref()
+                .map(|p| variables::consumption_taxes::calculate_tobacco_duty(hh, p))
+                .unwrap_or(0.0);
+
+            // Capital gains tax (aggregated from persons)
+            let cgt: f64 = hh.person_ids.iter()
+                .map(|&pid| person_results[pid].capital_gains_tax)
+                .sum();
+
+            // Stamp duty (annualised)
+            let stamp_duty = self.parameters.stamp_duty.as_ref()
+                .map(|p| variables::wealth_taxes::calculate_stamp_duty(hh, p))
+                .unwrap_or(0.0);
+
+            // Wealth tax
+            let wealth_tax = self.parameters.wealth_tax.as_ref()
+                .map(|p| variables::wealth_taxes::calculate_wealth_tax(hh, p))
+                .unwrap_or(0.0);
+
+            // Council tax (calculated from parameters for reform modelling)
+            let council_tax_calculated = self.parameters.council_tax.as_ref()
+                .map(|p| variables::wealth_taxes::calculate_council_tax(hh, p))
+                .unwrap_or(hh.council_tax);
+
+            let total_tax = direct_tax + vat + fuel_duty + alcohol_duty + tobacco_duty
+                + cgt + stamp_duty + wealth_tax;
             let net_income = net_income_before_vat - vat;
 
             // Modified OECD equivalisation scale (used by HBAI):
@@ -272,6 +340,13 @@ impl Simulation {
                 total_benefits,
                 net_income,
                 vat,
+                fuel_duty,
+                alcohol_duty,
+                tobacco_duty,
+                capital_gains_tax: cgt,
+                stamp_duty,
+                wealth_tax,
+                council_tax_calculated,
                 equivalisation_factor: eq_factor,
                 equivalised_net_income: net_income / eq_factor,
                 net_income_ahc,

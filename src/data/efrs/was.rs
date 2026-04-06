@@ -82,9 +82,9 @@ fn build_was_training_data(
         let emp_income = get_f64(row, "dvgiempr7_aggr");
         let se_income = get_f64(row, "dvgiser7_aggr");
         let capital_income = get_f64(row, "dvgiinvr7_aggr");
-        let bedrooms = get_f64(row, "hbedrmw7");
-        let council_tax = get_f64(row, "ctagmtw7");
-        let is_renting = if get_i64(row, "dvprirntw7") == 1 { 1.0 } else { 0.0 };
+        let bedrooms = get_f64(row, "hbedrmr7");
+        let council_tax = get_f64(row, "dvctaxamtannualr7");
+        let is_renting = if get_i64(row, "dvprirntr7") == 1 { 1.0 } else { 0.0 };
         let region = was_region(get_i64(row, "gorr7")).to_rf_code();
 
         features.push(vec![
@@ -94,25 +94,22 @@ fn build_was_training_data(
         ]);
 
         // Targets
-        let owned_land = get_f64(row, "dvlukval_r7").max(0.0);
+        let owned_land = get_f64(row, "dvlukvalr7_sum").max(0.0);
         let main_res = get_f64(row, "dvhvaluer7").max(0.0);
-        let other_res = get_f64(row, "dvhseval_r7").max(0.0);
-        let non_res = get_f64(row, "dvblvalr7").max(0.0);
+        let other_res = get_f64(row, "dvhsevalr7_sum").max(0.0);
+        let non_res = get_f64(row, "dvbldvalr7_sum").max(0.0);
         let property_wealth = main_res + other_res + non_res + owned_land;
 
-        // Corporate wealth: shares + ISAs + unit trusts + non-DB pensions
-        let emp_shares = get_f64(row, "dvempshares_r7_aggr").max(0.0);
-        let uk_shares = get_f64(row, "dvukshares_r7_aggr").max(0.0);
-        let isas = get_f64(row, "dvisaval_r7_aggr").max(0.0);
-        let unit_trusts = get_f64(row, "dvunittr7_aggr").max(0.0);
+        // Corporate wealth: shares + ISAs + non-DB pensions
+        let shares = get_f64(row, "dvfesharesr7_aggr").max(0.0);
+        let isas = get_f64(row, "dvisavalr7_aggr").max(0.0);
         let total_pensions = get_f64(row, "totpenr7_aggr").max(0.0);
-        // Approximate non-DB pension as total pension (DB breakdown not easily available)
-        let corporate_wealth = emp_shares + uk_shares + isas + unit_trusts + total_pensions;
+        let corporate_wealth = shares + isas + total_pensions;
 
-        let gross_financial = get_f64(row, "dvfnsvalr7_sum").max(0.0) + corporate_wealth;
-        let net_financial = get_f64(row, "dvfnsvalr7_sum"); // can be negative
-        let savings = get_f64(row, "totsavr7_aggr").max(0.0);
-        let num_vehicles = get_f64(row, "numcarsr7").max(0.0);
+        let gross_financial = get_f64(row, "dvfnsvalr7_aggr").max(0.0) + corporate_wealth;
+        let net_financial = get_f64(row, "dvfnsvalr7_aggr"); // can be negative
+        let savings = get_f64(row, "dvsavalr7_aggr").max(0.0);
+        let num_vehicles = get_f64(row, "vcarnr7").max(0.0);
 
         targets[0].push(owned_land);
         targets[1].push(property_wealth);
@@ -166,7 +163,7 @@ pub fn impute_wealth(
     eprintln!("  Training wealth models from WAS...");
     let (train_features, train_targets) = build_was_training_data(was_dir)?;
 
-    let models = rf::train_multi_target(&train_features, &train_targets, 100, 42)?;
+    let models = rf::train_multi_target(&train_features, &train_targets, 50, 42)?;
     eprintln!("  Trained {} wealth RF models", models.len());
 
     let frs_features = build_frs_wealth_features(dataset);

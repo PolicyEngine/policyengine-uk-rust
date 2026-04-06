@@ -297,7 +297,8 @@ pub struct Household {
 
     // Consumption (from LCFS imputation, annual)
     pub food_consumption: f64,
-    pub alcohol_tobacco_consumption: f64,
+    pub alcohol_consumption: f64,
+    pub tobacco_consumption: f64,
     pub clothing_consumption: f64,
     pub housing_water_electricity_consumption: f64,
     pub furnishings_consumption: f64,
@@ -339,7 +340,8 @@ impl Default for Household {
             savings: 0.0,
             num_vehicles: 0.0,
             food_consumption: 0.0,
-            alcohol_tobacco_consumption: 0.0,
+            alcohol_consumption: 0.0,
+            tobacco_consumption: 0.0,
             clothing_consumption: 0.0,
             housing_water_electricity_consumption: 0.0,
             furnishings_consumption: 0.0,

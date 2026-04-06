@@ -2,6 +2,7 @@ use smartcore::linalg::basic::matrix::DenseMatrix;
 use smartcore::ensemble::random_forest_regressor::{
     RandomForestRegressor, RandomForestRegressorParameters,
 };
+use rayon::prelude::*;
 
 /// A trained single-target random forest model.
 pub struct TrainedRF {
@@ -9,65 +10,54 @@ pub struct TrainedRF {
     pub target_name: String,
 }
 
-/// Train a random forest regressor for a single target variable.
-///
-/// `features` is n_samples x n_features (outer vec = rows).
-/// `target` is n_samples.
-pub fn train_rf(
-    features: &[Vec<f64>],
-    target: &[f64],
-    target_name: &str,
-    n_trees: u16,
-    seed: u64,
-) -> anyhow::Result<TrainedRF> {
-    let feat_vec: Vec<Vec<f64>> = features.to_vec();
-    let x = DenseMatrix::from_2d_vec(&feat_vec)
-        .map_err(|e| anyhow::anyhow!("Matrix construction failed for {}: {:?}", target_name, e))?;
-    let y = target.to_vec();
-    let params = RandomForestRegressorParameters::default()
-        .with_n_trees(n_trees as usize)
-        .with_seed(seed);
-    let model = RandomForestRegressor::fit(&x, &y, params)
-        .map_err(|e| anyhow::anyhow!("RF training failed for {}: {:?}", target_name, e))?;
-    Ok(TrainedRF {
-        model,
-        target_name: target_name.to_string(),
-    })
-}
-
-/// Predict target values for new feature rows.
-pub fn predict_rf(model: &TrainedRF, features: &[Vec<f64>]) -> anyhow::Result<Vec<f64>> {
-    let feat_vec: Vec<Vec<f64>> = features.to_vec();
-    let x = DenseMatrix::from_2d_vec(&feat_vec)
-        .map_err(|e| anyhow::anyhow!("Matrix construction failed for {}: {:?}", model.target_name, e))?;
-    model
-        .model
-        .predict(&x)
-        .map_err(|e| anyhow::anyhow!("RF prediction failed for {}: {:?}", model.target_name, e))
-}
-
 /// Train multiple RF models (one per target column) on the same feature matrix.
+/// Models are trained in parallel using Rayon since they are independent.
 pub fn train_multi_target(
     features: &[Vec<f64>],
     targets: &[(&str, Vec<f64>)],
     n_trees: u16,
     seed: u64,
 ) -> anyhow::Result<Vec<TrainedRF>> {
+    // Build the DenseMatrix once — shared across all parallel model fits
+    let feat_vec: Vec<Vec<f64>> = features.to_vec();
+    let x = DenseMatrix::from_2d_vec(&feat_vec)
+        .map_err(|e| anyhow::anyhow!("Matrix construction failed: {:?}", e))?;
+
     targets
-        .iter()
-        .map(|(name, values)| train_rf(features, values, name, n_trees, seed))
+        .par_iter()
+        .enumerate()
+        .map(|(i, (name, values))| {
+            let y = values.clone();
+            // Vary seed per target so trees aren't identical across models
+            let params = RandomForestRegressorParameters::default()
+                .with_n_trees(n_trees as usize)
+                .with_seed(seed + i as u64);
+            let model = RandomForestRegressor::fit(&x, &y, params)
+                .map_err(|e| anyhow::anyhow!("RF training failed for {}: {:?}", name, e))?;
+            Ok(TrainedRF {
+                model,
+                target_name: name.to_string(),
+            })
+        })
         .collect()
 }
 
 /// Predict all models and return a vec of (target_name, predictions).
+/// Predictions run in parallel since models are independent.
 pub fn predict_multi_target(
     models: &[TrainedRF],
     features: &[Vec<f64>],
 ) -> anyhow::Result<Vec<(String, Vec<f64>)>> {
+    // Build the DenseMatrix once for all predictions
+    let feat_vec: Vec<Vec<f64>> = features.to_vec();
+    let x = DenseMatrix::from_2d_vec(&feat_vec)
+        .map_err(|e| anyhow::anyhow!("Matrix construction failed: {:?}", e))?;
+
     models
-        .iter()
+        .par_iter()
         .map(|m| {
-            let preds = predict_rf(m, features)?;
+            let preds = m.model.predict(&x)
+                .map_err(|e| anyhow::anyhow!("RF prediction failed for {}: {:?}", m.target_name, e))?;
             Ok((m.target_name.clone(), preds))
         })
         .collect()

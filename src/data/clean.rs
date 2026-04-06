@@ -202,7 +202,7 @@ fn write_households(dataset: &Dataset, output_dir: &Path) -> anyhow::Result<()> 
         "main_residence_value", "other_residential_property_value",
         "non_residential_property_value", "savings", "num_vehicles",
         // Consumption
-        "food_consumption", "alcohol_tobacco_consumption", "clothing_consumption",
+        "food_consumption", "alcohol_consumption", "tobacco_consumption", "clothing_consumption",
         "housing_water_electricity_consumption", "furnishings_consumption",
         "health_consumption", "transport_consumption", "communication_consumption",
         "recreation_consumption", "education_consumption", "restaurants_consumption",
@@ -245,7 +245,8 @@ fn write_households(dataset: &Dataset, output_dir: &Path) -> anyhow::Result<()> 
             format!("{:.2}", hh.num_vehicles),
             // Consumption
             format!("{:.2}", hh.food_consumption),
-            format!("{:.2}", hh.alcohol_tobacco_consumption),
+            format!("{:.2}", hh.alcohol_consumption),
+            format!("{:.2}", hh.tobacco_consumption),
             format!("{:.2}", hh.clothing_consumption),
             format!("{:.2}", hh.housing_water_electricity_consumption),
             format!("{:.2}", hh.furnishings_consumption),
@@ -983,7 +984,8 @@ pub fn parse_households_csv<R: std::io::Read>(reader: R) -> anyhow::Result<Vec<H
             num_vehicles: h.get_f64(&r, "num_vehicles"),
             // Consumption
             food_consumption: h.get_f64(&r, "food_consumption"),
-            alcohol_tobacco_consumption: h.get_f64(&r, "alcohol_tobacco_consumption"),
+            alcohol_consumption: h.get_f64(&r, "alcohol_consumption"),
+            tobacco_consumption: h.get_f64(&r, "tobacco_consumption"),
             clothing_consumption: h.get_f64(&r, "clothing_consumption"),
             housing_water_electricity_consumption: h.get_f64(&r, "housing_water_electricity_consumption"),
             furnishings_consumption: h.get_f64(&r, "furnishings_consumption"),
