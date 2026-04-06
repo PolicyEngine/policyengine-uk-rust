@@ -37,6 +37,27 @@ pub struct Parameters {
     /// VAT parameters. Standard rate 20%, reduced rate 5% (energy), zero rate 0% (food).
     #[serde(default)]
     pub vat: Option<VatParams>,
+    /// Fuel duty on petrol and diesel. HODA 1979 s.6; 52.95p/litre since 2022.
+    #[serde(default)]
+    pub fuel_duty: Option<FuelDutyParams>,
+    /// Alcohol duty (effective rate on household alcohol spending).
+    #[serde(default)]
+    pub alcohol_duty: Option<AlcoholDutyParams>,
+    /// Tobacco duty (effective rate on household tobacco spending).
+    #[serde(default)]
+    pub tobacco_duty: Option<TobaccoDutyParams>,
+    /// Council tax (calculated). Allows reform modelling via band_d rate override.
+    #[serde(default)]
+    pub council_tax: Option<CouncilTaxParams>,
+    /// Capital gains tax. TCGA 1992; 18%/24% from October 2024 Budget.
+    #[serde(default)]
+    pub capital_gains_tax: Option<CapitalGainsTaxParams>,
+    /// Stamp duty land tax on residential property. FA 2003 s.55.
+    #[serde(default)]
+    pub stamp_duty: Option<StampDutyParams>,
+    /// Annual wealth tax (hypothetical — disabled by default).
+    #[serde(default)]
+    pub wealth_tax: Option<WealthTaxParams>,
 }
 
 
@@ -310,6 +331,130 @@ pub struct VatParams {
 
 fn default_standard_share() -> f64 { 0.60 }
 fn default_reduced_share() -> f64 { 0.05 }
+
+/// Fuel duty parameters.
+///
+/// Hydrocarbon Oil Duties Act 1979 s.6; rates set by Finance Act orders.
+/// Fuel duty is levied per litre of petrol/diesel. We convert from household £ spending
+/// to litres using average pump prices, then apply duty rate.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FuelDutyParams {
+    /// Duty rate on petrol (£ per litre). 52.95p/litre for 2025/26.
+    pub petrol_rate_per_litre: f64,
+    /// Duty rate on diesel (£ per litre). 52.95p/litre for 2025/26.
+    pub diesel_rate_per_litre: f64,
+    /// Average pump price for petrol (£ per litre, inc. duty and VAT).
+    /// Used to convert £ spending to litres consumed.
+    pub average_petrol_price_per_litre: f64,
+    /// Average pump price for diesel (£ per litre, inc. duty and VAT).
+    pub average_diesel_price_per_litre: f64,
+}
+
+/// Alcohol duty parameters (simplified effective rate).
+///
+/// Alcoholic Liquor Duties Act 1979; reformed August 2023 to ABV-based bands.
+/// Since the LCFS gives us total £ alcohol spending (not quantities by ABV),
+/// we use an effective duty rate: duty as a fraction of total tax-inclusive spending.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AlcoholDutyParams {
+    /// Effective alcohol duty rate (duty / tax-inclusive spending).
+    /// OBR 2025/26: £11.9bn revenue from ~£30bn household alcohol spending ≈ 0.40.
+    pub effective_rate: f64,
+}
+
+/// Tobacco duty parameters (simplified effective rate).
+///
+/// Tobacco Products Duty Act 1979; duty escalator RPI + 2%.
+/// Effective rate: duty as a fraction of total tax-inclusive spending.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TobaccoDutyParams {
+    /// Effective tobacco duty rate (duty / tax-inclusive spending).
+    /// OBR 2025/26: £8bn revenue from ~£11bn tobacco spending ≈ 0.72.
+    pub effective_rate: f64,
+}
+
+/// Council tax parameters (for reform modelling).
+///
+/// Local Government Finance Act 1992. Council tax is currently reported from the FRS.
+/// These parameters allow modelling reforms (e.g. changing the Band D rate) while
+/// keeping the baseline as the reported amount.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CouncilTaxParams {
+    /// Average Band D rate (£/year). England average £2,280 for 2025/26.
+    pub average_band_d: f64,
+    /// Band multipliers as fractions of Band D: A=6/9, B=7/9, ... H=18/9.
+    #[serde(default = "default_band_multipliers")]
+    pub band_multipliers: Vec<f64>,
+    /// Property value thresholds for bands A–H (1991 values, England).
+    #[serde(default = "default_band_thresholds")]
+    pub band_thresholds: Vec<f64>,
+}
+
+fn default_band_multipliers() -> Vec<f64> {
+    vec![6.0/9.0, 7.0/9.0, 8.0/9.0, 1.0, 11.0/9.0, 13.0/9.0, 15.0/9.0, 18.0/9.0]
+}
+
+fn default_band_thresholds() -> Vec<f64> {
+    vec![0.0, 40001.0, 52001.0, 68001.0, 88001.0, 120001.0, 160001.0, 320001.0]
+}
+
+/// Capital gains tax parameters.
+///
+/// Taxation of Chargeable Gains Act 1992. Rates raised to 18%/24% from October 2024.
+/// AEA reduced to £3,000 from April 2024.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CapitalGainsTaxParams {
+    /// Annual exempt amount (£3,000 for 2025/26).
+    pub annual_exempt_amount: f64,
+    /// CGT rate for basic-rate taxpayers (18% from 2025/26).
+    pub basic_rate: f64,
+    /// CGT rate for higher/additional-rate taxpayers (24% from 2025/26).
+    pub higher_rate: f64,
+    /// Fraction of investment income (savings + dividends) assumed to be realised gains.
+    /// A rough proxy since the FRS/WAS don't record actual capital gains.
+    #[serde(default = "default_realisation_rate")]
+    pub realisation_rate: f64,
+}
+
+fn default_realisation_rate() -> f64 { 0.50 }
+
+/// Stamp duty land tax bands.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StampDutyBand {
+    pub rate: f64,
+    pub threshold: f64,
+}
+
+/// Stamp duty land tax parameters.
+///
+/// Finance Act 2003 s.55; rates revised 1 April 2025. SDLT is a marginal-rate tax
+/// on residential property purchases. Annualised using average holding period.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StampDutyParams {
+    /// Marginal rate bands (sorted by threshold ascending).
+    pub bands: Vec<StampDutyBand>,
+    /// Annual purchase probability (1 / average holding period in years).
+    /// Average UK holding period ~23 years → 0.043.
+    #[serde(default = "default_purchase_probability")]
+    pub annual_purchase_probability: f64,
+}
+
+fn default_purchase_probability() -> f64 { 0.043 }
+
+/// Annual wealth tax parameters (hypothetical — disabled by default).
+///
+/// No current UK wealth tax exists. These parameters support modelling
+/// proposals such as the Wealth Tax Commission's 1% above £10m.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WealthTaxParams {
+    /// Whether the wealth tax is active. Default false.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Threshold above which wealth is taxed (£).
+    pub threshold: f64,
+    /// Tax rate on wealth above the threshold.
+    pub rate: f64,
+}
 
 /// Convert a fiscal year start year (e.g. 2029) to the YAML filename format
 fn fiscal_year_filename(year: u32) -> String {

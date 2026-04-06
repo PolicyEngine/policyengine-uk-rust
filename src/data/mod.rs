@@ -109,7 +109,8 @@ impl Dataset {
             // num_vehicles: count, not uprated
             // Consumption (CPI-uprated)
             h.food_consumption *= cpi;
-            h.alcohol_tobacco_consumption *= cpi;
+            h.alcohol_consumption *= cpi;
+            h.tobacco_consumption *= cpi;
             h.clothing_consumption *= cpi;
             h.housing_water_electricity_consumption *= cpi;
             h.furnishings_consumption *= cpi;

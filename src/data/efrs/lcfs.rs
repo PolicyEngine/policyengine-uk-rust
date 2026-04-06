@@ -10,7 +10,8 @@ use super::calibrate;
 /// LCFS consumption target names in model order.
 pub const CONSUMPTION_TARGETS: &[&str] = &[
     "food_consumption",
-    "alcohol_tobacco_consumption",
+    "alcohol_consumption",
+    "tobacco_consumption",
     "clothing_consumption",
     "housing_water_electricity_consumption",
     "furnishings_consumption",
@@ -88,7 +89,8 @@ struct LcfsHousehold {
     has_fuel_consumption: f64,
     // Consumption targets (annual)
     food: f64,
-    alcohol_tobacco: f64,
+    alcohol: f64,
+    tobacco: f64,
     clothing: f64,
     housing_water_electricity: f64,
     furnishings: f64,
@@ -255,7 +257,16 @@ fn build_lcfs_training_data(
             has_fuel_consumption: 0.0, // set later from WAS vehicle model
             // Consumption targets (weekly → annual)
             food: get_f64(row, "p601").max(0.0) * 52.0,
-            alcohol_tobacco: get_f64(row, "p602").max(0.0) * 52.0,
+            alcohol: {
+                let c021 = get_f64(row, "c021");
+                let p602 = get_f64(row, "p602").max(0.0);
+                if c021 > 0.0 { c021.max(0.0) * 52.0 } else { p602 * 0.70 * 52.0 }
+            },
+            tobacco: {
+                let c022 = get_f64(row, "c022");
+                let p602 = get_f64(row, "p602").max(0.0);
+                if c022 > 0.0 { c022.max(0.0) * 52.0 } else { p602 * 0.30 * 52.0 }
+            },
             clothing: get_f64(row, "p603").max(0.0) * 52.0,
             housing_water_electricity: get_f64(row, "p604").max(0.0) * 52.0,
             furnishings: get_f64(row, "p605").max(0.0) * 52.0,
@@ -315,9 +326,9 @@ fn frs_features(hh: &Household, people: &[Person]) -> Vec<f64> {
 }
 
 /// Extract target values from an LCFS household in model order.
-fn lcfs_target_values(hh: &LcfsHousehold) -> [f64; 17] {
+fn lcfs_target_values(hh: &LcfsHousehold) -> [f64; 18] {
     [
-        hh.food, hh.alcohol_tobacco, hh.clothing,
+        hh.food, hh.alcohol, hh.tobacco, hh.clothing,
         hh.housing_water_electricity, hh.furnishings, hh.health,
         hh.transport, hh.communication, hh.recreation,
         hh.education, hh.restaurants, hh.miscellaneous,
@@ -389,7 +400,7 @@ pub fn impute_consumption(
         .collect();
 
     eprintln!("  Training {} consumption models...", CONSUMPTION_TARGETS.len());
-    let models = rf::train_multi_target(&train_features, &named_targets, 100, 42)?;
+    let models = rf::train_multi_target(&train_features, &named_targets, 50, 42)?;
 
     eprintln!("  Predicting consumption on {} FRS households...", frs_feat.len());
     let predictions = rf::predict_multi_target(&models, &frs_feat)?;
@@ -400,7 +411,8 @@ pub fn impute_consumption(
             let v = val.max(0.0); // consumption can't be negative
             match name.as_str() {
                 "food_consumption" => hh.food_consumption = v,
-                "alcohol_tobacco_consumption" => hh.alcohol_tobacco_consumption = v,
+                "alcohol_consumption" => hh.alcohol_consumption = v,
+                "tobacco_consumption" => hh.tobacco_consumption = v,
                 "clothing_consumption" => hh.clothing_consumption = v,
                 "housing_water_electricity_consumption" => hh.housing_water_electricity_consumption = v,
                 "furnishings_consumption" => hh.furnishings_consumption = v,

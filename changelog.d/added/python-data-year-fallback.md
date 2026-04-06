@@ -1,0 +1,1 @@
+`policyengine_uk_compiled.data` now falls back to the nearest available year on the bucket when the requested year is missing, letting the Rust engine uprate forward at runtime. Non-FRS datasets (SPI, LCFS, WAS, EFRS) are now usable from the Python wrapper without any per-year bucket upload.

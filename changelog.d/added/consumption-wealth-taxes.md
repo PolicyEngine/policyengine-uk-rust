@@ -1,0 +1,1 @@
+Consumption and wealth taxes: fuel duty, alcohol duty, tobacco duty, capital gains tax, stamp duty land tax, annual wealth tax (hypothetical), and reformable council tax. LCFS alcohol/tobacco spending split into separate fields for accurate duty modelling. All new taxes included in household total_tax and program breakdown output.

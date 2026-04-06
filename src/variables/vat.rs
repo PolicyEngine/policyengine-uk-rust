@@ -30,7 +30,8 @@ pub fn calculate_household_vat(
 
     // Check if we have EFRS consumption data (any non-zero consumption field)
     let total_consumption = hh.food_consumption
-        + hh.alcohol_tobacco_consumption
+        + hh.alcohol_consumption
+        + hh.tobacco_consumption
         + hh.clothing_consumption
         + hh.furnishings_consumption
         + hh.health_consumption

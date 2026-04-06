@@ -255,6 +255,13 @@ struct ProgramBreakdown {
     employee_ni: f64,
     employer_ni: f64,
     vat: f64,
+    fuel_duty: f64,
+    alcohol_duty: f64,
+    tobacco_duty: f64,
+    capital_gains_tax: f64,
+    stamp_duty: f64,
+    wealth_tax: f64,
+    council_tax: f64,
     universal_credit: f64,
     child_benefit: f64,
     state_pension: f64,
@@ -619,11 +626,26 @@ fn main() -> anyhow::Result<()> {
         let mut employee_ni = 0.0f64;
         let mut employer_ni = 0.0f64;
         let mut vat_total = 0.0f64;
+        let mut fuel_duty_total = 0.0f64;
+        let mut alcohol_duty_total = 0.0f64;
+        let mut tobacco_duty_total = 0.0f64;
+        let mut cgt_total = 0.0f64;
+        let mut stamp_duty_total = 0.0f64;
+        let mut wealth_tax_total = 0.0f64;
+        let mut council_tax_total = 0.0f64;
         let mut it_payers = 0.0f64;
         let mut ni_payers = 0.0f64;
         let mut eni_payers = 0.0f64;
         for hh in households {
-            vat_total += hh.weight * reformed.household_results[hh.id].vat;
+            let hr = &reformed.household_results[hh.id];
+            vat_total += hh.weight * hr.vat;
+            fuel_duty_total += hh.weight * hr.fuel_duty;
+            alcohol_duty_total += hh.weight * hr.alcohol_duty;
+            tobacco_duty_total += hh.weight * hr.tobacco_duty;
+            cgt_total += hh.weight * hr.capital_gains_tax;
+            stamp_duty_total += hh.weight * hr.stamp_duty;
+            wealth_tax_total += hh.weight * hr.wealth_tax;
+            council_tax_total += hh.weight * hr.council_tax_calculated;
             for &pid in &hh.person_ids {
                 let person = &people[pid];
                 total_employment += hh.weight * person.employment_income;
@@ -716,6 +738,13 @@ fn main() -> anyhow::Result<()> {
             employee_ni,
             employer_ni,
             vat: vat_total,
+            fuel_duty: fuel_duty_total,
+            alcohol_duty: alcohol_duty_total,
+            tobacco_duty: tobacco_duty_total,
+            capital_gains_tax: cgt_total,
+            stamp_duty: stamp_duty_total,
+            wealth_tax: wealth_tax_total,
+            council_tax: council_tax_total,
             universal_credit: uc,
             child_benefit: cb,
             state_pension: sp,
