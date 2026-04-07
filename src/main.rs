@@ -569,11 +569,17 @@ fn main() -> anyhow::Result<()> {
     let benefit_change = reform_benefits - baseline_benefits;
     let net_cost = -revenue_change + benefit_change;
 
-    // Decile analysis — ranked by equivalised HBAI net income BHC (baseline)
-    let mut hh_incomes: Vec<(usize, f64, f64)> = households.iter().map(|hh| {
+    // Decile analysis — ranked by equivalised HBAI net income BHC (baseline).
+    // Changes are measured on equivalised extended net income (HBAI minus stamp duty/wealth tax),
+    // so that reforms to those taxes show up in decile impacts and winners/losers.
+    let mut hh_incomes: Vec<(usize, f64, f64, f64)> = households.iter().map(|hh| {
+        let bl = &baseline.household_results[hh.id];
+        let rf = &reformed.household_results[hh.id];
+        let eq = bl.equivalisation_factor.max(1e-9);
         (hh.id,
-         baseline.household_results[hh.id].equivalised_net_income,
-         reformed.household_results[hh.id].equivalised_net_income)
+         bl.equivalised_net_income,
+         bl.extended_net_income / eq,
+         rf.extended_net_income / eq)
     }).collect();
     hh_incomes.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
 
@@ -584,8 +590,8 @@ fn main() -> anyhow::Result<()> {
         let end = if d == 9 { hh_incomes.len() } else { (d + 1) * decile_size };
         let slice = &hh_incomes[start..end];
         let n = slice.len() as f64;
-        let avg_base: f64 = slice.iter().map(|h| h.1).sum::<f64>() / n;
-        let avg_reform: f64 = slice.iter().map(|h| h.2).sum::<f64>() / n;
+        let avg_base: f64 = slice.iter().map(|h| h.2).sum::<f64>() / n;   // baseline extended
+        let avg_reform: f64 = slice.iter().map(|h| h.3).sum::<f64>() / n; // reform extended
         let avg_change = avg_reform - avg_base;
         let pct_change = if avg_base != 0.0 { 100.0 * avg_change / avg_base } else { 0.0 };
         decile_impacts.push(DecileImpact {
@@ -605,8 +611,8 @@ fn main() -> anyhow::Result<()> {
     let mut total_loss = 0.0f64;
 
     for hh in households {
-        let change = reformed.household_results[hh.id].net_income
-            - baseline.household_results[hh.id].net_income;
+        let change = reformed.household_results[hh.id].extended_net_income
+            - baseline.household_results[hh.id].extended_net_income;
         if change > 1.0 {
             winners += hh.weight;
             total_gain += hh.weight * change;

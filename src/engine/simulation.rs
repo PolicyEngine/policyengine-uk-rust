@@ -79,6 +79,9 @@ pub struct HouseholdResult {
     pub net_income_ahc: f64,
     /// HBAI equivalised net income AHC
     pub equivalised_net_income_ahc: f64,
+    /// Extended net income: HBAI net income minus stamp duty and wealth tax.
+    /// Used for decile impacts and winners/losers so that SDLT/wealth tax reforms show up.
+    pub extended_net_income: f64,
 }
 
 /// Complete simulation result set
@@ -313,7 +316,12 @@ impl Simulation {
 
             let total_tax = direct_tax + vat + fuel_duty + alcohol_duty + tobacco_duty
                 + cgt + stamp_duty + wealth_tax;
-            let net_income = net_income_before_vat - vat - wealth_tax - stamp_duty - cgt;
+            // HBAI net income: gross minus direct taxes and pension contributions, plus benefits.
+            // Excludes indirect taxes (VAT, duties) and transaction/wealth taxes (SDLT, wealth tax)
+            // to match the government HBAI definition used for poverty and distributional analysis.
+            let net_income = net_income_before_vat;
+            // Extended net income: subtracts indirect and wealth taxes for fiscal analysis.
+            let extended_net_income = net_income_before_vat - vat - stamp_duty - wealth_tax;
 
             // Modified OECD equivalisation scale (used by HBAI):
             // First adult: 0.67, additional adults (14+): 0.33, children (<14): 0.20
@@ -330,7 +338,7 @@ impl Simulation {
                 0.67 + (adults.saturating_sub(1) as f64) * 0.33 + (children as f64) * 0.20
             };
 
-            // AHC: subtract rent and council tax (housing costs)
+            // AHC: subtract rent and council tax (housing costs), using HBAI net income
             let housing_costs = hh.rent + hh.council_tax;
             let net_income_ahc = net_income - housing_costs;
 
@@ -351,6 +359,7 @@ impl Simulation {
                 equivalised_net_income: net_income / eq_factor,
                 net_income_ahc,
                 equivalised_net_income_ahc: net_income_ahc / eq_factor,
+                extended_net_income,
             }
         }).collect();
         household_results = hr;

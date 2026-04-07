@@ -181,6 +181,7 @@ const SKIP_PARAMS: &[&str] = &[
     "universal_credit.child_limit",
     // Consumption tax parameters: require LCFS consumption data (EFRS only),
     // no impact against plain FRS microdata
+    "vat",
     "fuel_duty",
     "alcohol_duty",
     "tobacco_duty",
