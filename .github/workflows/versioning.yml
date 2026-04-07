@@ -49,3 +49,18 @@ jobs:
     if: needs.versioning.outputs.committed == 'true'
     uses: ./.github/workflows/publish-pypi.yml
     secrets: inherit
+
+  trigger-chat-redeploy:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger policyengine-uk-chat redeploy
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.POLICYENGINE_BOT_TOKEN }}
+          script: |
+            await github.rest.repos.createDispatchEvent({
+              owner: 'PolicyEngine',
+              repo: 'policyengine-uk-chat',
+              event_type: 'policyengine-uk-compiled-published',
+            });
