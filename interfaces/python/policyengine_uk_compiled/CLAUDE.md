@@ -91,8 +91,13 @@ Parameters(
     housing_benefit=HousingBenefitParams(withdrawal_rate=..., ...),
     tax_credits=TaxCreditsParams(ctc_child_element=..., taper_rate=..., ...),
     scottish_child_payment=ScottishChildPaymentParams(weekly_amount=..., ...),
+    capital_gains_tax=CapitalGainsTaxParams(annual_exempt_amount=3000, basic_rate=0.18, higher_rate=0.24),
+    stamp_duty=StampDutyParams(bands=[StampDutyBand(rate=0.0, threshold=0), StampDutyBand(rate=0.05, threshold=125000), ...]),
+    wealth_tax=WealthTaxParams(enabled=True, threshold=1_000_000, rate=0.01),
 )
 ```
+
+`capital_gains_tax` uses `person.capital_gains` (default zero in FRS/WAS — zero by default unless the dataset records capital gains). `stamp_duty` applies to owner-occupiers using the household's `main_residence_value` and an annualised purchase probability. `wealth_tax` requires wealth data — use EFRS or WAS datasets.
 
 ## Marginal tax rate calculation pattern
 

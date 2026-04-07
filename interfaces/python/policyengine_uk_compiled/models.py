@@ -147,6 +147,28 @@ class UcMigrationRates(BaseModel):
     income_support: Optional[float] = None
 
 
+class StampDutyBand(BaseModel):
+    rate: float
+    threshold: float
+
+
+class StampDutyParams(BaseModel):
+    bands: Optional[list[StampDutyBand]] = None
+    annual_purchase_probability: Optional[float] = None
+
+
+class CapitalGainsTaxParams(BaseModel):
+    annual_exempt_amount: Optional[float] = None
+    basic_rate: Optional[float] = None
+    higher_rate: Optional[float] = None
+
+
+class WealthTaxParams(BaseModel):
+    enabled: Optional[bool] = None
+    threshold: Optional[float] = None
+    rate: Optional[float] = None
+
+
 class Parameters(BaseModel):
     """Full parameter set. All fields optional for use as reform overlay."""
 
@@ -164,6 +186,9 @@ class Parameters(BaseModel):
     uc_migration: Optional[UcMigrationRates] = None
     disability_premiums: Optional[DisabilityPremiumParams] = None
     income_related_benefits: Optional[IncomeRelatedBenefitParams] = None
+    capital_gains_tax: Optional[CapitalGainsTaxParams] = None
+    stamp_duty: Optional[StampDutyParams] = None
+    wealth_tax: Optional[WealthTaxParams] = None
 
 
 # ── Simulation config ─────────────────────────────────────────────────────────

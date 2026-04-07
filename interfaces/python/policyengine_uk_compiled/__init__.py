@@ -54,6 +54,10 @@ from policyengine_uk_compiled.models import (
     TaxCreditsParams,
     ScottishChildPaymentParams,
     UcMigrationRates,
+    StampDutyBand,
+    StampDutyParams,
+    CapitalGainsTaxParams,
+    WealthTaxParams,
     Parameters,
 )
 from policyengine_uk_compiled.engine import (
@@ -93,5 +97,9 @@ __all__ = [
     "TaxCreditsParams",
     "ScottishChildPaymentParams",
     "UcMigrationRates",
+    "StampDutyBand",
+    "StampDutyParams",
+    "CapitalGainsTaxParams",
+    "WealthTaxParams",
     "Parameters",
 ]
