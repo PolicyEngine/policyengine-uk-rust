@@ -456,9 +456,28 @@ fn main() -> anyhow::Result<()> {
     );
     let baseline = baseline_sim.run();
 
+    // Apply OBR labour supply responses if enabled in the policy parameters.
+    // Adjusts employment incomes in the policy dataset before running the reform simulation.
+    let policy_people = if policy_params.labour_supply.enabled {
+        let baseline_net: Vec<f64> = baseline.household_results.iter()
+            .map(|hr| hr.net_income)
+            .collect();
+        crate::variables::labour_supply::apply_labour_supply_responses(
+            &dataset.people,
+            &dataset.benunits,
+            &dataset.households,
+            &baseline_params,
+            &policy_params,
+            &baseline_net,
+            cli.year,
+        )
+    } else {
+        dataset.people.clone()
+    };
+
     // Run policy simulation (pass baseline old SP rate so reported amounts scale correctly)
     let policy_sim = Simulation::new_with_baseline_sp(
-        dataset.people.clone(),
+        policy_people,
         dataset.benunits.clone(),
         dataset.households.clone(),
         policy_params.clone(),
