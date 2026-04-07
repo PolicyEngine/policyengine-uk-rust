@@ -293,6 +293,9 @@ class ProgramBreakdown(BaseModel):
     scottish_child_payment: float
     benefit_cap_reduction: float
     passthrough_benefits: float
+    capital_gains_tax: float = 0.0
+    stamp_duty: float = 0.0
+    wealth_tax: float = 0.0
 
 
 class Caseloads(BaseModel):
