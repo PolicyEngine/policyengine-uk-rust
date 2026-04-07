@@ -169,6 +169,42 @@ class WealthTaxParams(BaseModel):
     rate: Optional[float] = None
 
 
+class LabourSupplyParams(BaseModel):
+    """OBR labour supply elasticities (Slutsky decomposition).
+
+    Source: OBR (2023) "Costing a cut in National Insurance contributions:
+    the impact on labour supply"
+    https://obr.uk/docs/dlm_uploads/NICS-Cut-Impact-on-Labour-Supply-Note.pdf
+
+    Set `enabled=False` to suppress labour supply responses. All elasticity
+    fields are optional; omitted fields retain OBR defaults.
+    """
+
+    enabled: Optional[bool] = None
+
+    # Substitution elasticities (Table A1)
+    subst_married_women_no_children: Optional[float] = None
+    subst_married_women_child_0_2: Optional[float] = None
+    subst_married_women_child_3_4: Optional[float] = None
+    subst_married_women_child_5_10: Optional[float] = None
+    subst_married_women_child_11_plus: Optional[float] = None
+    subst_lone_parents_child_0_4: Optional[float] = None
+    subst_lone_parents_child_5_10: Optional[float] = None
+    subst_lone_parents_child_11_18: Optional[float] = None
+    subst_men_and_single_women: Optional[float] = None
+
+    # Income elasticities (Table A2)
+    income_married_women_no_children: Optional[float] = None
+    income_married_women_child_0_2: Optional[float] = None
+    income_married_women_child_3_4: Optional[float] = None
+    income_married_women_child_5_10: Optional[float] = None
+    income_married_women_child_11_plus: Optional[float] = None
+    income_lone_parents_child_0_4: Optional[float] = None
+    income_lone_parents_child_5_10: Optional[float] = None
+    income_lone_parents_child_11_18: Optional[float] = None
+    income_men_and_single_women: Optional[float] = None
+
+
 class Parameters(BaseModel):
     """Full parameter set. All fields optional for use as reform overlay."""
 
@@ -189,6 +225,7 @@ class Parameters(BaseModel):
     capital_gains_tax: Optional[CapitalGainsTaxParams] = None
     stamp_duty: Optional[StampDutyParams] = None
     wealth_tax: Optional[WealthTaxParams] = None
+    labour_supply: Optional[LabourSupplyParams] = None
 
 
 # ── Simulation config ─────────────────────────────────────────────────────────

@@ -58,6 +58,12 @@ pub struct Parameters {
     /// Annual wealth tax (hypothetical — disabled by default).
     #[serde(default)]
     pub wealth_tax: Option<WealthTaxParams>,
+    /// OBR labour supply response elasticities.
+    /// When enabled, the Slutsky-decomposition elasticities from OBR (2023) are applied
+    /// to estimate intensive-margin labour supply responses to tax-benefit reforms.
+    /// Defaults to enabled (elasticities on).
+    #[serde(default = "LabourSupplyParams::default")]
+    pub labour_supply: LabourSupplyParams,
 }
 
 
@@ -440,6 +446,129 @@ pub struct StampDutyParams {
 }
 
 fn default_purchase_probability() -> f64 { 0.043 }
+
+/// OBR labour supply response elasticities (Slutsky decomposition).
+///
+/// Source: OBR (2023) "Costing a cut in National Insurance contributions: the
+/// impact on labour supply" <https://obr.uk/docs/dlm_uploads/NICS-Cut-Impact-on-Labour-Supply-Note.pdf>
+/// Table A1 (substitution elasticities) and Table A2 (income elasticities).
+///
+/// The elasticities are segmented by gender, marital status, and youngest-child age.
+/// The intensive-margin (hours) response to a policy change is:
+///   ΔE = E_base × (η_s × Δw/w + η_i × Δy/y)
+/// where η_s is the substitution elasticity, η_i the income elasticity,
+/// Δw/w the relative change in the marginal net wage, and Δy/y the relative
+/// change in net income.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LabourSupplyParams {
+    /// Whether to apply labour supply responses. Default true.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+
+    // ── Substitution elasticities ────────────────────────────────────────────
+    /// Married/cohabiting women, no children.
+    #[serde(default = "default_0_14")]
+    pub subst_married_women_no_children: f64,
+    /// Married/cohabiting women, youngest child 0–2.
+    #[serde(default = "default_0_301")]
+    pub subst_married_women_child_0_2: f64,
+    /// Married/cohabiting women, youngest child 3–4.
+    #[serde(default = "default_0_439")]
+    pub subst_married_women_child_3_4: f64,
+    /// Married/cohabiting women, youngest child 5–10.
+    #[serde(default = "default_0_173")]
+    pub subst_married_women_child_5_10: f64,
+    /// Married/cohabiting women, youngest child 11+.
+    #[serde(default = "default_0_160")]
+    pub subst_married_women_child_11_plus: f64,
+    /// Lone parents, youngest child 0–4.
+    #[serde(default = "default_0_094")]
+    pub subst_lone_parents_child_0_4: f64,
+    /// Lone parents, youngest child 5–10.
+    #[serde(default = "default_0_128")]
+    pub subst_lone_parents_child_5_10: f64,
+    /// Lone parents, youngest child 11–18.
+    #[serde(default = "default_0_136")]
+    pub subst_lone_parents_child_11_18: f64,
+    /// Men (excl. lone fathers) and single women without children.
+    #[serde(default = "default_0_15")]
+    pub subst_men_and_single_women: f64,
+
+    // ── Income elasticities ──────────────────────────────────────────────────
+    /// Married/cohabiting women, no children.
+    #[serde(default = "default_0_0")]
+    pub income_married_women_no_children: f64,
+    /// Married/cohabiting women, youngest child 0–2.
+    #[serde(default = "default_neg_0_185")]
+    pub income_married_women_child_0_2: f64,
+    /// Married/cohabiting women, youngest child 3–4.
+    #[serde(default = "default_neg_0_173")]
+    pub income_married_women_child_3_4: f64,
+    /// Married/cohabiting women, youngest child 5–10.
+    #[serde(default = "default_neg_0_102")]
+    pub income_married_women_child_5_10: f64,
+    /// Married/cohabiting women, youngest child 11+.
+    #[serde(default = "default_neg_0_063")]
+    pub income_married_women_child_11_plus: f64,
+    /// Lone parents, youngest child 0–4.
+    #[serde(default = "default_neg_0_037")]
+    pub income_lone_parents_child_0_4: f64,
+    /// Lone parents, youngest child 5–10.
+    #[serde(default = "default_neg_0_075")]
+    pub income_lone_parents_child_5_10: f64,
+    /// Lone parents, youngest child 11–18.
+    #[serde(default = "default_neg_0_054")]
+    pub income_lone_parents_child_11_18: f64,
+    /// Men (excl. lone fathers) and single women without children.
+    #[serde(default = "default_neg_0_05")]
+    pub income_men_and_single_women: f64,
+}
+
+fn default_true() -> bool { true }
+fn default_0_14() -> f64 { 0.14 }
+fn default_0_301() -> f64 { 0.301 }
+fn default_0_439() -> f64 { 0.439 }
+fn default_0_173() -> f64 { 0.173 }
+fn default_0_160() -> f64 { 0.160 }
+fn default_0_094() -> f64 { 0.094 }
+fn default_0_128() -> f64 { 0.128 }
+fn default_0_136() -> f64 { 0.136 }
+fn default_0_15() -> f64 { 0.15 }
+fn default_0_0() -> f64 { 0.0 }
+fn default_neg_0_185() -> f64 { -0.185 }
+fn default_neg_0_173() -> f64 { -0.173 }
+fn default_neg_0_102() -> f64 { -0.102 }
+fn default_neg_0_063() -> f64 { -0.063 }
+fn default_neg_0_037() -> f64 { -0.037 }
+fn default_neg_0_075() -> f64 { -0.075 }
+fn default_neg_0_054() -> f64 { -0.054 }
+fn default_neg_0_05() -> f64 { -0.05 }
+
+impl Default for LabourSupplyParams {
+    fn default() -> Self {
+        LabourSupplyParams {
+            enabled: true,
+            subst_married_women_no_children: 0.14,
+            subst_married_women_child_0_2: 0.301,
+            subst_married_women_child_3_4: 0.439,
+            subst_married_women_child_5_10: 0.173,
+            subst_married_women_child_11_plus: 0.160,
+            subst_lone_parents_child_0_4: 0.094,
+            subst_lone_parents_child_5_10: 0.128,
+            subst_lone_parents_child_11_18: 0.136,
+            subst_men_and_single_women: 0.15,
+            income_married_women_no_children: 0.0,
+            income_married_women_child_0_2: -0.185,
+            income_married_women_child_3_4: -0.173,
+            income_married_women_child_5_10: -0.102,
+            income_married_women_child_11_plus: -0.063,
+            income_lone_parents_child_0_4: -0.037,
+            income_lone_parents_child_5_10: -0.075,
+            income_lone_parents_child_11_18: -0.054,
+            income_men_and_single_women: -0.05,
+        }
+    }
+}
 
 /// Annual wealth tax parameters (hypothetical — disabled by default).
 ///

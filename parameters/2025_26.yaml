@@ -263,6 +263,37 @@ wealth_tax:
   threshold: 10000000.0
   rate: 0.01
 
+labour_supply:
+  # OBR labour supply elasticities (Slutsky decomposition).
+  # Source: OBR (2023) "Costing a cut in National Insurance contributions:
+  #   the impact on labour supply"
+  #   https://obr.uk/docs/dlm_uploads/NICS-Cut-Impact-on-Labour-Supply-Note.pdf
+  # Table A1 (substitution elasticities), Table A2 (income elasticities).
+  # Elasticities default to ON; set enabled: false to suppress responses.
+  enabled: true
+
+  # Substitution elasticities (η_s): response to change in marginal net wage
+  subst_married_women_no_children: 0.14
+  subst_married_women_child_0_2: 0.301
+  subst_married_women_child_3_4: 0.439   # highest — childcare constraint bites hardest
+  subst_married_women_child_5_10: 0.173
+  subst_married_women_child_11_plus: 0.160
+  subst_lone_parents_child_0_4: 0.094
+  subst_lone_parents_child_5_10: 0.128
+  subst_lone_parents_child_11_18: 0.136
+  subst_men_and_single_women: 0.15
+
+  # Income elasticities (η_i): response to change in net income (typically ≤ 0)
+  income_married_women_no_children: 0.0
+  income_married_women_child_0_2: -0.185
+  income_married_women_child_3_4: -0.173
+  income_married_women_child_5_10: -0.102
+  income_married_women_child_11_plus: -0.063
+  income_lone_parents_child_0_4: -0.037
+  income_lone_parents_child_5_10: -0.075
+  income_lone_parents_child_11_18: -0.054
+  income_men_and_single_women: -0.05
+
 growth_factors:
   # OBR Economic and Fiscal Outlook, March 2026
   # Table 1.7 (Inflation) and Table 1.6 (Labour Market)
