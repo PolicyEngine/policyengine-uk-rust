@@ -123,6 +123,20 @@ fn build_was_training_data(
         targets[9].push(num_vehicles);
     }
 
+    // Subsample to ~1500 rows — enough to capture broad patterns while keeping
+    // memory/training time down. Use a fixed stride so the sample is spread evenly.
+    const MAX_TRAIN: usize = 1500;
+    let (features, targets) = if features.len() > MAX_TRAIN {
+        let stride = features.len() / MAX_TRAIN;
+        let f: Vec<Vec<f64>> = features.iter().step_by(stride).cloned().collect();
+        let t: Vec<Vec<f64>> = targets.iter()
+            .map(|col| col.iter().step_by(stride).copied().collect())
+            .collect();
+        (f, t)
+    } else {
+        (features, targets)
+    };
+
     let named_targets: Vec<(&str, Vec<f64>)> = WEALTH_TARGETS
         .iter()
         .zip(targets)
@@ -163,7 +177,7 @@ pub fn impute_wealth(
     eprintln!("  Training wealth models from WAS...");
     let (train_features, train_targets) = build_was_training_data(was_dir)?;
 
-    let models = rf::train_multi_target(&train_features, &train_targets, 50, 42)?;
+    let models = rf::train_multi_target(&train_features, &train_targets, 100, 42)?;
     eprintln!("  Trained {} wealth RF models", models.len());
 
     let frs_features = build_frs_wealth_features(dataset);
@@ -172,16 +186,20 @@ pub fn impute_wealth(
     for (name, preds) in &predictions {
         for (i, &val) in preds.iter().enumerate() {
             let hh = &mut dataset.households[i];
+            let is_renter = hh.tenure_type.is_renting();
+            let v = val.max(0.0);
             match name.as_str() {
-                "owned_land" => hh.owned_land = val.max(0.0),
-                "property_wealth" => hh.property_wealth = val.max(0.0),
-                "corporate_wealth" => hh.corporate_wealth = val.max(0.0),
-                "gross_financial_wealth" => hh.gross_financial_wealth = val.max(0.0),
-                "net_financial_wealth" => hh.net_financial_wealth = val, // can be negative
-                "main_residence_value" => hh.main_residence_value = val.max(0.0),
-                "other_residential_property_value" => hh.other_residential_property_value = val.max(0.0),
-                "non_residential_property_value" => hh.non_residential_property_value = val.max(0.0),
-                "savings" => hh.savings = val.max(0.0),
+                // Property targets: zero out for renters — we know this with certainty from FRS tenure_type
+                "owned_land" => hh.owned_land = if is_renter { 0.0 } else { v },
+                "property_wealth" => hh.property_wealth = if is_renter { 0.0 } else { v },
+                "main_residence_value" => hh.main_residence_value = if is_renter { 0.0 } else { v },
+                "other_residential_property_value" => hh.other_residential_property_value = if is_renter { 0.0 } else { v },
+                "non_residential_property_value" => hh.non_residential_property_value = if is_renter { 0.0 } else { v },
+                // Financial wealth: renters can have savings/investments
+                "corporate_wealth" => hh.corporate_wealth = v,
+                "gross_financial_wealth" => hh.gross_financial_wealth = v,
+                "net_financial_wealth" => hh.net_financial_wealth = val,
+                "savings" => hh.savings = v,
                 "num_vehicles" => hh.num_vehicles = val.max(0.0).round(),
                 _ => {}
             }

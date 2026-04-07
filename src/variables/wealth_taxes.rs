@@ -28,8 +28,8 @@ pub fn calculate_council_tax(hh: &Household, params: &CouncilTaxParams) -> f64 {
 
 /// Calculate capital gains tax for a person.
 ///
-/// Since the FRS/WAS don't record actual capital gains, we proxy gains from
-/// investment income (savings interest + dividends) scaled by a realisation rate.
+/// Uses the `capital_gains` field directly. Defaults to zero when no capital
+/// gains data is available (FRS, WAS, SPI do not record realised gains).
 /// The `is_higher_rate` flag should be true if the person's taxable income exceeds
 /// the basic rate limit (i.e. they pay income tax at the higher/additional rate).
 pub fn calculate_capital_gains_tax(
@@ -37,9 +37,7 @@ pub fn calculate_capital_gains_tax(
     params: &CapitalGainsTaxParams,
     is_higher_rate: bool,
 ) -> f64 {
-    let investment_income = person.savings_interest_income + person.dividend_income;
-    let gains = investment_income * params.realisation_rate;
-    let taxable_gains = (gains - params.annual_exempt_amount).max(0.0);
+    let taxable_gains = (person.capital_gains - params.annual_exempt_amount).max(0.0);
 
     if taxable_gains <= 0.0 {
         return 0.0;
@@ -133,13 +131,10 @@ mod tests {
             annual_exempt_amount: 3000.0,
             basic_rate: 0.18,
             higher_rate: 0.24,
-            realisation_rate: 0.50,
         };
         let mut p = Person::default();
-        p.savings_interest_income = 10000.0;
-        p.dividend_income = 6000.0;
-        // gains = 16000 * 0.5 = 8000; taxable = 8000 - 3000 = 5000
-        // cgt = 5000 * 0.18 = 900
+        p.capital_gains = 8000.0;
+        // taxable = 8000 - 3000 = 5000; cgt = 5000 * 0.18 = 900
         let cgt = calculate_capital_gains_tax(&p, &params, false);
         assert!((cgt - 900.0).abs() < 0.01);
     }
@@ -150,12 +145,10 @@ mod tests {
             annual_exempt_amount: 3000.0,
             basic_rate: 0.18,
             higher_rate: 0.24,
-            realisation_rate: 0.50,
         };
         let mut p = Person::default();
-        p.savings_interest_income = 10000.0;
-        p.dividend_income = 6000.0;
-        // gains = 8000; taxable = 5000; cgt = 5000 * 0.24 = 1200
+        p.capital_gains = 8000.0;
+        // taxable = 5000; cgt = 5000 * 0.24 = 1200
         let cgt = calculate_capital_gains_tax(&p, &params, true);
         assert!((cgt - 1200.0).abs() < 0.01);
     }
@@ -166,10 +159,21 @@ mod tests {
             annual_exempt_amount: 3000.0,
             basic_rate: 0.18,
             higher_rate: 0.24,
-            realisation_rate: 0.50,
         };
         let mut p = Person::default();
-        p.savings_interest_income = 2000.0; // gains = 1000, below AEA
+        p.capital_gains = 1000.0; // below AEA
+        assert_eq!(calculate_capital_gains_tax(&p, &params, false), 0.0);
+    }
+
+    #[test]
+    fn cgt_zero_by_default() {
+        let params = CapitalGainsTaxParams {
+            annual_exempt_amount: 3000.0,
+            basic_rate: 0.18,
+            higher_rate: 0.24,
+        };
+        // No capital_gains set — should produce zero (FRS/WAS default behaviour)
+        let p = Person::default();
         assert_eq!(calculate_capital_gains_tax(&p, &params, false), 0.0);
     }
 

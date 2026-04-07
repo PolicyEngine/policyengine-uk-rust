@@ -69,7 +69,7 @@ Always run the reform before diagnosing. Workflow:
 
 ## Multi-dataset support
 
-Four raw survey inputs are supported. All use the same two-step flow: `--extract` to produce clean CSVs, then `--data` to simulate.
+Five datasets are supported. FRS, LCFS, WAS, and SPI use the two-step flow: `--extract` to produce clean CSVs, then `--data` to simulate. EFRS is a composite built from FRS + WAS + LCFS and supports wealth and consumption taxes.
 
 | Dataset | Flag | Year arg | Clean output |
 |---|---|---|---|
@@ -77,6 +77,20 @@ Four raw survey inputs are supported. All use the same two-step flow: `--extract
 | LCFS | `--lcfs <tab_dir>` | LCFS survey year | `data/lcfs/YYYY/` |
 | WAS | `--was <tab_dir>` | WAS survey year | `data/was/YYYY/` |
 | SPI | `--spi <tab_dir>` | Fiscal start year | `data/spi/YYYY/` |
+| EFRS | `--extract-efrs <out_dir>` | FRS survey year | `data/efrs/YYYY/` |
+
+**EFRS (Enhanced FRS)**: imputes wealth from WAS and consumption from LCFS onto FRS microdata using random forest models. Required to model wealth taxes (wealth_tax, stamp_duty, CGT). Build with:
+
+```bash
+./policyengine-uk-rust --extract-efrs data/efrs/2023 \
+  --data data/frs --year 2023 \
+  --was-dir raw/was/round_7/ \
+  --lcfs-dir raw/lcfs/2021/
+```
+
+Pre-built clean EFRS CSVs are on GCS at `gs://policyengine-uk-microdata/efrs/YYYY/` and downloaded automatically via `ensure_dataset("efrs", year)` in the Python wrapper. Rebuild using `python scripts/rebuild_all.py --only efrs`.
+
+**Wealth tax note**: `capital_gains` defaults to zero on all datasets since no UK survey records realised gains. CGT reform modelling requires manually setting `capital_gains` per person via `--stdin-data` or a custom dataset.
 
 ```bash
 # Extract

@@ -410,13 +410,7 @@ pub struct CapitalGainsTaxParams {
     pub basic_rate: f64,
     /// CGT rate for higher/additional-rate taxpayers (24% from 2025/26).
     pub higher_rate: f64,
-    /// Fraction of investment income (savings + dividends) assumed to be realised gains.
-    /// A rough proxy since the FRS/WAS don't record actual capital gains.
-    #[serde(default = "default_realisation_rate")]
-    pub realisation_rate: f64,
 }
-
-fn default_realisation_rate() -> f64 { 0.50 }
 
 /// Stamp duty land tax bands.
 #[derive(Debug, Clone, Serialize, Deserialize)]
