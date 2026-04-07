@@ -382,11 +382,14 @@ pub fn impute_consumption(
     // Impute has_fuel_consumption for both LCFS and FRS
     impute_has_fuel(dataset, &mut lcfs_data, &mut frs_feat)?;
 
-    // Build LCFS training features and targets
-    let train_features: Vec<Vec<f64>> = lcfs_data.iter().map(|hh| lcfs_features(hh)).collect();
-    let n = lcfs_data.len();
+    // Build LCFS training features and targets, subsampling to ~1500 rows
+    const MAX_TRAIN: usize = 1500;
+    let stride = (lcfs_data.len() / MAX_TRAIN).max(1);
+    let sampled: Vec<&LcfsHousehold> = lcfs_data.iter().step_by(stride).collect();
+    let train_features: Vec<Vec<f64>> = sampled.iter().map(|hh| lcfs_features(hh)).collect();
+    let n = sampled.len();
     let mut target_cols: Vec<Vec<f64>> = vec![Vec::with_capacity(n); CONSUMPTION_TARGETS.len()];
-    for hh in &lcfs_data {
+    for hh in &sampled {
         let vals = lcfs_target_values(hh);
         for (j, &v) in vals.iter().enumerate() {
             target_cols[j].push(v);

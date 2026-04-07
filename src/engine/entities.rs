@@ -27,6 +27,7 @@ pub struct Person {
     pub state_pension: f64,
     pub savings_interest_income: f64,
     pub dividend_income: f64,
+    pub capital_gains: f64,
     pub property_income: f64,
     pub maintenance_income: f64,
     pub miscellaneous_income: f64,
@@ -117,6 +118,7 @@ impl Default for Person {
             state_pension: 0.0,
             savings_interest_income: 0.0,
             dividend_income: 0.0,
+            capital_gains: 0.0,
             property_income: 0.0,
             maintenance_income: 0.0,
             miscellaneous_income: 0.0,
@@ -390,7 +392,7 @@ impl TenureType {
         }
     }
 
-    /// Integer code for RF feature encoding.
+    /// Integer code for RF feature encoding and clean CSV serialisation.
     pub fn to_rf_code(&self) -> f64 {
         match self {
             TenureType::OwnedOutright => 0.0,
@@ -399,6 +401,18 @@ impl TenureType {
             TenureType::RentFromHA => 3.0,
             TenureType::RentPrivately => 4.0,
             TenureType::Other => 5.0,
+        }
+    }
+
+    /// Deserialise from the clean CSV rf_code (inverse of to_rf_code).
+    pub fn from_rf_code(code: i32) -> Self {
+        match code {
+            0 => TenureType::OwnedOutright,
+            1 => TenureType::OwnedWithMortgage,
+            2 => TenureType::RentFromCouncil,
+            3 => TenureType::RentFromHA,
+            4 => TenureType::RentPrivately,
+            _ => TenureType::Other,
         }
     }
 

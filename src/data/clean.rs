@@ -30,7 +30,7 @@ fn write_persons(dataset: &Dataset, output_dir: &Path) -> anyhow::Result<()> {
         // Income (annual)
         "employment_income", "self_employment_income",
         "private_pension_income", "state_pension",
-        "savings_interest", "dividend_income",
+        "savings_interest", "dividend_income", "capital_gains",
         "property_income", "maintenance_income",
         "miscellaneous_income", "other_income",
         // Employment
@@ -80,6 +80,7 @@ fn write_persons(dataset: &Dataset, output_dir: &Path) -> anyhow::Result<()> {
             format!("{:.2}", p.state_pension),
             format!("{:.2}", p.savings_interest_income),
             format!("{:.2}", p.dividend_income),
+            format!("{:.2}", p.capital_gains),
             format!("{:.2}", p.property_income),
             format!("{:.2}", p.maintenance_income),
             format!("{:.2}", p.miscellaneous_income),
@@ -335,7 +336,7 @@ fn write_microdata_csv_persons<W: std::io::Write>(
         // Input incomes
         "employment_income", "self_employment_income",
         "private_pension_income", "state_pension",
-        "savings_interest", "dividend_income",
+        "savings_interest", "dividend_income", "capital_gains",
         "property_income", "maintenance_income",
         "miscellaneous_income", "other_income",
         // Employment
@@ -377,6 +378,7 @@ fn write_microdata_csv_persons<W: std::io::Write>(
             format!("{:.2}", p.state_pension),
             format!("{:.2}", p.savings_interest_income),
             format!("{:.2}", p.dividend_income),
+            format!("{:.2}", p.capital_gains),
             format!("{:.2}", p.property_income),
             format!("{:.2}", p.maintenance_income),
             format!("{:.2}", p.miscellaneous_income),
@@ -695,11 +697,6 @@ fn parse_f64(s: &str) -> f64 {
     s.parse::<f64>().unwrap_or(0.0)
 }
 
-/// Parse f64 from an optional column (returns 0.0 if absent or unparseable).
-fn parse_f64_opt(s: Option<&str>) -> f64 {
-    s.and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0)
-}
-
 fn parse_usize(s: &str) -> usize {
     s.parse::<usize>().unwrap_or(0)
 }
@@ -835,6 +832,7 @@ pub fn parse_persons_csv<R: std::io::Read>(reader: R) -> anyhow::Result<Vec<Pers
             state_pension: h.get_f64(&r, "state_pension"),
             savings_interest_income: h.get_f64(&r, "savings_interest"),
             dividend_income: h.get_f64(&r, "dividend_income"),
+            capital_gains: h.get_f64(&r, "capital_gains"),
             property_income: h.get_f64(&r, "property_income"),
             maintenance_income: h.get_f64(&r, "maintenance_income"),
             miscellaneous_income: h.get_f64(&r, "miscellaneous_income"),
@@ -969,7 +967,7 @@ pub fn parse_households_csv<R: std::io::Read>(reader: R) -> anyhow::Result<Vec<H
             council_tax: h.get_f64(&r, "council_tax_annual"),
             // Auxiliary
             num_bedrooms: h.get_usize(&r, "num_bedrooms") as u32,
-            tenure_type: TenureType::from_frs_code(h.get_i64(&r, "tenure_type") as i32),
+            tenure_type: TenureType::from_rf_code(h.get_i64(&r, "tenure_type") as i32),
             accommodation_type: AccommodationType::from_frs_code(h.get_i64(&r, "accommodation_type") as i32),
             // Wealth
             owned_land: h.get_f64(&r, "owned_land"),

@@ -313,7 +313,7 @@ impl Simulation {
 
             let total_tax = direct_tax + vat + fuel_duty + alcohol_duty + tobacco_duty
                 + cgt + stamp_duty + wealth_tax;
-            let net_income = net_income_before_vat - vat;
+            let net_income = net_income_before_vat - vat - wealth_tax - stamp_duty - cgt;
 
             // Modified OECD equivalisation scale (used by HBAI):
             // First adult: 0.67, additional adults (14+): 0.33, children (<14): 0.20

@@ -179,6 +179,9 @@ pub fn load_was(data_dir: &Path, fiscal_year: u32) -> anyhow::Result<Dataset> {
             council_tax,
             net_financial_wealth: financial_wealth,
             property_wealth,
+            // WAS records total property wealth but not main residence separately;
+            // use property_wealth as a proxy for stamp duty reform modelling.
+            main_residence_value: property_wealth,
             ..Household::default()
         });
     }
