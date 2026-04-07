@@ -181,6 +181,7 @@ const SKIP_PARAMS: &[&str] = &[
     "universal_credit.child_limit",
     // Consumption tax parameters: require LCFS consumption data (EFRS only),
     // no impact against plain FRS microdata
+    "vat",
     "fuel_duty",
     "alcohol_duty",
     "tobacco_duty",
@@ -196,6 +197,11 @@ const SKIP_PARAMS: &[&str] = &[
     // FRS clean extract populates very few non-zero values so impact is
     // below the £1 threshold
     "capital_gains_tax",
+    // Labour supply elasticities: behavioural response parameters that feed into
+    // a dynamic intensive-margin module (not yet wired into the static simulation).
+    // These configure how employment income adjusts to policy changes; they have
+    // no effect on a static run, by design.
+    "labour_supply",
 ];
 
 fn is_array_element(path: &str) -> bool {
@@ -326,4 +332,49 @@ fn test_all_parameters_have_impact() {
         }
         panic!("{}", msg);
     }
+}
+
+/// Verify that labour_supply params load with OBR defaults, round-trip through
+/// JSON serialisation, and can be overridden individually via the reform overlay.
+#[test]
+fn test_labour_supply_params() {
+    let params = Parameters::for_year(2025).unwrap();
+    let ls = &params.labour_supply;
+
+    // OBR defaults present
+    assert!(ls.enabled, "labour supply should be enabled by default");
+    assert!((ls.subst_married_women_child_3_4 - 0.439).abs() < 1e-6,
+        "highest substitution elasticity (married women, child 3-4) should be 0.439");
+    assert!((ls.income_married_women_child_0_2 - (-0.185)).abs() < 1e-6,
+        "strongest income elasticity should be -0.185");
+    assert!((ls.income_married_women_no_children - 0.0).abs() < 1e-6,
+        "married women no children income elasticity should be 0.0");
+
+    // Round-trip: serialise to JSON and back preserves values
+    let json = params.to_json();
+    let rt: Parameters = serde_json::from_str(&json).unwrap();
+    assert!((rt.labour_supply.subst_men_and_single_women - 0.15).abs() < 1e-6);
+    assert!((rt.labour_supply.income_men_and_single_women - (-0.05)).abs() < 1e-6);
+
+    // Overlay: disable labour supply
+    let reformed = params.apply_json_overlay(r#"{"labour_supply": {"enabled": false}}"#).unwrap();
+    assert!(!reformed.labour_supply.enabled, "should be disabled after overlay");
+    // Other elasticities unaffected
+    assert!((reformed.labour_supply.subst_lone_parents_child_0_4 - 0.094).abs() < 1e-6);
+
+    // Overlay: override a single elasticity
+    let reformed2 = params.apply_json_overlay(
+        r#"{"labour_supply": {"subst_men_and_single_women": 0.20}}"#
+    ).unwrap();
+    assert!((reformed2.labour_supply.subst_men_and_single_women - 0.20).abs() < 1e-6,
+        "override of subst_men_and_single_women should take effect");
+    // enabled should still be true
+    assert!(reformed2.labour_supply.enabled);
+    // other fields unchanged
+    assert!((reformed2.labour_supply.subst_married_women_child_3_4 - 0.439).abs() < 1e-6);
+
+    // All years load with correct defaults via serde (spot-check 2028)
+    let params_2028 = Parameters::for_year(2028).unwrap();
+    assert!(params_2028.labour_supply.enabled);
+    assert!((params_2028.labour_supply.subst_married_women_child_3_4 - 0.439).abs() < 1e-6);
 }

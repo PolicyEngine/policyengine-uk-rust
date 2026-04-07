@@ -79,6 +79,9 @@ pub struct HouseholdResult {
     pub net_income_ahc: f64,
     /// HBAI equivalised net income AHC
     pub equivalised_net_income_ahc: f64,
+    /// Extended net income: HBAI net income minus stamp duty and wealth tax.
+    /// Used for decile impacts and winners/losers so that SDLT/wealth tax reforms show up.
+    pub extended_net_income: f64,
 }
 
 /// Complete simulation result set
@@ -313,7 +316,12 @@ impl Simulation {
 
             let total_tax = direct_tax + vat + fuel_duty + alcohol_duty + tobacco_duty
                 + cgt + stamp_duty + wealth_tax;
-            let net_income = net_income_before_vat - vat - wealth_tax - stamp_duty - cgt;
+            // HBAI net income: gross minus direct taxes and pension contributions, plus benefits.
+            // Excludes indirect taxes (VAT, duties) and transaction/wealth taxes (SDLT, wealth tax)
+            // to match the government HBAI definition used for poverty and distributional analysis.
+            let net_income = net_income_before_vat;
+            // Extended net income: subtracts indirect and wealth taxes for fiscal analysis.
+            let extended_net_income = net_income_before_vat - vat - stamp_duty - wealth_tax;
 
             // Modified OECD equivalisation scale (used by HBAI):
             // First adult: 0.67, additional adults (14+): 0.33, children (<14): 0.20
@@ -330,7 +338,7 @@ impl Simulation {
                 0.67 + (adults.saturating_sub(1) as f64) * 0.33 + (children as f64) * 0.20
             };
 
-            // AHC: subtract rent and council tax (housing costs)
+            // AHC: subtract rent and council tax (housing costs), using HBAI net income
             let housing_costs = hh.rent + hh.council_tax;
             let net_income_ahc = net_income - housing_costs;
 
@@ -351,6 +359,7 @@ impl Simulation {
                 equivalised_net_income: net_income / eq_factor,
                 net_income_ahc,
                 equivalised_net_income_ahc: net_income_ahc / eq_factor,
+                extended_net_income,
             }
         }).collect();
         household_results = hr;
@@ -367,6 +376,173 @@ impl Simulation {
 mod tests {
     use super::*;
     use crate::engine::entities::{Person, BenUnit, Household, Region};
+    use crate::variables::labour_supply::apply_labour_supply_responses;
+
+    /// Build a minimal one-person, one-benunit, one-household dataset.
+    fn make_worker(income: f64, age: f64, gender: crate::engine::entities::Gender) -> (Vec<Person>, Vec<BenUnit>, Vec<Household>) {
+        let mut person = Person::default();
+        person.id = 0;
+        person.benunit_id = 0;
+        person.household_id = 0;
+        person.age = age;
+        person.gender = gender;
+        person.employment_income = income;
+        person.hours_worked = 37.5 * 52.0;
+        person.emp_status = 2; // full-time employee (FRS EMPSTATB=2)
+
+        let bu = BenUnit {
+            id: 0, household_id: 0, person_ids: vec![0],
+            ..BenUnit::default()
+        };
+        let hh = Household {
+            id: 0, benunit_ids: vec![0], person_ids: vec![0],
+            weight: 1.0, region: Region::London,
+            ..Household::default()
+        };
+        (vec![person], vec![bu], vec![hh])
+    }
+
+    /// A basic-rate income tax cut should raise the marginal net wage → positive
+    /// substitution effect → employment income increases.
+    #[test]
+    fn labour_supply_responds_to_income_tax_cut() {
+        let baseline_params = crate::parameters::Parameters::for_year(2025).unwrap();
+        let mut policy_params = baseline_params.clone();
+        // Cut basic rate from 20% to 15% — lowers marginal effective tax rate, raises net wage
+        policy_params.income_tax.uk_brackets[0].rate = 0.15;
+
+        let income = 30_000.0;
+        let (people, benunits, households) = make_worker(
+            income, 35.0, crate::engine::entities::Gender::Male,
+        );
+
+        // Baseline household net income
+        let baseline_sim = Simulation::new(
+            people.clone(), benunits.clone(), households.clone(),
+            baseline_params.clone(), 2025,
+        );
+        let baseline_results = baseline_sim.run();
+        let baseline_net: Vec<f64> = baseline_results.household_results.iter()
+            .map(|hr| hr.net_income).collect();
+
+        let adjusted_people = apply_labour_supply_responses(
+            &people, &benunits, &households,
+            &baseline_params, &policy_params,
+            &baseline_net, 2025,
+        );
+
+        let delta_e = adjusted_people[0].employment_income - people[0].employment_income;
+
+        // With a lower marginal rate, substitution effect is positive → more work
+        assert!(
+            delta_e > 0.0,
+            "Expected positive labour supply response to basic rate cut, got ΔE = {:.2}",
+            delta_e
+        );
+        // Should be small but meaningful: roughly 0.15 * 0.5% * 30k ≈ £22
+        // (0.05pp rate reduction × substitution elasticity 0.15)
+        assert!(
+            delta_e < income * 0.05,
+            "Labour supply response implausibly large: ΔE = {:.2} on income {:.2}",
+            delta_e, income
+        );
+    }
+
+    /// With labour_supply.enabled = false, employment income must be unchanged.
+    #[test]
+    fn labour_supply_disabled_is_static() {
+        let baseline_params = crate::parameters::Parameters::for_year(2025).unwrap();
+        let mut policy_params = baseline_params.clone();
+        policy_params.income_tax.uk_brackets[0].rate = 0.15;
+        policy_params.labour_supply.enabled = false;
+
+        let income = 30_000.0;
+        let (people, benunits, households) = make_worker(
+            income, 35.0, crate::engine::entities::Gender::Male,
+        );
+        let baseline_sim = Simulation::new(
+            people.clone(), benunits.clone(), households.clone(),
+            baseline_params.clone(), 2025,
+        );
+        let baseline_net: Vec<f64> = baseline_sim.run().household_results.iter()
+            .map(|hr| hr.net_income).collect();
+
+        let adjusted = apply_labour_supply_responses(
+            &people, &benunits, &households,
+            &baseline_params, &policy_params,
+            &baseline_net, 2025,
+        );
+
+        assert_eq!(
+            adjusted[0].employment_income, people[0].employment_income,
+            "Employment income should be unchanged when labour supply is disabled"
+        );
+    }
+
+    /// Married women with young children have a higher substitution elasticity
+    /// than single men — their employment income adjustment should be larger.
+    #[test]
+    fn married_women_young_children_higher_elasticity() {
+        use crate::engine::entities::Gender;
+
+        let baseline_params = crate::parameters::Parameters::for_year(2025).unwrap();
+        let mut policy_params = baseline_params.clone();
+        policy_params.income_tax.uk_brackets[0].rate = 0.15;
+
+        let income = 30_000.0;
+
+        // Married woman with a 3-year-old child (highest OBR elasticity: 0.439)
+        let (mut people_f, mut benunits_f, households_f) = make_worker(income, 35.0, Gender::Female);
+        // Add a partner to make it a couple
+        let mut partner = Person::default();
+        partner.id = 1; partner.benunit_id = 0; partner.household_id = 0;
+        partner.age = 36.0; partner.gender = Gender::Male;
+        partner.emp_status = 2; // full-time employee
+        // Add a young child
+        let mut child = Person::default();
+        child.id = 2; child.benunit_id = 0; child.household_id = 0;
+        child.age = 3.0;
+        people_f.push(partner); people_f.push(child);
+        benunits_f[0].person_ids = vec![0, 1, 2];
+        let hh_f = crate::engine::entities::Household {
+            id: 0, benunit_ids: vec![0], person_ids: vec![0, 1, 2],
+            weight: 1.0, region: Region::London,
+            ..crate::engine::entities::Household::default()
+        };
+
+        let baseline_sim_f = Simulation::new(
+            people_f.clone(), benunits_f.clone(), vec![hh_f.clone()],
+            baseline_params.clone(), 2025,
+        );
+        let baseline_net_f: Vec<f64> = baseline_sim_f.run().household_results.iter()
+            .map(|hr| hr.net_income).collect();
+
+        let adjusted_f = apply_labour_supply_responses(
+            &people_f, &benunits_f, &[hh_f],
+            &baseline_params, &policy_params, &baseline_net_f, 2025,
+        );
+        let delta_f = adjusted_f[0].employment_income - people_f[0].employment_income;
+
+        // Single man (elasticity 0.15)
+        let (people_m, benunits_m, households_m) = make_worker(income, 35.0, Gender::Male);
+        let baseline_sim_m = Simulation::new(
+            people_m.clone(), benunits_m.clone(), households_m.clone(),
+            baseline_params.clone(), 2025,
+        );
+        let baseline_net_m: Vec<f64> = baseline_sim_m.run().household_results.iter()
+            .map(|hr| hr.net_income).collect();
+        let adjusted_m = apply_labour_supply_responses(
+            &people_m, &benunits_m, &households_m,
+            &baseline_params, &policy_params, &baseline_net_m, 2025,
+        );
+        let delta_m = adjusted_m[0].employment_income - people_m[0].employment_income;
+
+        assert!(
+            delta_f > delta_m,
+            "Married woman (youngest child 3) ΔE ({:.2}) should exceed single man ΔE ({:.2})",
+            delta_f, delta_m
+        );
+    }
 
     fn make_hicbc_sim(income: f64, params: Parameters) -> Simulation {
         let mut adult = Person::default();
@@ -469,5 +645,85 @@ mod tests {
         assert!(hicbc > 0.0);
         // Income tax should include HICBC
         assert!(it > hicbc, "Income tax ({}) should be greater than HICBC ({}) alone", it, hicbc);
+    }
+
+    /// Integration test mirroring the canonical policyengine-uk PR #1296 example:
+    /// a 2pp NI employee rate cut (12% → 10%) applied to a basic-rate earner.
+    ///
+    /// Verifies the full pipeline: baseline → labour supply adjustment → reform run.
+    /// Checks:
+    ///   1. Labour supply response is positive (lower NI → higher retention → more work)
+    ///   2. Dynamic net income gain exceeds the static gain (behavioural response adds revenue)
+    ///   3. Disabled labour supply produces exactly the static result
+    #[test]
+    fn ni_cut_2pp_labour_supply_integration() {
+        let baseline_params = crate::parameters::Parameters::for_year(2025).unwrap();
+
+        // Reform: cut employee NI main rate by 2pp (8% → 6%), matching OBR NI example
+        let mut policy_params = baseline_params.clone();
+        policy_params.national_insurance.main_rate -= 0.02;
+
+        // Basic-rate male worker earning £35k — should see a positive substitution response
+        let (people, benunits, households) = make_worker(35_000.0, 40.0, crate::engine::entities::Gender::Male);
+
+        // Baseline static run
+        let baseline_sim = Simulation::new(
+            people.clone(), benunits.clone(), households.clone(),
+            baseline_params.clone(), 2025,
+        );
+        let baseline_results = baseline_sim.run();
+        let baseline_net = baseline_results.household_results[0].net_income;
+        let baseline_net_vec: Vec<f64> = baseline_results.household_results.iter()
+            .map(|hr| hr.net_income).collect();
+
+        // Static reform (no behavioural response)
+        let static_sim = Simulation::new(
+            people.clone(), benunits.clone(), households.clone(),
+            policy_params.clone(), 2025,
+        );
+        let static_results = static_sim.run();
+        let static_net = static_results.household_results[0].net_income;
+        let static_gain = static_net - baseline_net;
+
+        // Dynamic reform: adjust employment incomes first, then run
+        let adjusted_people = apply_labour_supply_responses(
+            &people, &benunits, &households,
+            &baseline_params, &policy_params,
+            &baseline_net_vec, 2025,
+        );
+        let delta_e = adjusted_people[0].employment_income - people[0].employment_income;
+
+        let dynamic_sim = Simulation::new_with_baseline_sp(
+            adjusted_people, benunits.clone(), households.clone(),
+            policy_params.clone(),
+            baseline_params.state_pension.old_basic_pension_weekly,
+            2025,
+        );
+        let dynamic_results = dynamic_sim.run();
+        let dynamic_net = dynamic_results.household_results[0].net_income;
+        let dynamic_gain = dynamic_net - baseline_net;
+
+        // 1. Static gain should be positive (NI cut raises take-home pay)
+        assert!(static_gain > 0.0,
+            "Static gain from NI cut should be positive, got {:.2}", static_gain);
+
+        // 2. Labour supply response should be positive for a basic-rate earner
+        assert!(delta_e > 0.0,
+            "Expected positive ΔE from NI cut, got {:.2}", delta_e);
+
+        // 3. Dynamic gain exceeds static gain (extra earnings partially offset revenue cost)
+        assert!(dynamic_gain > static_gain,
+            "Dynamic gain ({:.2}) should exceed static gain ({:.2})", dynamic_gain, static_gain);
+
+        // Disabled: dynamic result must match static exactly
+        let mut policy_static = policy_params.clone();
+        policy_static.labour_supply.enabled = false;
+        let adjusted_static = apply_labour_supply_responses(
+            &people, &benunits, &households,
+            &baseline_params, &policy_static,
+            &baseline_net_vec, 2025,
+        );
+        assert_eq!(adjusted_static[0].employment_income, people[0].employment_income,
+            "Disabled labour supply should not change employment income");
     }
 }

@@ -58,6 +58,7 @@ from policyengine_uk_compiled.models import (
     StampDutyParams,
     CapitalGainsTaxParams,
     WealthTaxParams,
+    LabourSupplyParams,
     Parameters,
 )
 from policyengine_uk_compiled.engine import (
@@ -101,5 +102,6 @@ __all__ = [
     "StampDutyParams",
     "CapitalGainsTaxParams",
     "WealthTaxParams",
+    "LabourSupplyParams",
     "Parameters",
 ]
