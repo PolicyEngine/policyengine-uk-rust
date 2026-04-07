@@ -40,10 +40,10 @@ use crate::parameters::{LabourSupplyParams, Parameters};
 const DELTA: f64 = 1_000.0;
 
 /// Whether a person is excluded from labour supply responses.
-/// Excludes self-employed, aged 60+, and zero employment income.
+/// Excludes self-employed (FRS EMPSTATB=1), aged 60+, and zero employment income.
 fn is_excluded(person: &Person) -> bool {
     person.age >= 60.0
-        || person.emp_status == 2
+        || person.emp_status == 1
         || person.employment_income <= 0.0
 }
 

@@ -379,7 +379,7 @@ mod tests {
         person.gender = gender;
         person.employment_income = income;
         person.hours_worked = 37.5 * 52.0;
-        person.emp_status = 1; // employed
+        person.emp_status = 2; // full-time employee (FRS EMPSTATB=2)
 
         let bu = BenUnit {
             id: 0, household_id: 0, person_ids: vec![0],
@@ -488,7 +488,7 @@ mod tests {
         let mut partner = Person::default();
         partner.id = 1; partner.benunit_id = 0; partner.household_id = 0;
         partner.age = 36.0; partner.gender = Gender::Male;
-        partner.emp_status = 1;
+        partner.emp_status = 2; // full-time employee
         // Add a young child
         let mut child = Person::default();
         child.id = 2; child.benunit_id = 0; child.household_id = 0;
