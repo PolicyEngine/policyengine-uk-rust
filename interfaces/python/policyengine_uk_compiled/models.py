@@ -277,8 +277,17 @@ class IncomeBreakdown(BaseModel):
 
 class ProgramBreakdown(BaseModel):
     income_tax: float
+    hicbc: float = 0.0
     employee_ni: float
     employer_ni: float
+    vat: float = 0.0
+    fuel_duty: float = 0.0
+    alcohol_duty: float = 0.0
+    tobacco_duty: float = 0.0
+    capital_gains_tax: float = 0.0
+    stamp_duty: float = 0.0
+    wealth_tax: float = 0.0
+    council_tax: float = 0.0
     universal_credit: float
     child_benefit: float
     state_pension: float
