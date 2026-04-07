@@ -114,6 +114,12 @@ Pre-built clean EFRS CSVs are on GCS at `gs://policyengine-uk-microdata/efrs/YYY
 
 Versions are managed via `pyproject.toml` (the source of truth) and towncrier-style changelog fragments in `changelog.d/`.
 
+After a new version is published to PyPI, trigger a redeploy of the chat app:
+
+```bash
+gh workflow run redeploy-on-package-update.yml --repo PolicyEngine/policyengine-uk-chat
+```
+
 - **Do not** edit `CHANGELOG.md` or `Cargo.toml` versions directly — they are updated automatically by CI.
 - To ship a change, drop a fragment file in `changelog.d/` with the naming convention `<slug>.<type>`:
 
