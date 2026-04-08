@@ -67,10 +67,12 @@ from policyengine_uk_compiled.engine import (
     BENUNIT_DEFAULTS,
     HOUSEHOLD_DEFAULTS,
 )
+from policyengine_uk_compiled.structural import StructuralReform
 from policyengine_uk_compiled.data import download_all, ensure_year, ensure_dataset, DATASETS
 
 __all__ = [
     "Simulation",
+    "StructuralReform",
     "PERSON_DEFAULTS",
     "BENUNIT_DEFAULTS",
     "HOUSEHOLD_DEFAULTS",
