@@ -50,50 +50,57 @@ def _query_table(
     return r.json()
 
 
+def _extract_total(result: dict) -> float | None:
+    """Extract the single value from a no-dimension stat-xplore query."""
+    cubes = result.get("cubes", {})
+    if not cubes:
+        return None
+    values = next(iter(cubes.values()))["values"]
+    # With no explicit dimensions, stat-xplore returns the latest month
+    # as a single-element list
+    if isinstance(values, list) and len(values) == 1:
+        return values[0]
+    return values if isinstance(values, (int, float)) else None
+
+
+def _extract_year(result: dict) -> int:
+    """Extract the year from the auto-selected date field."""
+    for field in result.get("fields", []):
+        for item in field.get("items", []):
+            for label in item.get("labels", []):
+                # Labels like "February 2026" or "Jan-26"
+                for part in str(label).replace("-", " ").split():
+                    if part.isdigit():
+                        y = int(part)
+                        return y if y > 100 else 2000 + y
+    return 2025
+
+
 def _fetch_uc_caseloads() -> list[dict]:
-    """UC caseloads by family type from stat-xplore."""
+    """Total UC claimants (people) from stat-xplore."""
     targets = []
     try:
         result = _query_table(
             database="str:database:UC_Monthly",
-            measures=["str:count:UC_Monthly:V_F_UC_HOUSEHOLD"],
-            dimensions=[
-                ["str:field:UC_Monthly:V_F_UC_HOUSEHOLD:FAMILY_TYPE"],
-                ["str:field:UC_Monthly:F_UC_DATE:DATE_NAME"],
-            ],
+            measures=["str:count:UC_Monthly:V_F_UC_CASELOAD_FULL"],
+            dimensions=[],
         )
-        # Extract the latest month's data
-        if "cubes" in result:
-            cubes = result["cubes"]
-            measure_key = list(cubes.keys())[0]
-            values = cubes[measure_key]["values"]
-            dims = result.get("fields", [])
-
-            # Get family type labels
-            family_types = []
-            if len(dims) >= 1:
-                family_types = [
-                    item.get("labels", [""])[0] if isinstance(item, dict) else str(item)
-                    for item in dims[0].get("items", [])
-                ]
-
-            # Sum across all dates (take latest available)
-            if values and family_types:
-                latest = [row[-1] if row else 0 for row in values]
-                total = sum(v for v in latest if v is not None)
-                targets.append(
-                    {
-                        "name": "dwp/uc_total_households",
-                        "variable": "universal_credit",
-                        "entity": "person",
-                        "aggregation": "count_nonzero",
-                        "filter": None,
-                        "value": float(total),
-                        "source": "dwp",
-                        "year": 2025,
-                        "holdout": False,
-                    }
-                )
+        total = _extract_total(result)
+        if total is not None:
+            year = _extract_year(result)
+            targets.append(
+                {
+                    "name": "dwp/uc_total_claimants",
+                    "variable": "universal_credit",
+                    "entity": "person",
+                    "aggregation": "count_nonzero",
+                    "filter": None,
+                    "value": float(total),
+                    "source": "dwp",
+                    "year": year,
+                    "holdout": False,
+                }
+            )
     except Exception as e:
         logger.warning("Failed to fetch UC caseloads from stat-xplore: %s", e)
 
@@ -101,37 +108,30 @@ def _fetch_uc_caseloads() -> list[dict]:
 
 
 def _fetch_pip_caseloads() -> list[dict]:
-    """PIP caseloads from stat-xplore."""
+    """Total PIP claimants from stat-xplore (post-2019 database)."""
     targets = []
     try:
         result = _query_table(
-            database="str:database:PIP_Monthly",
-            measures=["str:count:PIP_Monthly:V_F_PIP_MONTHLY"],
-            dimensions=[
-                ["str:field:PIP_Monthly:V_F_PIP_MONTHLY:AWARD_TYPE"],
-                ["str:field:PIP_Monthly:F_PIP_DATE:DATE_NAME"],
-            ],
+            database="str:database:PIP_Monthly_new",
+            measures=["str:count:PIP_Monthly_new:V_F_PIP_MONTHLY"],
+            dimensions=[],
         )
-        if "cubes" in result:
-            cubes = result["cubes"]
-            measure_key = list(cubes.keys())[0]
-            values = cubes[measure_key]["values"]
-            if values:
-                # Total PIP claimants (sum all award types, latest month)
-                total = sum(row[-1] for row in values if row and row[-1] is not None)
-                targets.append(
-                    {
-                        "name": "dwp/pip_total_claimants",
-                        "variable": "pip_daily_living",
-                        "entity": "person",
-                        "aggregation": "count_nonzero",
-                        "filter": None,
-                        "value": float(total),
-                        "source": "dwp",
-                        "year": 2025,
-                        "holdout": False,
-                    }
-                )
+        total = _extract_total(result)
+        if total is not None:
+            year = _extract_year(result)
+            targets.append(
+                {
+                    "name": "dwp/pip_total_claimants",
+                    "variable": "pip_daily_living",
+                    "entity": "person",
+                    "aggregation": "count_nonzero",
+                    "filter": None,
+                    "value": float(total),
+                    "source": "dwp",
+                    "year": year,
+                    "holdout": False,
+                }
+            )
     except Exception as e:
         logger.warning("Failed to fetch PIP caseloads from stat-xplore: %s", e)
 
