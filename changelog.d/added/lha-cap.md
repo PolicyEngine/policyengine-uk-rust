@@ -1,0 +1,1 @@
+Implement Local Housing Allowance cap for private renters on HB and UC: bedroom entitlement logic (UC Regs 2013 Sch.4), region×category monthly rate table derived from VOA rent data uprated to 2024/25, and a `private_rent_index` scalar for modelling LHA unfreeze or rate changes.

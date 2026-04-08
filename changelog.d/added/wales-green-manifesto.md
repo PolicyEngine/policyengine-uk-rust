@@ -1,0 +1,1 @@
+Add Wales-specific modelling infrastructure (devolved council tax Band D rates, LTT, `is_in_wales` flag, universal FSM by nation) and score the first two Wales Green Manifesto 2026 policies: council tax abolition in Wales (~£3.7bn/yr) and extending universal free school meals to secondary pupils.
