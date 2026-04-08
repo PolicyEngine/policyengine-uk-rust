@@ -3,6 +3,7 @@
 Sources (local xlsx files in data/obr/):
 - Receipts: efo-march-2026-detailed-forecast-tables-receipts.xlsx
 - Expenditure: efo-march-2026-detailed-forecast-tables-expenditure.xlsx
+- Economy: efo-march-2026-detailed-forecast-tables-economy.xlsx
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ OBR_DIR = REPO_ROOT / "data" / "obr"
 
 RECEIPTS_FILE = OBR_DIR / "efo-march-2026-detailed-forecast-tables-receipts.xlsx"
 EXPENDITURE_FILE = OBR_DIR / "efo-march-2026-detailed-forecast-tables-expenditure.xlsx"
+ECONOMY_FILE = OBR_DIR / "efo-march-2026-detailed-forecast-tables-economy.xlsx"
 
 # Sheet 3.8 (cash receipts): D=2024-25, E=2025-26, ..., J=2030-31
 _RECEIPTS_COL_TO_YEAR = {
@@ -316,6 +318,145 @@ def _parse_council_tax() -> list[dict]:
     return targets
 
 
+def _parse_fiscal_year(label: str) -> int | None:
+    """Parse '2025-26' → 2025, or '2025/26' → 2025."""
+    s = str(label).strip()
+    for sep in ["-", "/"]:
+        if sep in s:
+            parts = s.split(sep)
+            try:
+                return int(parts[0])
+            except ValueError:
+                return None
+    return None
+
+
+def _read_fiscal_year_rows(
+    ws, col_map: dict[str, str], max_row: int = 200
+) -> list[tuple[int, dict[str, float]]]:
+    """Scan column B for fiscal year labels (e.g. '2025-26') and read values.
+
+    col_map maps a descriptive key to a column letter, e.g. {"employment": "C"}.
+    Returns [(year, {key: value}), ...].
+    """
+    results = []
+    for row in range(4, max_row):
+        b = ws[f"B{row}"].value
+        if b is None:
+            continue
+        year = _parse_fiscal_year(b)
+        if year is None or year < 2020:
+            continue
+        vals = {}
+        for key, col in col_map.items():
+            v = ws[f"{col}{row}"].value
+            if v is not None and isinstance(v, (int, float)):
+                vals[key] = float(v)
+        if vals:
+            results.append((year, vals))
+    return results
+
+
+def _parse_economy() -> list[dict]:
+    """Parse economy tables for labour market and income aggregates."""
+    wb = openpyxl.load_workbook(ECONOMY_FILE, data_only=True)
+    targets = []
+
+    # ── 1.6 Labour market (fiscal year rows) ──
+    ws = wb["1.6"]
+    for year, vals in _read_fiscal_year_rows(
+        ws,
+        {
+            "employment": "C",  # Employment 16+, millions
+            "employees": "E",  # Employees 16+, millions
+            "unemployment": "F",  # ILO unemployment, millions
+            "total_hours": "J",  # Total hours worked, millions per week
+            "comp_employees": "M",  # Compensation of employees, £bn
+            "wages_salaries": "N",  # Wages and salaries, £bn
+            "employer_social": "O",  # Employer social contributions, £bn
+            "mixed_income": "P",  # Mixed income (self-employment), £bn
+        },
+    ):
+        # Employment count: people with employment_income > 0
+        if "employment" in vals:
+            targets.append(
+                {
+                    "name": f"obr/employment_count/{year}",
+                    "variable": "employment_income",
+                    "entity": "person",
+                    "aggregation": "count_nonzero",
+                    "filter": None,
+                    "value": vals["employment"] * 1e6,
+                    "source": "obr",
+                    "year": year,
+                    "holdout": False,
+                }
+            )
+
+        # Total wages and salaries: sum of employment_income
+        if "wages_salaries" in vals:
+            targets.append(
+                {
+                    "name": f"obr/wages_salaries/{year}",
+                    "variable": "employment_income",
+                    "entity": "person",
+                    "aggregation": "sum",
+                    "filter": None,
+                    "value": vals["wages_salaries"] * 1e9,
+                    "source": "obr",
+                    "year": year,
+                    "holdout": False,
+                }
+            )
+
+        # Employer social contributions — skipped: OBR figure includes pensions
+        # and other employer costs beyond NI. employer_ni already covered by
+        # NI receipts target.
+
+        # Mixed income ≈ total self-employment income
+        if "mixed_income" in vals:
+            targets.append(
+                {
+                    "name": f"obr/self_employment_income/{year}",
+                    "variable": "self_employment_income",
+                    "entity": "person",
+                    "aggregation": "sum",
+                    "filter": None,
+                    "value": vals["mixed_income"] * 1e9,
+                    "source": "obr",
+                    "year": year,
+                    "holdout": False,
+                }
+            )
+
+        # Self-employment count
+        if "mixed_income" in vals:
+            targets.append(
+                {
+                    "name": f"obr/self_employed_count/{year}",
+                    "variable": "self_employment_income",
+                    "entity": "person",
+                    "aggregation": "count_nonzero",
+                    "filter": None,
+                    "value": (vals["employment"] - vals.get("employees", 0)) * 1e6
+                    if "employment" in vals and "employees" in vals
+                    else 0,
+                    "source": "obr",
+                    "year": year,
+                    "holdout": True,
+                }
+            )
+
+        # Total hours worked — skipped: hours_worked not populated in EFRS.
+
+    # RHDI (1.12) excluded — OBR national accounts definition differs from
+    # HBAI net income (includes imputed rent, NPISH, etc.).
+    # Housing stock (1.16) excluded — overlaps with ONS total_households.
+
+    wb.close()
+    return targets
+
+
 def get_targets() -> list[dict]:
     targets = []
     if RECEIPTS_FILE.exists():
@@ -324,4 +465,6 @@ def get_targets() -> list[dict]:
     if EXPENDITURE_FILE.exists():
         targets.extend(_parse_welfare())
         targets.extend(_parse_council_tax())
+    if ECONOMY_FILE.exists():
+        targets.extend(_parse_economy())
     return targets
