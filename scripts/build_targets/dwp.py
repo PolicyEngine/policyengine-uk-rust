@@ -206,7 +206,7 @@ def _fetch_uc_breakdowns() -> list[dict]:
     """Fetch UC household breakdowns by family type, entitlement elements, etc."""
     targets = []
 
-    # UC households by family type
+    # UC households by family type — map to benunit_filter conditions
     try:
         result = _query_table(
             _UC_HH_DB,
@@ -218,6 +218,17 @@ def _fetch_uc_breakdowns() -> list[dict]:
             slug = label.lower().replace(",", "").replace(" ", "_")
             if "unknown" in slug or "missing" in slug:
                 continue
+            # Map family type labels to benunit filter conditions
+            bf = {}
+            if "single" in slug and "no_child" in slug:
+                bf = {"is_couple": False, "has_children": False}
+            elif "single" in slug and "child" in slug:
+                bf = {"is_couple": False, "has_children": True}
+            elif "couple" in slug and "no_child" in slug:
+                bf = {"is_couple": True, "has_children": False}
+            elif "couple" in slug and "child" in slug:
+                bf = {"is_couple": True, "has_children": True}
+
             targets.append(
                 {
                     "name": f"dwp/uc_households_{slug}",
@@ -225,10 +236,11 @@ def _fetch_uc_breakdowns() -> list[dict]:
                     "entity": "benunit",
                     "aggregation": "count_nonzero",
                     "filter": None,
+                    "benunit_filter": bf if bf else None,
                     "value": value,
                     "source": "dwp",
                     "year": year,
-                    "holdout": True,  # subgroup counts as holdout
+                    "holdout": True,
                 }
             )
     except Exception as e:
@@ -251,6 +263,7 @@ def _fetch_uc_breakdowns() -> list[dict]:
                         "entity": "benunit",
                         "aggregation": "count_nonzero",
                         "filter": None,
+                        "benunit_filter": {"has_children": True},
                         "value": value,
                         "source": "dwp",
                         "year": year,
@@ -270,18 +283,34 @@ def _fetch_uc_breakdowns() -> list[dict]:
         year = _extract_year(result)
         for label, value in _extract_breakdown(result):
             slug = label.lower().replace(" ", "_").replace("/", "_")
-            if slug in ("lcwra", "lcw"):
+            if slug == "lcwra":
                 targets.append(
                     {
-                        "name": f"dwp/uc_households_{slug}",
+                        "name": "dwp/uc_households_lcwra",
                         "variable": "universal_credit",
                         "entity": "benunit",
                         "aggregation": "count_nonzero",
                         "filter": None,
+                        "benunit_filter": {"has_lcwra": True},
                         "value": value,
                         "source": "dwp",
                         "year": year,
-                        "holdout": slug == "lcw",  # LCWRA is training, LCW is holdout
+                        "holdout": False,
+                    }
+                )
+            elif slug == "lcw":
+                targets.append(
+                    {
+                        "name": "dwp/uc_households_lcw",
+                        "variable": "universal_credit",
+                        "entity": "benunit",
+                        "aggregation": "count_nonzero",
+                        "filter": None,
+                        "benunit_filter": {"has_lcw": True},
+                        "value": value,
+                        "source": "dwp",
+                        "year": year,
+                        "holdout": True,
                     }
                 )
     except Exception as e:
@@ -304,6 +333,7 @@ def _fetch_uc_breakdowns() -> list[dict]:
                         "entity": "benunit",
                         "aggregation": "count_nonzero",
                         "filter": None,
+                        "benunit_filter": {"has_carer": True},
                         "value": value,
                         "source": "dwp",
                         "year": year,
@@ -330,6 +360,7 @@ def _fetch_uc_breakdowns() -> list[dict]:
                         "entity": "benunit",
                         "aggregation": "count_nonzero",
                         "filter": None,
+                        "benunit_filter": {"has_housing": True},
                         "value": value,
                         "source": "dwp",
                         "year": year,

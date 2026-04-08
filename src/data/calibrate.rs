@@ -35,6 +35,9 @@ pub struct CalibrationTarget {
     pub aggregation: String,
     #[serde(default)]
     pub filter: Option<TargetFilter>,
+    /// Benunit-level property filter (e.g. is_couple, has_children).
+    #[serde(default)]
+    pub benunit_filter: Option<BenunitFilter>,
     pub value: f64,
     pub source: String,
     pub year: u32,
@@ -47,6 +50,30 @@ pub struct TargetFilter {
     pub variable: String,
     pub min: f64,
     pub max: f64,
+}
+
+/// Filter on benunit-level computed properties (checked via entity methods).
+/// All specified conditions must be true (AND logic).
+#[derive(Debug, Deserialize, Clone)]
+pub struct BenunitFilter {
+    /// true = couple, false = single
+    #[serde(default)]
+    pub is_couple: Option<bool>,
+    /// true = has children, false = no children
+    #[serde(default)]
+    pub has_children: Option<bool>,
+    /// true = at least one person in benunit is a carer
+    #[serde(default)]
+    pub has_carer: Option<bool>,
+    /// true = at least one person has esa_group == 1 (support/LCWRA)
+    #[serde(default)]
+    pub has_lcwra: Option<bool>,
+    /// true = at least one person has esa_group == 2 (WRAG/LCW)
+    #[serde(default)]
+    pub has_lcw: Option<bool>,
+    /// true = benunit has rent > 0 (housing entitlement proxy)
+    #[serde(default)]
+    pub has_housing: Option<bool>,
 }
 
 // ── Load targets ───────────────────────────────────────────────────────────
@@ -119,6 +146,7 @@ fn person_result_variable(
         "income_tax" => Some(pr.income_tax),
         "national_insurance" | "employee_ni" => Some(pr.national_insurance),
         "employer_ni" => Some(pr.employer_ni),
+        "total_ni" => Some(pr.national_insurance + pr.employer_ni),
         "sim_total_income" => Some(pr.total_income),
         "taxable_income" => Some(pr.taxable_income),
         "personal_allowance" => Some(pr.personal_allowance),
@@ -199,6 +227,50 @@ fn household_result_variable(
     }
 }
 
+/// Check whether a benunit passes all conditions in a BenunitFilter.
+fn benunit_passes_filter(
+    bu: &crate::engine::entities::BenUnit,
+    people: &[crate::engine::entities::Person],
+    filter: &BenunitFilter,
+) -> bool {
+    if let Some(want_couple) = filter.is_couple {
+        if bu.is_couple(people) != want_couple {
+            return false;
+        }
+    }
+    if let Some(want_children) = filter.has_children {
+        let has = bu.num_children(people) > 0;
+        if has != want_children {
+            return false;
+        }
+    }
+    if let Some(want_carer) = filter.has_carer {
+        let has = bu.person_ids.iter().any(|&pid| people[pid].is_carer);
+        if has != want_carer {
+            return false;
+        }
+    }
+    if let Some(want_lcwra) = filter.has_lcwra {
+        let has = bu.person_ids.iter().any(|&pid| people[pid].esa_group == 1);
+        if has != want_lcwra {
+            return false;
+        }
+    }
+    if let Some(want_lcw) = filter.has_lcw {
+        let has = bu.person_ids.iter().any(|&pid| people[pid].esa_group == 2);
+        if has != want_lcw {
+            return false;
+        }
+    }
+    if let Some(want_housing) = filter.has_housing {
+        let has = bu.rent_monthly > 0.0;
+        if has != want_housing {
+            return false;
+        }
+    }
+    true
+}
+
 // ── Matrix building ────────────────────────────────────────────────────────
 
 /// Build the calibration matrix M[i][j] and target vector y[j].
@@ -263,6 +335,13 @@ pub fn build_matrix(
                     let mut contribution = 0.0f64;
                     for &bu_id in &hh.benunit_ids {
                         let bu = &dataset.benunits[bu_id];
+
+                        // Apply benunit-level property filter if present
+                        if let Some(ref bf) = target.benunit_filter {
+                            if !benunit_passes_filter(bu, &dataset.people, bf) {
+                                continue;
+                            }
+                        }
 
                         // For benunit variables, check simulation results first
                         let bu_val = if let Some(results) = sim_results {

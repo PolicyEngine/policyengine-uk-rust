@@ -42,62 +42,69 @@ _REGIONAL_POPULATION = {
 
 
 def get_targets() -> list[dict]:
+    """Generate ONS demographic targets for all calibration years.
+
+    Population changes slowly year-to-year, so we emit the same targets for
+    each year in the calibration range. This ensures they bind regardless of
+    which --year is passed to calibration.
+    """
     targets = []
 
-    # Age group population counts
-    for group, count in _POPULATION.items():
-        if group == "total":
-            continue
-        # Map to a filter on the age variable
-        if group == "children_0_15":
-            age_filter = {"variable": "age", "min": 0, "max": 16}
-        elif group == "working_age_16_64":
-            age_filter = {"variable": "age", "min": 16, "max": 65}
-        else:  # pensioners
-            age_filter = {"variable": "age", "min": 65, "max": 200}
+    # Emit for all plausible calibration years
+    for year in range(2024, 2031):
+        # Age group population counts
+        for group, count in _POPULATION.items():
+            if group == "total":
+                continue
+            if group == "children_0_15":
+                age_filter = {"variable": "age", "min": 0, "max": 16}
+            elif group == "working_age_16_64":
+                age_filter = {"variable": "age", "min": 16, "max": 65}
+            else:  # pensioners
+                age_filter = {"variable": "age", "min": 65, "max": 200}
 
+            targets.append(
+                {
+                    "name": f"ons/population_{group}/{year}",
+                    "variable": "age",
+                    "entity": "person",
+                    "aggregation": "count",
+                    "filter": age_filter,
+                    "value": float(count),
+                    "source": "ons",
+                    "year": year,
+                    "holdout": False,
+                }
+            )
+
+        # Total population
         targets.append(
             {
-                "name": f"ons/population_{group}",
+                "name": f"ons/total_population/{year}",
                 "variable": "age",
                 "entity": "person",
                 "aggregation": "count",
-                "filter": age_filter,
-                "value": float(count),
+                "filter": None,
+                "value": float(_POPULATION["total"]),
                 "source": "ons",
-                "year": 2023,
+                "year": year,
                 "holdout": False,
             }
         )
 
-    # Total population
-    targets.append(
-        {
-            "name": "ons/total_population",
-            "variable": "age",
-            "entity": "person",
-            "aggregation": "count",
-            "filter": None,
-            "value": float(_POPULATION["total"]),
-            "source": "ons",
-            "year": 2023,
-            "holdout": False,
-        }
-    )
-
-    # Total households
-    targets.append(
-        {
-            "name": "ons/total_households",
-            "variable": "household_id",
-            "entity": "household",
-            "aggregation": "count",
-            "filter": None,
-            "value": float(_TOTAL_HOUSEHOLDS),
-            "source": "ons",
-            "year": 2023,
-            "holdout": False,
-        }
-    )
+        # Total households
+        targets.append(
+            {
+                "name": f"ons/total_households/{year}",
+                "variable": "household_id",
+                "entity": "household",
+                "aggregation": "count",
+                "filter": None,
+                "value": float(_TOTAL_HOUSEHOLDS),
+                "source": "ons",
+                "year": year,
+                "holdout": False,
+            }
+        )
 
     return targets

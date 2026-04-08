@@ -94,10 +94,10 @@ def _parse_receipts() -> list[dict]:
         (
             "National insurance contributions",
             "obr/ni_receipts",
-            "national_insurance",
+            "total_ni",
             "person",
             "sum",
-            "Simulated employee NI",
+            "Simulated employee + employer NI",
         ),
         (
             "Value added tax",
