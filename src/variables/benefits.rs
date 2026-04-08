@@ -42,7 +42,7 @@ pub fn calculate_benunit(
     let (uc, pension_credit, housing_benefit, ctc, wtc, income_support, esa_ir, jsa_ib, scp);
     if on_uc_system {
         let would_claim = bu.would_claim_uc || migrated_hb || migrated_tc || migrated_is;
-        let raw_uc = calculate_universal_credit(bu, people, person_results, params);
+        let raw_uc = calculate_universal_credit(bu, people, person_results, household, params);
         uc = if would_claim { raw_uc } else { (0.0, raw_uc.1, raw_uc.2) };
         pension_credit = calculate_pension_credit(bu, people, params);
         housing_benefit = 0.0;
@@ -56,7 +56,7 @@ pub fn calculate_benunit(
         // Not yet migrated: still on legacy system
         uc = (0.0, 0.0, 0.0);
         pension_credit = calculate_pension_credit(bu, people, params);
-        let raw_hb = calculate_housing_benefit(bu, people, person_results, params);
+        let raw_hb = calculate_housing_benefit(bu, people, person_results, household, params);
         housing_benefit = if raw_hb > 0.0 && bu.would_claim_hb { raw_hb } else { 0.0 };
         let tc = calculate_tax_credits(bu, people, person_results, params);
         ctc = if tc.0 > 0.0 && bu.would_claim_ctc { tc.0 } else { 0.0 };
@@ -168,6 +168,7 @@ fn calculate_universal_credit(
     bu: &BenUnit,
     people: &[Person],
     person_results: &[PersonResult],
+    household: &Household,
     params: &Parameters,
 ) -> (f64, f64, f64) {
     // Basic eligibility: at least one working-age adult (not SP age)
@@ -234,8 +235,16 @@ fn calculate_universal_credit(
         .any(|&pid| people[pid].is_carer);
     let carer_monthly = if has_carer { uc.carer_element } else { 0.0 };
 
-    // Housing element
-    let housing_element_monthly = bu.rent_monthly;
+    // Housing element — UC Regs 2013 reg.25/Sch.4.
+    // For private renters, capped at the LHA rate for the household's region and bedroom
+    // entitlement (30th percentile of local rents; SI 2010/2591 / HB Regs 2006 reg.13D).
+    // Social renters are not subject to LHA — the bedroom tax (reg.B13) applies separately
+    // but is not modelled here.
+    let housing_element_monthly = if let Some(cap) = lha_monthly_cap(bu, people, household, params) {
+        bu.rent_monthly.min(cap)
+    } else {
+        bu.rent_monthly
+    };
 
     let max_amount_monthly = standard_allowance_monthly
         + child_element_monthly
@@ -412,6 +421,88 @@ fn calculate_pension_credit(bu: &BenUnit, people: &[Person], params: &Parameters
     amount
 }
 
+/// Calculate LHA bedroom entitlement for a benefit unit.
+///
+/// Implements UC Regs 2013 Sch.4 / HB Regs 2006 Sch.B1.
+/// Rules:
+///   - 1 room for the benefit unit adults (single or couple)
+///   - 1 room per non-dependant over 16 living in the same household but outside the benunit
+///   - Children under 16 must share unless same-gender sharing is impossible:
+///     * Children 10–15 share in same-gender pairs first
+///     * Spaces left by an odd-numbered gender group can be filled by under-10s
+///     * Remaining under-10s share in mixed pairs
+///
+/// Returns bedroom entitlement (1–4+; 0 = shared accommodation for single under threshold).
+/// The shared accommodation rate (0) is not applied here — callers handle it separately.
+pub fn lha_bedroom_entitlement(bu: &BenUnit, people: &[Person], household: &Household) -> u32 {
+    // Non-dependants: household members aged 16+ not in this benefit unit
+    let non_dependants = household.person_ids.iter()
+        .filter(|&&pid| {
+            people[pid].age >= 16.0 && people[pid].benunit_id != bu.id
+        })
+        .count() as u32;
+
+    // Children: under-16s in this benefit unit
+    let boys_over_10: u32 = bu.person_ids.iter()
+        .filter(|&&pid| {
+            let p = &people[pid];
+            p.age >= 10.0 && p.age < 16.0 && p.gender == Gender::Male
+        })
+        .count() as u32;
+    let girls_over_10: u32 = bu.person_ids.iter()
+        .filter(|&&pid| {
+            let p = &people[pid];
+            p.age >= 10.0 && p.age < 16.0 && p.gender == Gender::Female
+        })
+        .count() as u32;
+    let boys_under_10: u32 = bu.person_ids.iter()
+        .filter(|&&pid| {
+            let p = &people[pid];
+            p.age < 10.0 && p.gender == Gender::Male
+        })
+        .count() as u32;
+    let girls_under_10: u32 = bu.person_ids.iter()
+        .filter(|&&pid| {
+            let p = &people[pid];
+            p.age < 10.0 && p.gender == Gender::Female
+        })
+        .count() as u32;
+
+    // Over-10s share in same-gender pairs
+    let over_10_rooms = (boys_over_10 + 1) / 2 + (girls_over_10 + 1) / 2;
+
+    // Spaces available in over-10 rooms for under-10s of the same gender
+    let space_for_boy_under_10 = boys_over_10 % 2;
+    let space_for_girl_under_10 = girls_over_10 % 2;
+
+    let leftover_boys = boys_under_10.saturating_sub(space_for_boy_under_10);
+    let leftover_girls = girls_under_10.saturating_sub(space_for_girl_under_10);
+
+    // Remaining under-10s share in pairs (mixed is allowed for under-10s)
+    let under_10_rooms = (leftover_boys + leftover_girls + 1) / 2;
+
+    let bedrooms = 1 + non_dependants + over_10_rooms + under_10_rooms;
+    bedrooms.min(4) // Cap at 4 (Category E covers 4+)
+}
+
+/// Return the monthly LHA cap for a benefit unit, or None if LHA doesn't apply.
+///
+/// LHA applies only to private renters (TenureType::RentPrivately).
+/// Social renters (council / HA) and owner-occupiers are not subject to LHA caps.
+fn lha_monthly_cap(
+    bu: &BenUnit,
+    people: &[Person],
+    household: &Household,
+    params: &Parameters,
+) -> Option<f64> {
+    let lha = params.lha.as_ref()?;
+    if !lha.enabled { return None; }
+    if household.tenure_type != TenureType::RentPrivately { return None; }
+    let bedrooms = lha_bedroom_entitlement(bu, people, household);
+    let region_idx = household.region.to_lha_region_idx();
+    lha.monthly_cap(region_idx, bedrooms)
+}
+
 /// Housing Benefit (legacy system).
 ///
 /// HB = max(0, eligible_rent - max(0, (income - applicable_amount) * 65%))
@@ -421,6 +512,7 @@ fn calculate_housing_benefit(
     bu: &BenUnit,
     people: &[Person],
     _person_results: &[PersonResult],
+    household: &Household,
     params: &Parameters,
 ) -> f64 {
     let hb_params = match &params.housing_benefit {
@@ -428,7 +520,15 @@ fn calculate_housing_benefit(
         None => return 0.0,
     };
 
-    let eligible_rent = bu.rent_monthly * 12.0;
+    // For private renters, eligible rent is capped at the LHA rate for the household's
+    // region and bedroom entitlement (HB Regs 2006 reg.13D; 30th percentile from SI 2010/2591).
+    // For social renters and owner-occupiers, full rent is used (no LHA cap).
+    let rent_monthly_capped = if let Some(cap) = lha_monthly_cap(bu, people, household, params) {
+        bu.rent_monthly.min(cap)
+    } else {
+        bu.rent_monthly
+    };
+    let eligible_rent = rent_monthly_capped * 12.0;
     if eligible_rent <= 0.0 {
         return 0.0;
     }
@@ -1910,5 +2010,124 @@ mod parameter_impact_tests {
         params.uc_migration.income_support = 0.65; // migrated to UC
         let reformed = calc(&params, &[p], &bu, &hh);
         assert!(reformed.universal_credit > 0.0, "IS claimant past migration threshold should switch to UC");
+    }
+
+    // ── LHA bedroom entitlement tests ────────────────────────────────────────
+
+    #[test]
+    fn lha_bedroom_single_adult() {
+        // Single adult, no children → 1 bedroom (Category B)
+        let p = Person::default();
+        let bu = BenUnit { id: 0, household_id: 0, person_ids: vec![0], ..BenUnit::default() };
+        let hh = Household { id: 0, benunit_ids: vec![0], person_ids: vec![0], ..Household::default() };
+        assert_eq!(lha_bedroom_entitlement(&bu, &[p], &hh), 1);
+    }
+
+    #[test]
+    fn lha_bedroom_couple_no_children() {
+        // Couple, no children → 1 bedroom
+        let mut p1 = Person::default(); p1.id = 0; p1.age = 30.0;
+        let mut p2 = Person::default(); p2.id = 1; p2.age = 28.0;
+        let bu = BenUnit { id: 0, household_id: 0, person_ids: vec![0, 1], ..BenUnit::default() };
+        let hh = Household { id: 0, benunit_ids: vec![0], person_ids: vec![0, 1], ..Household::default() };
+        assert_eq!(lha_bedroom_entitlement(&bu, &[p1, p2], &hh), 1);
+    }
+
+    #[test]
+    fn lha_bedroom_two_same_sex_children_under_10() {
+        // Single adult + 2 boys under 10 → 1 (adults) + 1 (2 boys share) = 2 bedrooms
+        let mut p = Person::default(); p.id = 0; p.age = 30.0;
+        let mut c1 = Person::default(); c1.id = 1; c1.age = 7.0; c1.gender = Gender::Male;
+        let mut c2 = Person::default(); c2.id = 2; c2.age = 5.0; c2.gender = Gender::Male;
+        let bu = BenUnit { id: 0, household_id: 0, person_ids: vec![0, 1, 2], ..BenUnit::default() };
+        let hh = Household { id: 0, benunit_ids: vec![0], person_ids: vec![0, 1, 2], ..Household::default() };
+        assert_eq!(lha_bedroom_entitlement(&bu, &[p, c1, c2], &hh), 2);
+    }
+
+    #[test]
+    fn lha_bedroom_boy_over_10_and_girl_over_10() {
+        // Single adult + boy 12 + girl 13 → can't share (opposite sex, both over 10)
+        // → 1 (adult) + 1 (boy) + 1 (girl) = 3 bedrooms
+        let mut p = Person::default(); p.id = 0; p.age = 35.0;
+        let mut c1 = Person::default(); c1.id = 1; c1.age = 12.0; c1.gender = Gender::Male;
+        let mut c2 = Person::default(); c2.id = 2; c2.age = 13.0; c2.gender = Gender::Female;
+        let bu = BenUnit { id: 0, household_id: 0, person_ids: vec![0, 1, 2], ..BenUnit::default() };
+        let hh = Household { id: 0, benunit_ids: vec![0], person_ids: vec![0, 1, 2], ..Household::default() };
+        assert_eq!(lha_bedroom_entitlement(&bu, &[p, c1, c2], &hh), 3);
+    }
+
+    #[test]
+    fn lha_cap_applied_for_private_renter() {
+        // Private renter with rent above LHA cap should have UC housing element capped.
+        let mut params = Parameters::for_year(2025).unwrap();
+        let mut p = Person::default(); p.age = 30.0; p.employment_income = 0.0;
+
+        // London 1-bed LHA cap = £1,200.81/month. Set rent to £2,000/month.
+        let bu = BenUnit {
+            id: 0, household_id: 0, person_ids: vec![0],
+            migration_seed: 0.0, on_uc: true,
+            rent_monthly: 2000.0, would_claim_uc: true,
+            ..BenUnit::default()
+        };
+        let hh = Household {
+            id: 0, benunit_ids: vec![0], person_ids: vec![0],
+            weight: 1.0, region: Region::London,
+            tenure_type: TenureType::RentPrivately,
+            rent: 24000.0, council_tax: 0.0,
+            ..Household::default()
+        };
+        let pr: Vec<PersonResult> = vec![crate::variables::income_tax::calculate(&p, &params, 0.0)];
+        let result = calculate_benunit(&bu, &[p.clone()], &pr, &hh, &params, 0.0, 2025);
+
+        // UC housing element should be capped at 1-bed London LHA rate (£1,200.81/month)
+        // uc_max_amount includes all elements; housing element monthly = 1200.81, annual = 14409.72
+        // Full rent would give housing element of 2000*12 = 24000. Check it's below that.
+        assert!(
+            result.uc_max_amount < 2000.0 * 12.0 + 6000.0, // less than full rent + standard allowance
+            "UC max amount should be capped by LHA, not at full rent: {}",
+            result.uc_max_amount
+        );
+
+        // Without LHA (social housing tenure), full rent used
+        let hh_social = Household {
+            tenure_type: TenureType::RentFromCouncil,
+            ..hh.clone()
+        };
+        let result_social = calculate_benunit(&bu, &[p], &pr, &hh_social, &params, 0.0, 2025);
+        assert!(
+            result_social.uc_max_amount > result.uc_max_amount,
+            "Social renter should get higher UC housing element (no LHA cap) vs private renter above cap"
+        );
+    }
+
+    #[test]
+    fn lha_hb_capped_for_private_renter() {
+        // HB legacy: private renter with rent above LHA should be capped.
+        let params = Parameters::for_year(2025).unwrap();
+        let mut p = Person::default(); p.age = 35.0; p.employment_income = 0.0;
+
+        let bu = BenUnit {
+            id: 0, household_id: 0, person_ids: vec![0],
+            migration_seed: 0.99, on_legacy: true,
+            rent_monthly: 2500.0, would_claim_hb: true,
+            ..BenUnit::default()
+        };
+        let hh_private = Household {
+            id: 0, benunit_ids: vec![0], person_ids: vec![0],
+            weight: 1.0, region: Region::London,
+            tenure_type: TenureType::RentPrivately,
+            rent: 30000.0, council_tax: 0.0,
+            ..Household::default()
+        };
+        let hh_social = Household { tenure_type: TenureType::RentFromCouncil, ..hh_private.clone() };
+
+        let pr: Vec<PersonResult> = vec![crate::variables::income_tax::calculate(&p, &params, 0.0)];
+        let hb_private = calculate_benunit(&bu, &[p.clone()], &pr, &hh_private, &params, 0.0, 2025).housing_benefit;
+        let hb_social  = calculate_benunit(&bu, &[p], &pr, &hh_social,  &params, 0.0, 2025).housing_benefit;
+
+        assert!(hb_private > 0.0, "Private renter should still get some HB");
+        assert!(hb_social > hb_private, "Social renter (no cap) should get more HB than private renter above cap");
+        // HB for private renter at £2500/month rent in London should be capped at 1-bed LHA £1200.81/month
+        assert!(hb_private <= 1200.81 * 12.0 + 1.0, "HB should not exceed LHA cap for private renter");
     }
 }
