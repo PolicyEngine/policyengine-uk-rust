@@ -1,8 +1,8 @@
 """Fetch DWP benefit statistics from the Stat-Xplore API.
 
-Queries UC caseloads by family type and region, PIP claimants, and
-benefit cap statistics. Results are cached locally to avoid repeated
-API calls.
+Queries caseloads for UC (with subgroup breakdowns), PIP, pension credit,
+carer's allowance, attendance allowance, state pension, ESA, and DLA.
+Results are cached locally to avoid repeated API calls.
 
 Requires STAT_XPLORE_API_KEY environment variable to be set.
 See: https://stat-xplore.dwp.gov.uk/webapi/online-help/Open-Data-API.html
@@ -35,7 +35,6 @@ def _query_table(
     database: str,
     measures: list[str],
     dimensions: list[list[str]],
-    recodes: dict | None = None,
 ) -> dict:
     """Send a table query to stat-xplore and return the JSON response."""
     payload: dict = {
@@ -43,24 +42,9 @@ def _query_table(
         "measures": measures,
         "dimensions": dimensions,
     }
-    if recodes:
-        payload["recodes"] = recodes
     r = requests.post(f"{API_BASE}/table", headers=_headers(), json=payload, timeout=30)
     r.raise_for_status()
     return r.json()
-
-
-def _extract_total(result: dict) -> float | None:
-    """Extract the single value from a no-dimension stat-xplore query."""
-    cubes = result.get("cubes", {})
-    if not cubes:
-        return None
-    values = next(iter(cubes.values()))["values"]
-    # With no explicit dimensions, stat-xplore returns the latest month
-    # as a single-element list
-    if isinstance(values, list) and len(values) == 1:
-        return values[0]
-    return values if isinstance(values, (int, float)) else None
 
 
 def _extract_year(result: dict) -> int:
@@ -68,7 +52,6 @@ def _extract_year(result: dict) -> int:
     for field in result.get("fields", []):
         for item in field.get("items", []):
             for label in item.get("labels", []):
-                # Labels like "February 2026" or "Jan-26"
                 for part in str(label).replace("-", " ").split():
                     if part.isdigit():
                         y = int(part)
@@ -76,70 +59,290 @@ def _extract_year(result: dict) -> int:
     return 2025
 
 
-def _fetch_uc_caseloads() -> list[dict]:
-    """Total UC claimants (people) from stat-xplore."""
-    targets = []
-    try:
-        result = _query_table(
-            database="str:database:UC_Monthly",
-            measures=["str:count:UC_Monthly:V_F_UC_CASELOAD_FULL"],
-            dimensions=[],
-        )
-        total = _extract_total(result)
-        if total is not None:
-            year = _extract_year(result)
-            targets.append(
-                {
-                    "name": "dwp/uc_total_claimants",
-                    "variable": "universal_credit",
-                    "entity": "person",
-                    "aggregation": "count_nonzero",
-                    "filter": None,
-                    "value": float(total),
-                    "source": "dwp",
-                    "year": year,
-                    "holdout": False,
-                }
-            )
-    except Exception as e:
-        logger.warning("Failed to fetch UC caseloads from stat-xplore: %s", e)
+def _extract_total(result: dict) -> float | None:
+    """Extract the single value from a no-dimension query."""
+    cubes = result.get("cubes", {})
+    if not cubes:
+        return None
+    values = next(iter(cubes.values()))["values"]
+    # Unwrap nested lists (stat-xplore wraps in [date][value])
+    while isinstance(values, list) and len(values) == 1:
+        values = values[0]
+    return values if isinstance(values, (int, float)) else None
 
+
+def _extract_breakdown(result: dict) -> list[tuple[str, float]]:
+    """Extract label/value pairs from a single-dimension query.
+
+    Stat-xplore auto-adds the date dimension, so the response has two fields:
+    date (1 item = latest month) and the requested dimension (N items).
+    Values are shaped [1][N].
+    """
+    fields = result.get("fields", [])
+    cubes = result.get("cubes", {})
+    if not cubes:
+        return []
+    vals = next(iter(cubes.values()))["values"]
+
+    # Find the non-date dimension
+    dim_field = None
+    for f in fields:
+        if "month" not in f["label"].lower() and "date" not in f["label"].lower():
+            dim_field = f
+            break
+    if dim_field is None:
+        return []
+
+    items = dim_field["items"]
+    # Values are [date_idx][dim_idx] — take last date row
+    row = vals[-1] if isinstance(vals[0], list) else vals
+    pairs = []
+    for i, item in enumerate(items):
+        v = row[i] if isinstance(row, list) else row
+        if v is not None and v > 0:
+            pairs.append((item["labels"][0], float(v)))
+    return pairs
+
+
+# ── Simple total caseload queries ──────────────────────────────────────────
+
+
+# (database, measure, target_name, survey_variable, entity)
+_SIMPLE_BENEFITS = [
+    (
+        "str:database:UC_Monthly",
+        "str:count:UC_Monthly:V_F_UC_CASELOAD_FULL",
+        "dwp/uc_total_claimants",
+        "universal_credit",
+        "person",
+    ),
+    (
+        "str:database:PIP_Monthly_new",
+        "str:count:PIP_Monthly_new:V_F_PIP_MONTHLY",
+        "dwp/pip_total_claimants",
+        "pip_daily_living",
+        "person",
+    ),
+    (
+        "str:database:PC_New",
+        "str:count:PC_New:V_F_PC_CASELOAD_New",
+        "dwp/pension_credit_claimants",
+        "pension_credit",
+        "person",
+    ),
+    (
+        "str:database:CA_In_Payment_New",
+        "str:count:CA_In_Payment_New:V_F_CA_In_Payment_New",
+        "dwp/carers_allowance_claimants",
+        "carers_allowance",
+        "person",
+    ),
+    (
+        "str:database:AA_In_Payment_New",
+        "str:count:AA_In_Payment_New:V_F_AA_In_Payment_New",
+        "dwp/attendance_allowance_claimants",
+        "attendance_allowance",
+        "person",
+    ),
+    (
+        "str:database:SP_New",
+        "str:count:SP_New:V_F_SP_CASELOAD_New",
+        "dwp/state_pension_claimants",
+        "state_pension",
+        "person",
+    ),
+    (
+        "str:database:ESA_Caseload_new",
+        "str:count:ESA_Caseload_new:V_F_ESA_NEW",
+        "dwp/esa_claimants",
+        "ESA_income",
+        "person",
+    ),
+    (
+        "str:database:DLA_In_Payment_New",
+        "str:count:DLA_In_Payment_New:V_F_DLA_In_Payment_New",
+        "dwp/dla_claimants",
+        "DLA_M",
+        "person",
+    ),
+]
+
+
+def _fetch_simple_benefits() -> list[dict]:
+    """Fetch total caseload for each benefit."""
+    targets = []
+    for database, measure, name, variable, entity in _SIMPLE_BENEFITS:
+        try:
+            result = _query_table(database, [measure], [])
+            total = _extract_total(result)
+            if total is not None:
+                year = _extract_year(result)
+                targets.append(
+                    {
+                        "name": name,
+                        "variable": variable,
+                        "entity": entity,
+                        "aggregation": "count_nonzero",
+                        "filter": None,
+                        "value": total,
+                        "source": "dwp",
+                        "year": year,
+                        "holdout": False,
+                    }
+                )
+        except Exception as e:
+            logger.warning("Failed to fetch %s: %s", name, e)
     return targets
 
 
-def _fetch_pip_caseloads() -> list[dict]:
-    """Total PIP claimants from stat-xplore (post-2019 database)."""
+# ── UC subgroup breakdowns (households) ────────────────────────────────────
+
+_UC_HH_DB = "str:database:UC_Households"
+_UC_HH_COUNT = "str:count:UC_Households:V_F_UC_HOUSEHOLDS"
+_UC_HH_FIELD = "str:field:UC_Households:V_F_UC_HOUSEHOLDS"
+
+
+def _fetch_uc_breakdowns() -> list[dict]:
+    """Fetch UC household breakdowns by family type, entitlement elements, etc."""
     targets = []
+
+    # UC households by family type
     try:
         result = _query_table(
-            database="str:database:PIP_Monthly_new",
-            measures=["str:count:PIP_Monthly_new:V_F_PIP_MONTHLY"],
-            dimensions=[],
+            _UC_HH_DB,
+            [_UC_HH_COUNT],
+            [[f"{_UC_HH_FIELD}:hnfamily_type"]],
         )
-        total = _extract_total(result)
-        if total is not None:
-            year = _extract_year(result)
+        year = _extract_year(result)
+        for label, value in _extract_breakdown(result):
+            slug = label.lower().replace(",", "").replace(" ", "_")
+            if "unknown" in slug or "missing" in slug:
+                continue
             targets.append(
                 {
-                    "name": "dwp/pip_total_claimants",
-                    "variable": "pip_daily_living",
-                    "entity": "person",
+                    "name": f"dwp/uc_households_{slug}",
+                    "variable": "universal_credit",
+                    "entity": "benunit",
                     "aggregation": "count_nonzero",
                     "filter": None,
-                    "value": float(total),
+                    "value": value,
                     "source": "dwp",
                     "year": year,
-                    "holdout": False,
+                    "holdout": True,  # subgroup counts as holdout
                 }
             )
     except Exception as e:
-        logger.warning("Failed to fetch PIP caseloads from stat-xplore: %s", e)
+        logger.warning("Failed to fetch UC family type breakdown: %s", e)
+
+    # UC households with child entitlement
+    try:
+        result = _query_table(
+            _UC_HH_DB,
+            [_UC_HH_COUNT],
+            [[f"{_UC_HH_FIELD}:HCCHILD_ENTITLEMENT"]],
+        )
+        year = _extract_year(result)
+        for label, value in _extract_breakdown(result):
+            if label.lower() == "yes":
+                targets.append(
+                    {
+                        "name": "dwp/uc_households_with_children",
+                        "variable": "universal_credit",
+                        "entity": "benunit",
+                        "aggregation": "count_nonzero",
+                        "filter": None,
+                        "value": value,
+                        "source": "dwp",
+                        "year": year,
+                        "holdout": False,
+                    }
+                )
+    except Exception as e:
+        logger.warning("Failed to fetch UC child entitlement breakdown: %s", e)
+
+    # UC households with LCWRA entitlement (disability element)
+    try:
+        result = _query_table(
+            _UC_HH_DB,
+            [_UC_HH_COUNT],
+            [[f"{_UC_HH_FIELD}:HCLCW_ENTITLEMENT"]],
+        )
+        year = _extract_year(result)
+        for label, value in _extract_breakdown(result):
+            slug = label.lower().replace(" ", "_").replace("/", "_")
+            if slug in ("lcwra", "lcw"):
+                targets.append(
+                    {
+                        "name": f"dwp/uc_households_{slug}",
+                        "variable": "universal_credit",
+                        "entity": "benunit",
+                        "aggregation": "count_nonzero",
+                        "filter": None,
+                        "value": value,
+                        "source": "dwp",
+                        "year": year,
+                        "holdout": slug == "lcw",  # LCWRA is training, LCW is holdout
+                    }
+                )
+    except Exception as e:
+        logger.warning("Failed to fetch UC LCW breakdown: %s", e)
+
+    # UC households with carer entitlement
+    try:
+        result = _query_table(
+            _UC_HH_DB,
+            [_UC_HH_COUNT],
+            [[f"{_UC_HH_FIELD}:HCCARER_ENTITLEMENT"]],
+        )
+        year = _extract_year(result)
+        for label, value in _extract_breakdown(result):
+            if label.lower() == "yes":
+                targets.append(
+                    {
+                        "name": "dwp/uc_households_with_carer",
+                        "variable": "universal_credit",
+                        "entity": "benunit",
+                        "aggregation": "count_nonzero",
+                        "filter": None,
+                        "value": value,
+                        "source": "dwp",
+                        "year": year,
+                        "holdout": True,
+                    }
+                )
+    except Exception as e:
+        logger.warning("Failed to fetch UC carer breakdown: %s", e)
+
+    # UC households with housing entitlement
+    try:
+        result = _query_table(
+            _UC_HH_DB,
+            [_UC_HH_COUNT],
+            [[f"{_UC_HH_FIELD}:TENURE"]],
+        )
+        year = _extract_year(result)
+        for label, value in _extract_breakdown(result):
+            if label.lower() == "yes":
+                targets.append(
+                    {
+                        "name": "dwp/uc_households_with_housing",
+                        "variable": "universal_credit",
+                        "entity": "benunit",
+                        "aggregation": "count_nonzero",
+                        "filter": None,
+                        "value": value,
+                        "source": "dwp",
+                        "year": year,
+                        "holdout": False,
+                    }
+                )
+    except Exception as e:
+        logger.warning("Failed to fetch UC housing breakdown: %s", e)
 
     return targets
 
 
 def get_targets() -> list[dict]:
-    # Try loading from cache first
     if CACHE_FILE.exists():
         logger.info("Using cached DWP targets: %s", CACHE_FILE)
         return json.loads(CACHE_FILE.read_text())
@@ -152,10 +355,9 @@ def get_targets() -> list[dict]:
         return []
 
     targets = []
-    targets.extend(_fetch_uc_caseloads())
-    targets.extend(_fetch_pip_caseloads())
+    targets.extend(_fetch_simple_benefits())
+    targets.extend(_fetch_uc_breakdowns())
 
-    # Cache results
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     CACHE_FILE.write_text(json.dumps(targets, indent=2))
     logger.info("Cached %d DWP targets to %s", len(targets), CACHE_FILE)
