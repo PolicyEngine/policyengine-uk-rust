@@ -68,7 +68,7 @@ from policyengine_uk_compiled.engine import (
     HOUSEHOLD_DEFAULTS,
 )
 from policyengine_uk_compiled.structural import StructuralReform
-from policyengine_uk_compiled.data import download_all, ensure_year, ensure_dataset, DATASETS
+from policyengine_uk_compiled.data import download_all, ensure_year, ensure_dataset, DATASETS, capabilities
 
 __all__ = [
     "Simulation",
@@ -80,6 +80,7 @@ __all__ = [
     "ensure_year",
     "ensure_dataset",
     "DATASETS",
+    "capabilities",
     "SimulationConfig",
     "SimulationResult",
     "MicrodataResult",
