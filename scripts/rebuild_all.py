@@ -3,6 +3,9 @@
 Pipeline per job: download raw tab files from gs://policyengine-uk-microdata/ukds/
 → run the Rust extraction → upload clean CSVs to gs://policyengine-uk-microdata/<dataset>/<year>/.
 
+Raw files are cached in data/raw/ inside the repo so re-runs skip the download step.
+Clean outputs land in data/clean/. Pass --work-dir to override both.
+
 Assumes:
   - `gcloud storage` CLI is authenticated and can read/write the bucket.
   - `cargo` is on PATH and the workspace builds cleanly.
@@ -12,8 +15,7 @@ Usage:
     python scripts/rebuild_all.py --only lcfs        # rebuild just LCFS years
     python scripts/rebuild_all.py --only frs --year 2023
     python scripts/rebuild_all.py --only efrs        # rebuild EFRS for all FRS years we have
-    python scripts/rebuild_all.py --work-dir /tmp/pe # use a fixed working dir (cached)
-    python scripts/rebuild_all.py --keep             # keep the working dir after running
+    python scripts/rebuild_all.py --work-dir /tmp/pe # use a custom work dir
 """
 
 from __future__ import annotations
@@ -23,7 +25,6 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -175,25 +176,16 @@ def main() -> None:
     parser.add_argument(
         "--work-dir",
         type=Path,
-        help="Use this directory instead of a temp dir (enables caching)",
-    )
-    parser.add_argument(
-        "--keep",
-        action="store_true",
-        help="Keep the working dir after running (ignored with --work-dir)",
+        default=REPO_ROOT / "data",
+        help="Working directory for raw downloads and clean outputs (default: data/)",
     )
     args = parser.parse_args()
 
     _require("gcloud")
     _require("cargo")
 
-    if args.work_dir:
-        work = args.work_dir.resolve()
-        work.mkdir(parents=True, exist_ok=True)
-        cleanup = False
-    else:
-        work = Path(tempfile.mkdtemp(prefix="pe-uk-rebuild-"))
-        cleanup = not args.keep
+    work = args.work_dir.resolve()
+    work.mkdir(parents=True, exist_ok=True)
     print(f"Working directory: {work}")
 
     selected_jobs = JOBS
@@ -204,19 +196,15 @@ def main() -> None:
 
     run_efrs = args.only in (None, "efrs")
 
-    try:
-        if args.only != "efrs":
-            for job in selected_jobs:
-                extract_one(job, work)
+    if args.only != "efrs":
+        for job in selected_jobs:
+            extract_one(job, work)
 
-        if run_efrs:
-            for fiscal_year, frs_year, was_ref, lcfs_ref in EFRS_JOBS:
-                if args.year is not None and fiscal_year != args.year:
-                    continue
-                extract_efrs(fiscal_year, frs_year, was_ref, lcfs_ref, work)
-    finally:
-        if cleanup:
-            shutil.rmtree(work, ignore_errors=True)
+    if run_efrs:
+        for fiscal_year, frs_year, was_ref, lcfs_ref in EFRS_JOBS:
+            if args.year is not None and fiscal_year != args.year:
+                continue
+            extract_efrs(fiscal_year, frs_year, was_ref, lcfs_ref, work)
 
     print("\nAll done.")
 
