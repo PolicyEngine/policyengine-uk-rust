@@ -80,50 +80,34 @@ def _parse_receipts() -> list[dict]:
     # Map: (label_prefix, target_name, variable in the survey data, entity, aggregation)
     # These are aggregate £ totals. For calibration we map them to survey-reported
     # income/benefit variables where possible.
-    # Now that calibration runs after simulation, we can use simulated output
-    # variables (income_tax, national_insurance, capital_gains_tax, etc.)
     receipt_rows = [
         (
             "Income tax (gross of tax credits)",
             "obr/income_tax_receipts",
-            "income_tax",
+            "employment_income",
             "person",
             "sum",
-            "Simulated income tax",
+            "Total income tax receipts (proxy: total employment income is the dominant base)",
         ),
         (
             "National insurance contributions",
             "obr/ni_receipts",
-            "total_ni",
+            "employment_income",
             "person",
             "sum",
-            "Simulated employee + employer NI",
+            "Total NIC receipts (proxy: employment income)",
         ),
         (
             "Value added tax",
             "obr/vat_receipts",
-            "vat",
-            "household",
-            "sum",
-            "Simulated VAT",
+            None,
+            None,
+            None,
+            "VAT — no direct survey variable, skip for now",
         ),
-        ("Fuel duties", "obr/fuel_duty_receipts", "fuel_duty", "household", "sum", ""),
-        (
-            "Capital gains tax",
-            "obr/cgt_receipts",
-            "capital_gains_tax",
-            "household",
-            "sum",
-            "",
-        ),
-        (
-            "Stamp duty land tax",
-            "obr/sdlt_receipts",
-            "stamp_duty",
-            "household",
-            "sum",
-            "",
-        ),
+        ("Fuel duties", "obr/fuel_duty_receipts", None, None, None, ""),
+        ("Capital gains tax", "obr/cgt_receipts", "capital_gains", "person", "sum", ""),
+        ("Stamp duty land tax", "obr/sdlt_receipts", None, None, None, ""),
         (
             "Council tax",
             "obr/council_tax_receipts",
@@ -170,14 +154,14 @@ def _parse_it_nics_detail() -> list[dict]:
         (
             "Income tax (gross of tax credits)",
             "obr/income_tax",
-            "income_tax",
+            "employment_income",
             "person",
             "sum",
         ),
         (
             "Class 1 Employee NICs",
             "obr/ni_employee",
-            "national_insurance",
+            "employment_income",
             "person",
             "sum",
         ),
@@ -213,31 +197,31 @@ def _parse_welfare() -> list[dict]:
     ws = wb["4.9"]
     targets = []
 
-    # Map OBR row labels to simulated benefit variables.
-    # Benefits are calculated at benunit level in the simulation.
+    # Map OBR row labels to survey-reported benefit variables.
+    # These are spending totals (£bn) which we match to reported receipt in FRS.
     benefit_rows = [
         (
             "Housing benefit (not on JSA)",
             "obr/housing_benefit",
             "housing_benefit",
-            "benunit",
+            "person",
         ),
         (
             "Disability living allowance and personal independence p",
             "obr/pip_dla",
             "pip_daily_living",
-            "person",  # PIP/DLA are passthrough (input data), not simulated
+            "person",
         ),
         (
             "Attendance allowance",
             "obr/attendance_allowance",
             "attendance_allowance",
-            "person",  # Passthrough
+            "person",
         ),
-        ("Pension credit", "obr/pension_credit", "pension_credit", "benunit"),
-        ("Carer's allowance", "obr/carers_allowance", "carers_allowance", "benunit"),
-        ("Child benefit", "obr/child_benefit", "child_benefit", "benunit"),
-        ("State pension", "obr/state_pension", "state_pension", "benunit"),
+        ("Pension credit", "obr/pension_credit", "pension_credit", "person"),
+        ("Carer's allowance", "obr/carers_allowance", "carers_allowance", "person"),
+        ("Child benefit", "obr/child_benefit", "child_benefit", "person"),
+        ("State pension", "obr/state_pension", "state_pension", "person"),
     ]
 
     # UC appears twice in 4.9 — inside and outside the welfare cap. We want both.
@@ -253,7 +237,7 @@ def _parse_welfare() -> list[dict]:
                     {
                         "name": f"obr/universal_credit_{suffix}/{year}",
                         "variable": "universal_credit",
-                        "entity": "benunit",
+                        "entity": "person",
                         "aggregation": "sum",
                         "filter": None,
                         "value": value,
