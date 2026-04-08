@@ -451,8 +451,18 @@ fn main() -> anyhow::Result<()> {
             anyhow::bail!("No calibration targets found for year {}", cli.year);
         }
 
-        // Build calibration matrix
-        let (matrix, target_values, training_mask) = calibrate::build_matrix(&dataset, &targets);
+        // Run baseline simulation so calibration can use output variables
+        let params = Parameters::for_year(cli.year)
+            .unwrap_or_else(|e| panic!("Failed to load params {}/{}: {}", cli.year, cli.year + 1, e));
+        eprintln!("Running baseline simulation...");
+        let sim = Simulation::new(
+            dataset.people.clone(), dataset.benunits.clone(),
+            dataset.households.clone(), params, cli.year,
+        );
+        let sim_results = sim.run();
+
+        // Build calibration matrix using simulation outputs
+        let (matrix, target_values, training_mask) = calibrate::build_matrix(&dataset, &targets, Some(&sim_results));
         let initial_weights: Vec<f64> = dataset.households.iter().map(|h| h.weight).collect();
 
         // Run optimisation
