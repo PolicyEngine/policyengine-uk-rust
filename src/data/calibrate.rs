@@ -3,6 +3,10 @@
 //! Loads calibration targets from a JSON file, builds a matrix of household-level
 //! contributions to each target, and optimises household weights using Adam in
 //! log-space to minimise mean squared relative error.
+//!
+//! Calibration runs *after* a baseline simulation so that targets can reference
+//! simulated output variables (income_tax, universal_credit, etc.) as well as
+//! raw input data.
 
 use std::path::Path;
 
@@ -13,6 +17,7 @@ use rayon::prelude::*;
 use serde::Deserialize;
 
 use crate::data::Dataset;
+use crate::engine::simulation::SimulationResults;
 
 // ── Target schema ──────────────────────────────────────────────────────────
 
@@ -54,8 +59,20 @@ pub fn load_targets(path: &Path) -> anyhow::Result<Vec<CalibrationTarget>> {
 
 // ── Variable resolution ────────────────────────────────────────────────────
 
-/// Get a person-level variable value by name.
-fn person_variable(p: &crate::engine::entities::Person, name: &str) -> f64 {
+/// Get a person-level variable value by name, checking simulation results first.
+fn person_variable(
+    p: &crate::engine::entities::Person,
+    sim: Option<&SimulationResults>,
+    pid: usize,
+    name: &str,
+) -> f64 {
+    // Check simulation output variables first
+    if let Some(results) = sim {
+        if let Some(v) = person_result_variable(&results.person_results[pid], name) {
+            return v;
+        }
+    }
+    // Fall back to input data
     match name {
         "age" => p.age,
         "employment_income" => p.employment_income,
@@ -93,18 +110,92 @@ fn person_variable(p: &crate::engine::entities::Person, name: &str) -> f64 {
     }
 }
 
+/// Get a simulation output variable for a person. Returns None if not a sim variable.
+fn person_result_variable(
+    pr: &crate::engine::simulation::PersonResult,
+    name: &str,
+) -> Option<f64> {
+    match name {
+        "income_tax" => Some(pr.income_tax),
+        "national_insurance" | "employee_ni" => Some(pr.national_insurance),
+        "employer_ni" => Some(pr.employer_ni),
+        "sim_total_income" => Some(pr.total_income),
+        "taxable_income" => Some(pr.taxable_income),
+        "personal_allowance" => Some(pr.personal_allowance),
+        "adjusted_net_income" => Some(pr.adjusted_net_income),
+        "hicbc" => Some(pr.hicbc),
+        "capital_gains_tax" => Some(pr.capital_gains_tax),
+        _ => None,
+    }
+}
+
+/// Get a simulation output variable for a benefit unit.
+fn benunit_result_variable(
+    br: &crate::engine::simulation::BenUnitResult,
+    name: &str,
+) -> Option<f64> {
+    match name {
+        "universal_credit" => Some(br.universal_credit),
+        "child_benefit" => Some(br.child_benefit),
+        "state_pension" => Some(br.state_pension),
+        "pension_credit" => Some(br.pension_credit),
+        "housing_benefit" => Some(br.housing_benefit),
+        "child_tax_credit" => Some(br.child_tax_credit),
+        "working_tax_credit" => Some(br.working_tax_credit),
+        "income_support" => Some(br.income_support),
+        "esa_income_related" => Some(br.esa_income_related),
+        "jsa_income_based" => Some(br.jsa_income_based),
+        "carers_allowance" => Some(br.carers_allowance),
+        "total_benefits" => Some(br.total_benefits),
+        "uc_max_amount" => Some(br.uc_max_amount),
+        "uc_income_reduction" => Some(br.uc_income_reduction),
+        "benefit_cap_reduction" => Some(br.benefit_cap_reduction),
+        _ => None,
+    }
+}
+
 /// Get a household-level variable value by name.
-fn household_variable(h: &crate::engine::entities::Household, name: &str) -> f64 {
+fn household_variable(
+    h: &crate::engine::entities::Household,
+    sim: Option<&SimulationResults>,
+    hh_idx: usize,
+    name: &str,
+) -> f64 {
+    // Check simulation output variables first
+    if let Some(results) = sim {
+        if let Some(v) = household_result_variable(&results.household_results[hh_idx], name) {
+            return v;
+        }
+    }
     match name {
         "council_tax_annual" | "council_tax" => h.council_tax,
         "rent_annual" | "rent" => h.rent,
         "weight" => h.weight,
-        "household_id" => 1.0, // For counting households
+        "household_id" => 1.0,
         "property_wealth" => h.property_wealth,
         "net_financial_wealth" => h.net_financial_wealth,
         "gross_financial_wealth" => h.gross_financial_wealth,
         "savings" => h.savings,
         _ => 0.0,
+    }
+}
+
+/// Get a simulation output variable for a household.
+fn household_result_variable(
+    hr: &crate::engine::simulation::HouseholdResult,
+    name: &str,
+) -> Option<f64> {
+    match name {
+        "net_income" => Some(hr.net_income),
+        "total_tax" => Some(hr.total_tax),
+        "hh_total_benefits" => Some(hr.total_benefits),
+        "gross_income" => Some(hr.gross_income),
+        "vat" => Some(hr.vat),
+        "fuel_duty" => Some(hr.fuel_duty),
+        "capital_gains_tax" => Some(hr.capital_gains_tax),
+        "stamp_duty" => Some(hr.stamp_duty),
+        "council_tax_calculated" => Some(hr.council_tax_calculated),
+        _ => None,
     }
 }
 
@@ -115,11 +206,15 @@ fn household_variable(h: &crate::engine::entities::Household, name: &str) -> f64
 /// M[i][j] = household i's contribution to target j (before weighting).
 /// y[j] = the target value.
 ///
+/// If `sim_results` is provided, simulation output variables can be used
+/// in addition to raw input data.
+///
 /// Returns (matrix, target_values, training_mask) where training_mask[j]
 /// is true if target j should be included in the loss.
 pub fn build_matrix(
     dataset: &Dataset,
     targets: &[CalibrationTarget],
+    sim_results: Option<&SimulationResults>,
 ) -> (Vec<Vec<f64>>, Vec<f64>, Vec<bool>) {
     let n_hh = dataset.households.len();
     let n_targets = targets.len();
@@ -129,7 +224,6 @@ pub fn build_matrix(
 
     for (j, target) in targets.iter().enumerate() {
         target_values[j] = target.value;
-        // Will be refined after matrix is built (skip unfittable targets)
         training_mask[j] = !target.holdout;
 
         match target.entity.as_str() {
@@ -139,9 +233,8 @@ pub fn build_matrix(
                     for &pid in &hh.person_ids {
                         let person = &dataset.people[pid];
 
-                        // Apply filter if present
                         if let Some(ref filter) = target.filter {
-                            let filter_val = person_variable(person, &filter.variable);
+                            let filter_val = person_variable(person, sim_results, pid, &filter.variable);
                             if filter_val < filter.min || filter_val >= filter.max {
                                 continue;
                             }
@@ -149,10 +242,45 @@ pub fn build_matrix(
 
                         match target.aggregation.as_str() {
                             "sum" => {
-                                contribution += person_variable(person, &target.variable);
+                                contribution += person_variable(person, sim_results, pid, &target.variable);
                             }
                             "count_nonzero" => {
-                                if person_variable(person, &target.variable) > 0.0 {
+                                if person_variable(person, sim_results, pid, &target.variable) > 0.0 {
+                                    contribution += 1.0;
+                                }
+                            }
+                            "count" => {
+                                contribution += 1.0;
+                            }
+                            _ => {}
+                        }
+                    }
+                    matrix[i][j] = contribution;
+                }
+            }
+            "benunit" => {
+                for (i, hh) in dataset.households.iter().enumerate() {
+                    let mut contribution = 0.0f64;
+                    for &bu_id in &hh.benunit_ids {
+                        let bu = &dataset.benunits[bu_id];
+
+                        // For benunit variables, check simulation results first
+                        let bu_val = if let Some(results) = sim_results {
+                            benunit_result_variable(&results.benunit_results[bu_id], &target.variable)
+                                .unwrap_or(0.0)
+                        } else {
+                            // Fall back to input data: sum person-level variable across benunit members
+                            bu.person_ids.iter()
+                                .map(|&pid| person_variable(&dataset.people[pid], None, pid, &target.variable))
+                                .sum::<f64>()
+                        };
+
+                        match target.aggregation.as_str() {
+                            "sum" => {
+                                contribution += bu_val;
+                            }
+                            "count_nonzero" => {
+                                if bu_val > 0.0 {
                                     contribution += 1.0;
                                 }
                             }
@@ -169,10 +297,10 @@ pub fn build_matrix(
                 for (i, hh) in dataset.households.iter().enumerate() {
                     match target.aggregation.as_str() {
                         "sum" => {
-                            matrix[i][j] = household_variable(hh, &target.variable);
+                            matrix[i][j] = household_variable(hh, sim_results, i, &target.variable);
                         }
                         "count" | "count_nonzero" => {
-                            let val = household_variable(hh, &target.variable);
+                            let val = household_variable(hh, sim_results, i, &target.variable);
                             matrix[i][j] = if val > 0.0 { 1.0 } else { 0.0 };
                         }
                         _ => {}
@@ -184,7 +312,6 @@ pub fn build_matrix(
     }
 
     // Skip targets where no household contributes (matrix column all zero).
-    // These are unfittable (e.g. top income bands not represented in FRS).
     let mut n_skipped = 0;
     for j in 0..n_targets {
         let col_sum: f64 = (0..n_hh).map(|i| matrix[i][j].abs()).sum();
@@ -232,13 +359,10 @@ pub struct CalibrateResult {
     pub weights: Vec<f64>,
     pub final_training_loss: f64,
     pub final_holdout_loss: f64,
-    pub per_target_error: Vec<(String, f64, f64, f64, bool)>, // (name, predicted, target, rel_error, holdout)
+    pub per_target_error: Vec<(String, f64, f64, f64, bool)>,
 }
 
 /// Run Adam optimisation to find weights minimising MSRE against targets.
-///
-/// Loss = mean_j((pred_j / target_j - 1)^2) for training targets.
-/// Weights are parameterised as w_i = exp(u_i) for positivity.
 pub fn calibrate(
     matrix: &[Vec<f64>],
     target_values: &[f64],
@@ -259,29 +383,25 @@ pub fn calibrate(
         };
     }
 
-    // Initialise log-weights
     let mut u: Vec<f64> = initial_weights.iter()
         .map(|&w| if w > 0.0 { w.ln() } else { 0.0 })
         .collect();
 
-    // Adam state
     let mut m = vec![0.0f64; n_hh];
     let mut v = vec![0.0f64; n_hh];
 
     let mut rng = rand::thread_rng();
 
     for epoch in 0..config.epochs {
-        // Compute weights with optional dropout
         let weights: Vec<f64> = u.iter().enumerate().map(|(_i, &ui)| {
             let w = ui.exp();
             if config.dropout > 0.0 && rng.gen::<f64>() < config.dropout {
-                0.0 // Drop this household
+                0.0
             } else {
-                w / (1.0 - config.dropout) // Scale up to compensate
+                w / (1.0 - config.dropout)
             }
         }).collect();
 
-        // Forward pass: pred_j = sum_i w_i * M_ij
         let predictions: Vec<f64> = (0..n_targets).into_par_iter().map(|j| {
             let mut pred = 0.0f64;
             for i in 0..n_hh {
@@ -290,7 +410,6 @@ pub fn calibrate(
             pred
         }).collect();
 
-        // Compute residuals: r_j = pred_j / target_j - 1
         let residuals: Vec<f64> = (0..n_targets).map(|j| {
             if target_values[j].abs() > 1.0 {
                 predictions[j] / target_values[j] - 1.0
@@ -299,13 +418,11 @@ pub fn calibrate(
             }
         }).collect();
 
-        // Training loss
         let training_loss: f64 = residuals.iter().enumerate()
             .filter(|(j, _)| training_mask[*j])
             .map(|(_, r)| r * r)
             .sum::<f64>() / n_training as f64;
 
-        // Holdout loss
         let n_holdout = training_mask.iter().filter(|&&m| !m).count();
         let holdout_loss = if n_holdout > 0 {
             residuals.iter().enumerate()
@@ -317,26 +434,19 @@ pub fn calibrate(
         };
 
         if epoch % config.log_interval == 0 || epoch == config.epochs - 1 {
-            let rmse_train = training_loss.sqrt() * 100.0;
-            let rmse_holdout = holdout_loss.sqrt() * 100.0;
             eprintln!(
                 "  Epoch {:>4}/{}: training RMSRE {:.2}%, holdout RMSRE {:.2}%",
-                epoch, config.epochs, rmse_train, rmse_holdout
+                epoch, config.epochs,
+                training_loss.sqrt() * 100.0,
+                holdout_loss.sqrt() * 100.0,
             );
         }
 
         if epoch == config.epochs - 1 {
-            // Build final result with actual weights (no dropout)
             let final_weights: Vec<f64> = u.iter().map(|&ui| ui.exp()).collect();
             let final_preds: Vec<f64> = (0..n_targets).map(|j| {
-                let mut pred = 0.0f64;
-                for i in 0..n_hh {
-                    pred += final_weights[i] * matrix[i][j];
-                }
-                pred
+                (0..n_hh).map(|i| final_weights[i] * matrix[i][j]).sum()
             }).collect();
-
-            let per_target_error: Vec<(String, f64, f64, f64, bool)> = Vec::new();
 
             let final_training_loss: f64 = (0..n_targets)
                 .filter(|&j| training_mask[j])
@@ -358,19 +468,6 @@ pub fn calibrate(
                     }).sum::<f64>() / n_holdout as f64
             } else { 0.0 };
 
-            // Compute per-target errors for reporting
-            // (done outside the return to avoid borrow issues)
-            let per_target: Vec<(String, f64, f64, f64, bool)> = (0..n_targets).map(|j| {
-                let rel_err = if target_values[j].abs() > 1.0 {
-                    final_preds[j] / target_values[j] - 1.0
-                } else { 0.0 };
-                (String::new(), final_preds[j], target_values[j], rel_err, !training_mask[j])
-            }).collect();
-
-            // We'll fill names outside this block
-            let _ = per_target;
-            let _ = per_target_error;
-
             return CalibrateResult {
                 weights: final_weights,
                 final_training_loss,
@@ -384,8 +481,6 @@ pub fn calibrate(
             };
         }
 
-        // Backward pass: compute gradient dL/du_i
-        // dL/du_i = (2/n_training) * sum_j [training_mask_j * r_j * M_ij * w_i / y_j]
         let grad: Vec<f64> = (0..n_hh).into_par_iter().map(|i| {
             let w_i = weights[i];
             let mut g = 0.0f64;
@@ -397,7 +492,6 @@ pub fn calibrate(
             2.0 * g / n_training as f64
         }).collect();
 
-        // Adam update
         let t = (epoch + 1) as f64;
         let bc1 = 1.0 - config.beta1.powf(t);
         let bc2 = 1.0 - config.beta2.powf(t);
@@ -411,7 +505,6 @@ pub fn calibrate(
         }
     }
 
-    // Should not reach here, but just in case
     let final_weights: Vec<f64> = u.iter().map(|&ui| ui.exp()).collect();
     CalibrateResult {
         weights: final_weights,
@@ -423,7 +516,6 @@ pub fn calibrate(
 
 // ── Reporting ──────────────────────────────────────────────────────────────
 
-/// Print a summary table of calibration results.
 pub fn print_report(
     targets: &[CalibrationTarget],
     result: &CalibrateResult,
@@ -443,14 +535,12 @@ pub fn print_report(
         result.final_holdout_loss.sqrt() * 100.0,
     );
 
-    // Per-target table (show worst 20 + all holdout)
     let mut rows: Vec<(usize, &str, f64, f64, f64, bool)> = result.per_target_error.iter().enumerate()
         .map(|(j, (_, pred, target, rel_err, holdout))| {
             (j, targets[j].name.as_str(), *pred, *target, *rel_err, *holdout)
         })
         .collect();
 
-    // Sort by absolute relative error, descending
     rows.sort_by(|a, b| b.4.abs().partial_cmp(&a.4.abs()).unwrap_or(std::cmp::Ordering::Equal));
 
     let mut table = Table::new();
@@ -500,7 +590,6 @@ fn format_value(v: f64) -> String {
 
 // ── Apply weights ──────────────────────────────────────────────────────────
 
-/// Apply calibrated weights to the dataset.
 pub fn apply_weights(dataset: &mut Dataset, weights: &[f64]) {
     for (i, hh) in dataset.households.iter_mut().enumerate() {
         if i < weights.len() {

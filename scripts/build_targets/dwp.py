@@ -155,14 +155,14 @@ _SIMPLE_BENEFITS = [
         "str:database:ESA_Caseload_new",
         "str:count:ESA_Caseload_new:V_F_ESA_NEW",
         "dwp/esa_claimants",
-        "ESA_income",
+        "esa_income",
         "person",
     ),
     (
         "str:database:DLA_In_Payment_New",
         "str:count:DLA_In_Payment_New:V_F_DLA_In_Payment_New",
         "dwp/dla_claimants",
-        "DLA_M",
+        "dla_care",
         "person",
     ),
 ]
