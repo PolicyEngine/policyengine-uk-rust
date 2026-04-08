@@ -1,3 +1,10 @@
+## [0.13.0] - 2026-04-08
+
+### Added
+
+- Add `StructuralReform(pre=..., post=...)` to the Python wrapper, enabling reforms that can't be expressed as parameter overlays. Both hooks take `(year, persons, benunits, households)` and return the modified triple, so multi-year reforms can branch by year.
+
+
 ## [0.12.0] - 2026-04-07
 
 No significant changes.
