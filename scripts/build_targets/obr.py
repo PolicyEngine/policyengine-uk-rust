@@ -56,6 +56,83 @@ _IT_COL_TO_YEAR = {
 }
 
 
+def get_income_growth_indexes() -> dict[str, dict[int, float]]:
+    """Return cumulative growth indexes relative to 2023 for each income type.
+
+    Uses OBR sheet 3.5 (self-employment, dividend, property, savings growth
+    rates) and sheet 1.6 (wages & salaries levels) to build indexes that can
+    scale the HMRC SPI 2022-23 snapshot to other years.
+
+    Returns e.g. {"employment_income": {2023: 1.0, 2024: 1.07, ...}, ...}
+    """
+    indexes: dict[str, dict[int, float]] = {}
+
+    # ── Wages & salaries from sheet 1.6 (levels, £bn) ──
+    if ECONOMY_FILE.exists():
+        wb = openpyxl.load_workbook(ECONOMY_FILE, data_only=True)
+        ws = wb["1.6"]
+        wage_levels: dict[int, float] = {}
+        for row in range(4, 200):
+            b = ws.cell(row=row, column=2).value
+            if b is None:
+                continue
+            year = _parse_fiscal_year(str(b))
+            if year is not None and 2022 <= year <= 2030:
+                val = ws.cell(row=row, column=14).value  # Col N = wages & salaries
+                if val is not None and isinstance(val, (int, float)):
+                    wage_levels[year] = float(val)
+        wb.close()
+        if 2022 in wage_levels:
+            base = wage_levels[2022]
+            indexes["employment_income"] = {y: v / base for y, v in wage_levels.items()}
+
+    # ── Growth rates from sheet 3.5 ──
+    # Cols: C=2023-24, D=2024-25, ..., J=2030-31
+    _35_col_to_year = {3: 2023, 4: 2024, 5: 2025, 6: 2026, 7: 2027, 8: 2028, 9: 2029, 10: 2030}
+    _35_rows = {
+        "self_employment_income": 6,
+        "dividend_income": 7,
+        "property_income": 8,
+        "savings_interest": 9,
+    }
+    if RECEIPTS_FILE.exists():
+        wb = openpyxl.load_workbook(RECEIPTS_FILE, data_only=True)
+        ws = wb["3.5"]
+        for variable, data_row in _35_rows.items():
+            # Build cumulative index from growth rates (% p.a.)
+            # Base year is 2022 (FY 2022-23), so index[2022] = 1.0
+            idx: dict[int, float] = {2022: 1.0}
+            for col, year in sorted(_35_col_to_year.items()):
+                rate = ws.cell(row=data_row, column=col).value
+                if rate is not None and isinstance(rate, (int, float)):
+                    prev_year = year - 1
+                    idx[year] = idx.get(prev_year, 1.0) * (1 + rate / 100.0)
+            indexes[variable] = idx
+        wb.close()
+
+    # State pension and private pension: use CPI as a proxy (triple lock ≈ max of CPI, AWE, 2.5%)
+    # For calibration purposes CPI is a reasonable approximation
+    if ECONOMY_FILE.exists():
+        wb = openpyxl.load_workbook(ECONOMY_FILE, data_only=True)
+        ws = wb["1.7"]
+        # CPI growth is in a fiscal year row format too
+        cpi_idx: dict[int, float] = {2022: 1.0}
+        for row in range(4, 200):
+            b = ws.cell(row=row, column=2).value
+            if b is None:
+                continue
+            year = _parse_fiscal_year(str(b))
+            if year is not None and 2023 <= year <= 2030:
+                rate = ws.cell(row=row, column=4).value  # Col D = CPI
+                if rate is not None and isinstance(rate, (int, float)):
+                    cpi_idx[year] = cpi_idx.get(year - 1, 1.0) * (1 + rate / 100.0)
+        wb.close()
+        indexes["state_pension"] = cpi_idx
+        indexes["private_pension_income"] = cpi_idx
+
+    return indexes
+
+
 def _find_row(ws, label: str, col: str = "B", max_row: int = 70) -> int | None:
     for row in range(1, max_row + 1):
         val = ws[f"{col}{row}"].value

@@ -4,6 +4,9 @@ Downloads the SPI collated ODS from gov.uk (Tables 3.6 and 3.7) and builds
 income-by-band targets for employment, self-employment, pensions, property,
 dividends, and savings interest — both amounts and taxpayer counts per band.
 
+The 2022-23 SPI snapshot is then scaled to all calibration years (2024-2030)
+using OBR income growth indexes from sheets 3.5 and 1.6.
+
 Source: https://www.gov.uk/government/statistics/income-tax-summarised-accounts-statistics
 """
 
@@ -24,7 +27,8 @@ CACHE_DIR = REPO_ROOT / "data" / "cache"
 
 # HMRC SPI 2022-23 collated tables (ODS)
 SPI_URL = "https://assets.publishing.service.gov.uk/media/67cabb37ade26736dbf9ffe5/Collated_Tables_3_1_to_3_17_2223.ods"
-SPI_YEAR = 2023  # FY 2022-23 → calendar 2023
+SPI_YEAR = 2022  # FY 2022-23 → base year for growth indexing
+CALIBRATION_YEARS = range(2024, 2031)
 
 INCOME_BANDS_LOWER = [
     12_570,
@@ -139,11 +143,16 @@ def get_targets() -> list[dict]:
         logger.error("Failed to download HMRC SPI ODS: %s", e)
         return targets
 
+    # Get OBR growth indexes for scaling to future years
+    from build_targets import obr
+
+    growth_indexes = obr.get_income_growth_indexes()
+
     t36 = _parse_table_36(ods_bytes)
     t37 = _parse_table_37(ods_bytes)
     merged = t36.merge(t37, on="lower_bound", how="outer")
 
-    # Hold out count targets as validation (amounts used for training)
+    # Build base-year targets, then scale to all calibration years
     for idx, row in merged.iterrows():
         lower = int(row["lower_bound"])
         upper = INCOME_BANDS_UPPER[idx] if idx < len(INCOME_BANDS_UPPER) else 1e12
@@ -154,43 +163,59 @@ def get_targets() -> list[dict]:
             count_col = f"{variable}_count"
 
             if amount_col in row.index and row[amount_col] > 0:
-                # SPI amounts are in £millions
-                targets.append(
-                    {
-                        "name": f"hmrc/{variable}_amount_{band_label}",
-                        "variable": variable,
-                        "entity": "person",
-                        "aggregation": "sum",
-                        "filter": {
-                            "variable": "total_income",
-                            "min": float(lower),
-                            "max": float(upper),
-                        },
-                        "value": float(row[amount_col]) * 1e6,
-                        "source": "hmrc_spi",
-                        "year": SPI_YEAR,
-                        "holdout": False,
-                    }
-                )
+                base_amount = float(row[amount_col]) * 1e6  # £millions → £
+                var_index = growth_indexes.get(variable, {})
+
+                for year in CALIBRATION_YEARS:
+                    # Scale amount by growth index relative to base year
+                    scale = 1.0
+                    if var_index:
+                        base_idx = var_index.get(SPI_YEAR, 1.0)
+                        year_idx = var_index.get(year, base_idx)
+                        scale = year_idx / base_idx if base_idx > 0 else 1.0
+                    scaled_amount = base_amount * scale
+
+                    targets.append(
+                        {
+                            "name": f"hmrc/{variable}_amount_{band_label}/{year}",
+                            "variable": variable,
+                            "entity": "person",
+                            "aggregation": "sum",
+                            "filter": {
+                                "variable": "total_income",
+                                "min": float(lower),
+                                "max": float(upper),
+                            },
+                            "value": scaled_amount,
+                            "source": "hmrc_spi",
+                            "year": year,
+                            "holdout": False,
+                        }
+                    )
 
             if count_col in row.index and row[count_col] > 0:
-                # SPI counts are in thousands — use as holdout validation
-                targets.append(
-                    {
-                        "name": f"hmrc/{variable}_count_{band_label}",
-                        "variable": variable,
-                        "entity": "person",
-                        "aggregation": "count_nonzero",
-                        "filter": {
-                            "variable": "total_income",
-                            "min": float(lower),
-                            "max": float(upper),
-                        },
-                        "value": float(row[count_col]) * 1e3,
-                        "source": "hmrc_spi",
-                        "year": SPI_YEAR,
-                        "holdout": True,
-                    }
-                )
+                base_count = float(row[count_col]) * 1e3  # thousands → people
+
+                for year in CALIBRATION_YEARS:
+                    # Counts are held constant — income growth changes amounts
+                    # not the number of taxpayers per band (the band boundaries
+                    # are fixed in nominal terms)
+                    targets.append(
+                        {
+                            "name": f"hmrc/{variable}_count_{band_label}/{year}",
+                            "variable": variable,
+                            "entity": "person",
+                            "aggregation": "count_nonzero",
+                            "filter": {
+                                "variable": "total_income",
+                                "min": float(lower),
+                                "max": float(upper),
+                            },
+                            "value": base_count,
+                            "source": "hmrc_spi",
+                            "year": year,
+                            "holdout": True,
+                        }
+                    )
 
     return targets

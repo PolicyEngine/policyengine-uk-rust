@@ -296,7 +296,8 @@ pub fn build_matrix(
 
     for (j, target) in targets.iter().enumerate() {
         target_values[j] = target.value;
-        training_mask[j] = !target.holdout;
+        // All targets participate in training. The holdout flag is only
+        // used for separate error reporting, not gradient exclusion.
 
         match target.entity.as_str() {
             "person" => {
