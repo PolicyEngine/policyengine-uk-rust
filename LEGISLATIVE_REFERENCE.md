@@ -415,7 +415,22 @@ yet migrated (governed by `uc_migration.housing_benefit` rates).
 Source: SI 2006/213 reg.70 ([`uksi/2006/213/regulation/70`](https://www.legislation.gov.uk/uksi/2006/213/regulation/70))
 
 Maximum HB = 100% of eligible rent (subject to LHA caps for private renters). The model does
-not compute LHA caps; it uses reported rent directly.
+not compute LHA caps; it uses reported rent directly as eligible rent for all tenures.
+
+LHA cap is implemented in `src/variables/benefits.rs` via `lha_monthly_cap()`. When `params.lha`
+is present and enabled, eligible rent for private renters (TenureType::RentPrivately) is capped
+at the regional LHA rate for the household's bedroom entitlement, computed by
+`lha_bedroom_entitlement()` (implements UC Regs 2013 Sch.4 / HB Regs 2006 Sch.B1).
+
+The LHA rates are stored as region×category monthly amounts in `params.lha.rates_monthly`.
+Since the FRS suppresses BRMA identifiers for disclosure reasons, the model uses region-level
+30th percentile rates (derived from the VOA list of rents via policyengine-uk, uprated using the
+ONS Index of Private Housing Rental Prices). This understates within-region variation but
+captures the main regional gradient. The 2025/26 baseline uses rates frozen at the 2024/25
+reset level (April 2024 reset to 30th percentile, re-frozen April 2025).
+
+Reform scenarios can vary `params.lha.private_rent_index` (multiplicative uprating of all rates,
+e.g. 1.10 = 10% increase) without changing the underlying rate table.
 
 ### 7.2 Applicable Amount
 

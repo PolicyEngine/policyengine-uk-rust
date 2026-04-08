@@ -560,6 +560,26 @@ impl Region {
         }
     }
 
+    /// LHA region index for rate table lookup (0–11, matching rates_monthly row order).
+    /// Order: NE=0, NW=1, Yorks=2, EM=3, WM=4, EofE=5, London=6, SE=7, SW=8,
+    ///        Wales=9, Scotland=10, NI=11.
+    pub fn to_lha_region_idx(&self) -> usize {
+        match self {
+            Region::NorthEast => 0,
+            Region::NorthWest => 1,
+            Region::Yorkshire => 2,
+            Region::EastMidlands => 3,
+            Region::WestMidlands => 4,
+            Region::EastOfEngland => 5,
+            Region::London => 6,
+            Region::SouthEast => 7,
+            Region::SouthWest => 8,
+            Region::Wales => 9,
+            Region::Scotland => 10,
+            Region::NorthernIreland => 11,
+        }
+    }
+
     pub fn name(&self) -> &'static str {
         match self {
             Region::NorthEast => "North East",

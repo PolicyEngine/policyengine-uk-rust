@@ -202,6 +202,11 @@ const SKIP_PARAMS: &[&str] = &[
     // These configure how employment income adjusts to policy changes; they have
     // no effect on a static run, by design.
     "labour_supply",
+    // LHA private_rent_index: multiplicative reform scalar on all LHA cap rates.
+    // Nudging up from 1.0 loosens the cap — but in the baseline most FRS private renters
+    // are at or below their LHA rate, so a small upward nudge has no impact.
+    // Real impact is when the index is reduced (tighter cap) or in reform scenarios.
+    "lha.private_rent_index",
 ];
 
 fn is_array_element(path: &str) -> bool {
