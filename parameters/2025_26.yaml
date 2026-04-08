@@ -303,6 +303,32 @@ wealth_tax:
 # in the fifth year of the forecast (2029/30). At Spring Statement 2026: £9.9bn.
 # Each £1bn of net new borrowing reduces this headroom by approximately £1bn
 # (obr_headroom_sensitivity = 1.0 is the OBR's central assumption absent dynamic scoring).
+lha:
+  # Local Housing Allowance rates for 2025/26.
+  # LHA was re-frozen in April 2025 at the 2024/25 reset rates.
+  # 2024/25 rates: 30th percentile of private rents in each BRMA, reset from freeze.
+  # Source: VOA list of rents (2019–2020 data), uprated to April 2024 using ONS Index of
+  #   Private Housing Rental Prices (index: April 2020 = 109.0, April 2024 ≈ 125.0;
+  #   uprate factor = 1.1468). Aggregated to GOR (region) as FRS suppresses BRMA identifiers.
+  # Categories: [A=shared, B=1-bed, C=2-bed, D=3-bed, E=4+bed] — monthly amounts (£).
+  # Row order: NE, NW, Yorkshire, E.Midlands, W.Midlands, E.ofEngland, London,
+  #            S.East, S.West, Wales, Scotland, N.Ireland.
+  enabled: true
+  private_rent_index: 1.0  # 1.0 = frozen (no uprating). Reform: set >1.0 to unfreeze.
+  rates_monthly:
+    - [323.01,  428.86,  486.06,  566.12,  766.23]   # North East
+    - [332.95,  457.44,  566.12,  657.60,  860.11]   # North West
+    - [323.01,  451.72,  543.26,  600.41,  857.72]   # Yorkshire
+    - [372.71,  486.06,  600.41,  686.18,  914.92]   # East Midlands
+    - [390.10,  514.63,  629.03,  743.38,  972.12]   # West Midlands
+    - [360.23,  629.03,  771.95,  886.35, 1252.29]   # East of England
+    - [580.97, 1200.81, 1469.61, 1735.40, 2172.93]   # London
+    - [392.58,  737.66,  914.92, 1086.46, 1543.90]   # South East
+    - [390.10,  571.83,  737.66,  874.87, 1143.66]   # South West
+    - [299.41,  419.92,  514.63,  566.12,  686.18]   # Wales
+    - [323.01,  468.91,  543.26,  629.03,  886.35]   # Scotland
+    - [273.42,  361.97,  428.86,  514.63,  566.12]   # Northern Ireland
+
 obr_fiscal_headroom_bn: 9.9
 obr_headroom_sensitivity: 1.0
 

@@ -66,6 +66,11 @@ pub struct Parameters {
     /// Free school meals parameters (eligibility by nation/age).
     #[serde(default)]
     pub free_school_meals: Option<FreeSchoolMealsParams>,
+    /// Local Housing Allowance cap parameters.
+    /// When present, caps eligible rent for private renters at the regional LHA rate
+    /// for their bedroom entitlement category. Authority: HB Regs 2006 reg.13D.
+    #[serde(default)]
+    pub lha: Option<LhaParams>,
     /// OBR fiscal headroom: headroom against the debt rule (£bn).
     /// Source: OBR Spring Statement, March 2026 EFO — £9.9bn against the
     /// supplementary debt rule (PSND ex falling as a % of GDP in 2029/30).
@@ -648,6 +653,68 @@ pub struct FreeSchoolMealsParams {
 
 fn default_fsm_primary_annual() -> f64 { 570.0 }   // £3.00 × 190 days
 fn default_fsm_secondary_annual() -> f64 { 570.0 }  // same rate assumption
+
+/// Local Housing Allowance (LHA) parameters.
+///
+/// LHA caps the eligible rent for private renters on HB/UC at the 30th percentile of
+/// local rents in each Broad Rental Market Area (BRMA), by bedroom entitlement category
+/// (A = shared, B = 1-bed, C = 2-bed, D = 3-bed, E = 4+-bed).
+///
+/// Since the FRS suppresses BRMA identifiers for disclosure control, we use region-level
+/// 30th percentile rates derived from the VOA rent data (same underlying source as BRMA
+/// rates, aggregated to GOR). This understates within-region variation but captures the
+/// main regional gradient.
+///
+/// Rate history:
+///   - Frozen: April 2020 – March 2024 (SI 2019/1303)
+///   - Reset to 30th percentile: April 2024 (gov.uk announcement, 28 Nov 2023)
+///   - Re-frozen: April 2025 (OBR EFO March 2025 assumption)
+///
+/// Uprating: `private_rent_index` uprates the baseline rates for reform scenarios;
+/// e.g. setting `private_rent_index: 1.10` models a 10% LHA increase.
+/// For the baseline (frozen), this field is 1.0.
+///
+/// Source: VOA list of rents (via policyengine-uk), uprated using ONS Index of Private
+/// Housing Rental Prices (base: April 2020 = 100, April 2024 ≈ 114.7).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LhaParams {
+    /// Whether LHA cap is active. If false, eligible rent = actual rent (pre-reform default).
+    #[serde(default = "default_true_lha")]
+    pub enabled: bool,
+    /// Multiplier applied to all rates for reform scenarios (e.g. 1.1 = 10% increase).
+    /// For baseline frozen scenario this is 1.0.
+    #[serde(default = "default_one")]
+    pub private_rent_index: f64,
+    /// LHA rates by region (11 regions matching Region enum) then by bedroom category
+    /// (index 0=shared/A, 1=1-bed/B, 2=2-bed/C, 3=3-bed/D, 4=4+bed/E).
+    /// Values are monthly amounts (£).
+    /// Order: NorthEast, NorthWest, Yorkshire, EastMidlands, WestMidlands,
+    ///        EastOfEngland, London, SouthEast, SouthWest, Wales, Scotland, NorthernIreland.
+    pub rates_monthly: Vec<[f64; 5]>,
+}
+
+fn default_true_lha() -> bool { true }
+fn default_one() -> f64 { 1.0 }
+
+impl LhaParams {
+    /// Return the monthly LHA cap (£) for a given region and bedroom entitlement.
+    ///
+    /// `region_idx` maps to Region::to_rf_code() (0=NE, 1=NW, 2=Yorks, 3=EM, 4=WM,
+    /// 5=EofE, 6=London, 7=SE, 8=SW, 9=Wales/NI, 10=Scotland, 11=NI).
+    /// `bedrooms` is the LHA bedroom entitlement (1–4+), or 0 for shared accommodation.
+    /// Returns `None` if rates_monthly is empty or region_idx out of range.
+    pub fn monthly_cap(&self, region_idx: usize, bedrooms: u32) -> Option<f64> {
+        let row = self.rates_monthly.get(region_idx)?;
+        let col = match bedrooms {
+            0 => 0, // shared accommodation (Category A)
+            1 => 1,
+            2 => 2,
+            3 => 3,
+            _ => 4, // 4+ bedrooms → Category E
+        };
+        Some(row[col] * self.private_rent_index)
+    }
+}
 
 /// Annual wealth tax parameters (hypothetical — disabled by default).
 ///
