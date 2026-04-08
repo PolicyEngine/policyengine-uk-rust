@@ -45,6 +45,10 @@ pub struct BenUnitResult {
     pub total_benefits: f64,
     pub uc_max_amount: f64,
     pub uc_income_reduction: f64,
+    /// Calculated free school meals value. When `free_school_meals` params are present,
+    /// this reflects eligibility-based modelling (e.g. Wales universal extension).
+    /// Falls back to the FRS-reported amount if no params provided.
+    pub free_school_meals: f64,
 }
 
 /// Results for a household
@@ -262,11 +266,18 @@ impl Simulation {
                 .map(|&pid| self.people[pid].employee_pension_contributions + self.people[pid].personal_pension_contributions)
                 .sum();
 
-            // In-kind benefits included in HBAI net income
+            // In-kind benefits included in HBAI net income.
+            // When FSM params are present, use the calculated modelled amount rather
+            // than the raw FRS-reported figure so that reform scenarios apply correctly.
             let in_kind_benefits: f64 = hh.benunit_ids.iter()
                 .map(|&bid| {
                     let bu = &self.benunits[bid];
-                    bu.free_school_meals + bu.free_school_fruit_veg + bu.free_school_milk
+                    let fsm = if self.parameters.free_school_meals.is_some() {
+                        benunit_results[bid].free_school_meals
+                    } else {
+                        bu.free_school_meals
+                    };
+                    fsm + bu.free_school_fruit_veg + bu.free_school_milk
                         + bu.healthy_start_vouchers + bu.free_tv_licence
                 })
                 .sum();
@@ -299,10 +310,13 @@ impl Simulation {
                 .map(|&pid| person_results[pid].capital_gains_tax)
                 .sum();
 
-            // Stamp duty (annualised)
-            let stamp_duty = self.parameters.stamp_duty.as_ref()
-                .map(|p| variables::wealth_taxes::calculate_stamp_duty(hh, p))
-                .unwrap_or(0.0);
+            // Property transaction tax: LTT for Wales, SDLT for England/NI.
+            // Routes automatically based on household region.
+            let stamp_duty = variables::wealth_taxes::calculate_property_transaction_tax(
+                hh,
+                self.parameters.stamp_duty.as_ref(),
+                self.parameters.land_transaction_tax.as_ref(),
+            );
 
             // Wealth tax
             let wealth_tax = self.parameters.wealth_tax.as_ref()
@@ -314,14 +328,19 @@ impl Simulation {
                 .map(|p| variables::wealth_taxes::calculate_council_tax(hh, p))
                 .unwrap_or(hh.council_tax);
 
+            // Council tax enters total_tax for fiscal accounting, and housing costs
+            // for AHC. Both use council_tax_calculated so that reform scenarios
+            // (e.g. abolition or revaluation) flow through correctly.
             let total_tax = direct_tax + vat + fuel_duty + alcohol_duty + tobacco_duty
-                + cgt + stamp_duty + wealth_tax;
-            // HBAI net income: gross minus direct taxes and pension contributions, plus benefits.
-            // Excludes indirect taxes (VAT, duties) and transaction/wealth taxes (SDLT, wealth tax)
-            // to match the government HBAI definition used for poverty and distributional analysis.
-            let net_income = net_income_before_vat;
+                + cgt + stamp_duty + wealth_tax + council_tax_calculated;
+            // HBAI net income (BHC): gross minus direct taxes and pension contributions, plus benefits.
+            // Council tax is a housing cost subtracted in the AHC measure (not BHC), per HBAI convention.
+            // We adjust BHC net income for the *change* in council tax relative to the FRS-reported
+            // baseline, so that CT reform scenarios correctly shift households' disposable income.
+            let ct_adjustment = council_tax_calculated - hh.council_tax;
+            let net_income = net_income_before_vat - ct_adjustment;
             // Extended net income: subtracts indirect and wealth taxes for fiscal analysis.
-            let extended_net_income = net_income_before_vat - vat - stamp_duty - wealth_tax;
+            let extended_net_income = net_income - vat - stamp_duty - wealth_tax;
 
             // Modified OECD equivalisation scale (used by HBAI):
             // First adult: 0.67, additional adults (14+): 0.33, children (<14): 0.20
@@ -338,8 +357,8 @@ impl Simulation {
                 0.67 + (adults.saturating_sub(1) as f64) * 0.33 + (children as f64) * 0.20
             };
 
-            // AHC: subtract rent and council tax (housing costs), using HBAI net income
-            let housing_costs = hh.rent + hh.council_tax;
+            // AHC: subtract rent and council tax (housing costs), using calculated CT.
+            let housing_costs = hh.rent + council_tax_calculated;
             let net_income_ahc = net_income - housing_costs;
 
             HouseholdResult {

@@ -35,6 +35,7 @@ pub struct Person {
 
     // Employment
     pub is_in_scotland: bool,
+    pub is_in_wales: bool,
     pub hours_worked: f64,             // annual hours
 
     // Disability/carer status — granular rate-band flags derived from FRS benefit amounts
@@ -124,6 +125,7 @@ impl Default for Person {
             miscellaneous_income: 0.0,
             other_income: 0.0,
             is_in_scotland: false,
+            is_in_wales: false,
             hours_worked: 0.0,
             dla_care_low: false,
             dla_care_mid: false,
@@ -505,6 +507,10 @@ pub enum Region {
 impl Region {
     pub fn is_scotland(&self) -> bool {
         matches!(self, Region::Scotland)
+    }
+
+    pub fn is_wales(&self) -> bool {
+        matches!(self, Region::Wales)
     }
 
     pub fn from_frs_code(code: i32) -> Self {

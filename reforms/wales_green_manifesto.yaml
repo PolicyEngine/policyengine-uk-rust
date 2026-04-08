@@ -1,0 +1,38 @@
+# Wales Green Party Manifesto 2026 — scoreable policies
+#
+# This reform covers the Tier 1 and Tier 2 policies from the Wales Green
+# Manifesto that can be modelled as parameter changes. Applies for 2025/26.
+#
+# Policies included:
+#   1. Abolish council tax (Wales) — replace with LVT (Tier 3, not yet modelled);
+#      the abolition side is scored here by zeroing the calculated Band D rate.
+#      Revenue loss is captured in the fiscal impact output.
+#   2. Extend free school meals to secondary pupils in Wales (universal,
+#      wales_secondary_universal: true). Baseline already has universal primary.
+#
+# Policies NOT yet included (require additional model components):
+#   - LHA unfreeze: LHA cap not yet modelled (uses reported rent directly)
+#   - LVT replacement: new tax base — Tier 3 structural reform
+#   - Bus fare subsidies: no transport cost variable yet
+#   - Childcare expansion: childcare offer not yet parameterised
+#   - Rent freeze: rent is exogenous input
+
+council_tax:
+  # Abolish council tax in Wales only. Sets wales_average_band_d to zero, which
+  # scales Welsh households' CT to £0 while leaving England/Scotland unchanged.
+  # The fiscal cost is the Welsh CT revenue only (~5% of UK total CT).
+  # Source: Wales Green Manifesto 2026 — "council tax is unfair... we will replace
+  # it with a land value tax that cuts the average bill"
+  average_band_d: 2280.0
+  wales_average_band_d: 0.0
+  scotland_average_band_d: 1528.0
+
+free_school_meals:
+  # Extend universal FSM entitlement to secondary pupils (ages 11–15) in Wales.
+  # Baseline: universal primary already active (wales_primary_universal: true).
+  # Source: Wales Green Manifesto 2026 — "extend universal free school meals to
+  # secondary schools, helping reduce inequality"
+  wales_primary_universal: true
+  wales_secondary_universal: true
+  primary_annual_value: 570.0
+  secondary_annual_value: 570.0

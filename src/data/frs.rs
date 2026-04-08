@@ -973,6 +973,7 @@ fn assemble_dataset(
             if let Some(&bu_idx) = bu_map.get(&bu_key) {
                 let pid = people.len();
                 let is_scotland = households[hh_idx].region.is_scotland();
+                let is_wales = households[hh_idx].region.is_wales();
 
                 people.push(Person {
                     id: pid,
@@ -994,6 +995,7 @@ fn assemble_dataset(
                     miscellaneous_income: pr.miscellaneous_income_weekly * WEEKS_IN_YEAR,
                     other_income: 0.0,
                     is_in_scotland: is_scotland,
+                    is_in_wales: is_wales,
                     hours_worked: pr.hours_worked_weekly * 52.0,
                     dla_care_low: pr.dla_care_low,
                     dla_care_mid: pr.dla_care_mid,

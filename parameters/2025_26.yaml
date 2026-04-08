@@ -236,7 +236,11 @@ tobacco_duty:
 council_tax:
   # Local Government Finance Act 1992 s.1-5
   # DLUHC Council Tax levels statistics 2025/26: England average Band D = £2,280
+  # Wales 2025/26 average Band D: £1,955 (Stats Wales / DLUHC)
+  # Scotland 2025/26 average Band D: £1,528 (Scottish Government)
   average_band_d: 2280.0
+  wales_average_band_d: 1955.0
+  scotland_average_band_d: 1528.0
 
 capital_gains_tax:
   # Taxation of Chargeable Gains Act 1992; Finance Act 2024 s.7 (rate increases)
@@ -247,7 +251,8 @@ capital_gains_tax:
   realisation_rate: 0.50
 
 stamp_duty:
-  # Finance Act 2003 s.55, as amended; bands from 1 April 2025
+  # Finance Act 2003 s.55, as amended; bands from 1 April 2025 (England and NI only)
+  # Wales uses LTT (see land_transaction_tax below); Scotland uses LBTT (not yet separate)
   bands:
     - { rate: 0.0, threshold: 0 }
     - { rate: 0.02, threshold: 125001 }
@@ -256,12 +261,50 @@ stamp_duty:
     - { rate: 0.12, threshold: 1500001 }
   annual_purchase_probability: 0.043  # ~1/23 year average holding period
 
+land_transaction_tax:
+  # Land Transaction Tax and Anti-avoidance of Devolved Taxes (Wales) Act 2017 (ANAW 2017/1)
+  # Welsh Government rates from 10 October 2022 (still current 2025/26)
+  # Welsh Revenue Authority: https://www.wra.gov.wales/land-transaction-tax/
+  # Residential main rates (not higher rates surcharge):
+  #   0%  £0–£225,000
+  #   6%  £225,001–£400,000
+  #   7.5%  £400,001–£750,000
+  #   10%  £750,001–£1,500,000
+  #   12%  over £1,500,000
+  bands:
+    - { rate: 0.0,   threshold: 0 }
+    - { rate: 0.06,  threshold: 225001 }
+    - { rate: 0.075, threshold: 400001 }
+    - { rate: 0.10,  threshold: 750001 }
+    - { rate: 0.12,  threshold: 1500001 }
+  annual_purchase_probability: 0.043
+
+free_school_meals:
+  # Welsh Government: universal free school meals for primary pupils (reception–year 6)
+  # rolled out from January 2024. Source: https://www.gov.wales/universal-primary-free-school-meals
+  # Cost per meal: approx £3.00 (Welsh Government estimate); 190 school days per year.
+  primary_annual_value: 570.0    # £3.00 × 190 days
+  secondary_annual_value: 570.0  # same unit cost assumption
+  # Baseline: Wales primary already universal
+  wales_primary_universal: true
+  # Baseline: Wales secondary NOT universal (Green proposal to extend it)
+  wales_secondary_universal: false
+
 wealth_tax:
   # Hypothetical — no current UK legislation. Disabled by default.
   # Wealth Tax Commission (2020) proposed 1% above £10m.
   enabled: false
   threshold: 10000000.0
   rate: 0.01
+
+# OBR fiscal headroom (UK-wide — not devolved).
+# Source: OBR Spring Statement March 2026, Economic and Fiscal Outlook.
+# Headroom against the supplementary debt rule: PSND ex (ex. BoE) falling as a % of GDP
+# in the fifth year of the forecast (2029/30). At Spring Statement 2026: £9.9bn.
+# Each £1bn of net new borrowing reduces this headroom by approximately £1bn
+# (obr_headroom_sensitivity = 1.0 is the OBR's central assumption absent dynamic scoring).
+obr_fiscal_headroom_bn: 9.9
+obr_headroom_sensitivity: 1.0
 
 labour_supply:
   # OBR labour supply elasticities (Slutsky decomposition).

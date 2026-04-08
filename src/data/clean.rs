@@ -34,7 +34,7 @@ fn write_persons(dataset: &Dataset, output_dir: &Path) -> anyhow::Result<()> {
         "property_income", "maintenance_income",
         "miscellaneous_income", "other_income",
         // Employment
-        "is_in_scotland", "hours_worked_annual",
+        "is_in_scotland", "is_in_wales", "hours_worked_annual",
         // Disability rate-band flags
         "dla_care_low", "dla_care_mid", "dla_care_high",
         "dla_mob_low", "dla_mob_high",
@@ -86,6 +86,7 @@ fn write_persons(dataset: &Dataset, output_dir: &Path) -> anyhow::Result<()> {
             format!("{:.2}", p.miscellaneous_income),
             format!("{:.2}", p.other_income),
             p.is_in_scotland.to_string(),
+            p.is_in_wales.to_string(),
             format!("{:.1}", p.hours_worked),
             p.dla_care_low.to_string(),
             p.dla_care_mid.to_string(),
@@ -340,7 +341,7 @@ fn write_microdata_csv_persons<W: std::io::Write>(
         "property_income", "maintenance_income",
         "miscellaneous_income", "other_income",
         // Employment
-        "is_in_scotland", "hours_worked_annual",
+        "is_in_scotland", "is_in_wales", "hours_worked_annual",
         // Status
         "is_disabled", "is_carer",
         // Contributions
@@ -384,6 +385,7 @@ fn write_microdata_csv_persons<W: std::io::Write>(
             format!("{:.2}", p.miscellaneous_income),
             format!("{:.2}", p.other_income),
             p.is_in_scotland.to_string(),
+            p.is_in_wales.to_string(),
             format!("{:.1}", p.hours_worked),
             p.is_disabled.to_string(),
             p.is_carer.to_string(),
@@ -672,11 +674,14 @@ pub fn assemble_dataset(
             bu.would_claim_jsa = bu.person_ids.iter().any(|&pid| people.get(pid).map_or(false, |p| p.jsa_income > 0.0));
         }
     }
-    // Auto-derive is_in_scotland from household region
+    // Auto-derive is_in_scotland / is_in_wales from household region
     for p in &mut people {
         if let Some(hh) = households.get(p.household_id) {
             if hh.region.is_scotland() {
                 p.is_in_scotland = true;
+            }
+            if hh.region.is_wales() {
+                p.is_in_wales = true;
             }
         }
     }
@@ -838,6 +843,7 @@ pub fn parse_persons_csv<R: std::io::Read>(reader: R) -> anyhow::Result<Vec<Pers
             miscellaneous_income: h.get_f64(&r, "miscellaneous_income"),
             other_income: h.get_f64(&r, "other_income"),
             is_in_scotland: h.get_bool(&r, "is_in_scotland"),
+            is_in_wales: h.get_bool(&r, "is_in_wales"),
             hours_worked: h.get_f64(&r, "hours_worked_annual"),
             dla_care_low: h.get_bool(&r, "dla_care_low"),
             dla_care_mid: h.get_bool(&r, "dla_care_mid"),

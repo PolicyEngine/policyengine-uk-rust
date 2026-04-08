@@ -114,6 +114,8 @@ pub fn calculate_benunit(
     let modelled_benefits = (pre_cap_benefits - benefit_cap_reduction).max(0.0);
     let total_benefits = modelled_benefits + passthrough_benefits;
 
+    let free_school_meals = calculate_free_school_meals(bu, people, household, params);
+
     BenUnitResult {
         universal_credit: uc.0,
         child_benefit,
@@ -132,6 +134,7 @@ pub fn calculate_benunit(
         total_benefits,
         uc_max_amount: uc.1,
         uc_income_reduction: uc.2,
+        free_school_meals,
     }
 }
 
@@ -867,6 +870,63 @@ fn calculate_carers_allowance(
 
 /// Scottish Child Payment: £26.70/week per eligible child under 16.
 /// Only available in Scotland to UC/legacy benefit claimants.
+/// Calculate free school meals value for a benefit unit.
+///
+/// When `free_school_meals` parameters are present, eligibility is calculated from
+/// children's ages and the region-specific rules. When absent, falls back to zero
+/// (the simulation uses the FRS-reported `bu.free_school_meals` in that case).
+///
+/// Age ranges: primary = 4–10 (reception to year 6); secondary = 11–15 (years 7–11).
+///
+/// Current policy (Wales): universal primary since January 2024; means-tested secondary.
+/// Green proposal: extend universal entitlement to secondary age also.
+fn calculate_free_school_meals(
+    bu: &BenUnit,
+    people: &[Person],
+    household: &Household,
+    params: &Parameters,
+) -> f64 {
+    let fsm_params = match &params.free_school_meals {
+        Some(p) => p,
+        None => return bu.free_school_meals,  // passthrough FRS amount
+    };
+
+    let is_wales = household.region.is_wales();
+
+    let primary_value: f64 = bu.person_ids.iter()
+        .filter(|&&pid| {
+            let age = people[pid].age;
+            age >= 4.0 && age < 11.0  // reception–year 6
+        })
+        .map(|_| {
+            if is_wales && fsm_params.wales_primary_universal {
+                fsm_params.primary_annual_value
+            } else {
+                0.0  // means-tested — use FRS reported, do not model take-up
+            }
+        })
+        .sum();
+
+    let secondary_value: f64 = bu.person_ids.iter()
+        .filter(|&&pid| {
+            let age = people[pid].age;
+            age >= 11.0 && age < 16.0  // years 7–11
+        })
+        .map(|_| {
+            if is_wales && fsm_params.wales_secondary_universal {
+                fsm_params.secondary_annual_value
+            } else {
+                0.0  // not universal — use FRS reported
+            }
+        })
+        .sum();
+
+    // For any children covered by the modelled universal rules, use the
+    // calculated amount. For others, fall back to proportional FRS reported.
+    let modelled = primary_value + secondary_value;
+    if modelled > 0.0 { modelled } else { bu.free_school_meals }
+}
+
 fn calculate_scottish_child_payment(
     bu: &BenUnit,
     people: &[Person],

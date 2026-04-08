@@ -58,6 +58,26 @@ pub struct Parameters {
     /// Annual wealth tax (hypothetical — disabled by default).
     #[serde(default)]
     pub wealth_tax: Option<WealthTaxParams>,
+    /// Welsh Land Transaction Tax (LTT). Devolved from SDLT since 1 April 2018.
+    /// Land Transaction Tax and Anti-avoidance of Devolved Taxes (Wales) Act 2017.
+    /// Applies to Welsh property purchases; mutually exclusive with SDLT.
+    #[serde(default)]
+    pub land_transaction_tax: Option<LandTransactionTaxParams>,
+    /// Free school meals parameters (eligibility by nation/age).
+    #[serde(default)]
+    pub free_school_meals: Option<FreeSchoolMealsParams>,
+    /// OBR fiscal headroom: headroom against the debt rule (£bn).
+    /// Source: OBR Spring Statement, March 2026 EFO — £9.9bn against the
+    /// supplementary debt rule (PSND ex falling as a % of GDP in 2029/30).
+    /// Used to contextualise the fiscal cost of reforms relative to the UK's
+    /// binding fiscal constraint. UK-wide; not devolved.
+    #[serde(default)]
+    pub obr_fiscal_headroom_bn: Option<f64>,
+    /// OBR assumption: each additional £1bn of borrowing reduces fiscal headroom
+    /// by approximately £1bn (i.e. a 1:1 mapping from spending to headroom erosion
+    /// absent any dynamic scoring). Used in reform impact summaries.
+    #[serde(default = "default_headroom_sensitivity")]
+    pub obr_headroom_sensitivity: f64,
     /// OBR labour supply response elasticities.
     /// When enabled, the Slutsky-decomposition elasticities from OBR (2023) are applied
     /// to estimate intensive-margin labour supply responses to tax-benefit reforms.
@@ -65,6 +85,8 @@ pub struct Parameters {
     #[serde(default = "LabourSupplyParams::default")]
     pub labour_supply: LabourSupplyParams,
 }
+
+fn default_headroom_sensitivity() -> f64 { 1.0 }
 
 
 /// UC managed migration rates by legacy benefit type.
@@ -384,10 +406,21 @@ pub struct TobaccoDutyParams {
 /// Local Government Finance Act 1992. Council tax is currently reported from the FRS.
 /// These parameters allow modelling reforms (e.g. changing the Band D rate) while
 /// keeping the baseline as the reported amount.
+///
+/// Nation-specific Band D rates allow modelling devolved reforms (e.g. Wales abolition).
+/// If a nation-specific rate is absent (`None`), the `average_band_d` is used as fallback.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CouncilTaxParams {
-    /// Average Band D rate (£/year). England average £2,280 for 2025/26.
+    /// Average Band D rate (£/year). England/default rate.
     pub average_band_d: f64,
+    /// Wales-specific average Band D rate (£/year).
+    /// 2025/26 Wales average: ~£1,955 (DLUHC Council Tax Statistics 2025).
+    /// Set to 0.0 in a reform to abolish council tax in Wales only.
+    #[serde(default)]
+    pub wales_average_band_d: Option<f64>,
+    /// Scotland-specific average Band D rate (£/year).
+    #[serde(default)]
+    pub scotland_average_band_d: Option<f64>,
     /// Band multipliers as fractions of Band D: A=6/9, B=7/9, ... H=18/9.
     #[serde(default = "default_band_multipliers")]
     pub band_multipliers: Vec<f64>,
@@ -563,6 +596,58 @@ impl Default for LabourSupplyParams {
         }
     }
 }
+
+/// Welsh Land Transaction Tax (LTT) parameters.
+///
+/// Devolved from SDLT to Wales from 1 April 2018 under the Land Transaction Tax
+/// and Anti-avoidance of Devolved Taxes (Wales) Act 2017 (ANAW 2017/1).
+/// Rates and bands set by Welsh Government; different from English SDLT.
+/// Applies only to Welsh properties; English/Scottish SDLT/LBTT apply elsewhere.
+///
+/// 2025/26 residential rates (Welsh Revenue Authority, April 2025):
+///   0%  £0–£225,000
+///   6%  £225,001–£400,000
+///   7.5%  £400,001–£750,000
+///   10%  £750,001–£1,500,000
+///   12%  over £1,500,000
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LandTransactionTaxParams {
+    /// Marginal rate bands (sorted ascending by threshold).
+    pub bands: Vec<StampDutyBand>,
+    /// Annual purchase probability — same as SDLT (1 / average holding period).
+    #[serde(default = "default_purchase_probability")]
+    pub annual_purchase_probability: f64,
+}
+
+/// Free school meals eligibility parameters (by nation).
+///
+/// England: means-tested (UC threshold or legacy benefits). Scotland: universal P1–P5
+/// (expanding). Wales: universal primary (reception–year 6) since January 2024;
+/// means-tested secondary (years 7–11). Northern Ireland: means-tested.
+///
+/// Source: Wales — Welsh Government FSM guidance (January 2024 rollout);
+///   https://www.gov.wales/universal-primary-free-school-meals
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FreeSchoolMealsParams {
+    /// Estimated annual value per primary pupil (meals × 190 days × cost/meal).
+    /// Approx £3.00/meal × 190 days = £570/year.
+    #[serde(default = "default_fsm_primary_annual")]
+    pub primary_annual_value: f64,
+    /// Estimated annual value per secondary pupil.
+    #[serde(default = "default_fsm_secondary_annual")]
+    pub secondary_annual_value: f64,
+    /// Wales: universal FSM for primary-age children (ages 4–11) regardless of income.
+    /// Active since January 2024. Source: Welsh Government.
+    #[serde(default)]
+    pub wales_primary_universal: bool,
+    /// Wales: extend universal FSM to secondary-age children (ages 11–16).
+    /// This is the Green Party manifesto proposal — not current policy.
+    #[serde(default)]
+    pub wales_secondary_universal: bool,
+}
+
+fn default_fsm_primary_annual() -> f64 { 570.0 }   // £3.00 × 190 days
+fn default_fsm_secondary_annual() -> f64 { 570.0 }  // same rate assumption
 
 /// Annual wealth tax parameters (hypothetical — disabled by default).
 ///

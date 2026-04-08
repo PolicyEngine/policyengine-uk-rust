@@ -1,5 +1,8 @@
 use crate::engine::entities::{Household, Person};
-use crate::parameters::{CouncilTaxParams, CapitalGainsTaxParams, StampDutyParams, WealthTaxParams};
+use crate::parameters::{
+    CouncilTaxParams, CapitalGainsTaxParams, LandTransactionTaxParams,
+    StampDutyParams, WealthTaxParams,
+};
 
 /// Determine the council tax band (0=A .. 7=H) from a 1991 property value.
 ///
@@ -15,15 +18,35 @@ pub fn council_tax_band(property_value: f64, thresholds: &[f64]) -> usize {
     0
 }
 
-/// Calculate council tax from parameters (for reform modelling).
+/// Calculate council tax for a household under a reform scenario.
 ///
-/// Returns the Band D rate multiplied by the band multiplier for this household's
-/// property value. For baseline runs, the simulation uses the reported `hh.council_tax`
-/// instead.
+/// Uses the nation-specific Band D override if present for the household's region,
+/// scaling proportionally from the reported FRS amount (so we get the right
+/// distributional spread without relying on inaccurate 1991 band thresholds).
+/// Falls back to the reported `hh.council_tax` if no applicable override is set.
+///
+/// This means: setting `wales_average_band_d: 0.0` abolishes council tax only for
+/// Welsh households; setting `average_band_d` to a new value rescales all others.
 pub fn calculate_council_tax(hh: &Household, params: &CouncilTaxParams) -> f64 {
-    let band = council_tax_band(hh.main_residence_value, &params.band_thresholds);
-    let multiplier = params.band_multipliers.get(band).copied().unwrap_or(1.0);
-    params.average_band_d * multiplier
+    // Pick the relevant Band D rate for this household's nation.
+    let nation_band_d: Option<f64> = if hh.region.is_wales() {
+        params.wales_average_band_d
+    } else if hh.region.is_scotland() {
+        params.scotland_average_band_d
+    } else {
+        None
+    };
+
+    let band_d = nation_band_d.unwrap_or(params.average_band_d);
+
+    // Scale the reported FRS council tax by (reform_band_d / baseline_band_d).
+    // This preserves the within-nation distributional spread while applying the
+    // reform rate, rather than recalculating from inaccurate 1991 property bands.
+    if params.average_band_d <= 0.0 || hh.council_tax <= 0.0 {
+        // No baseline rate to scale from — use reported amount directly.
+        return hh.council_tax;
+    }
+    hh.council_tax * (band_d / params.average_band_d)
 }
 
 /// Calculate capital gains tax for a person.
@@ -73,13 +96,44 @@ fn marginal_sdlt(property_value: f64, bands: &[crate::parameters::StampDutyBand]
     tax
 }
 
-/// Calculate annualised stamp duty for a household.
+/// Calculate annualised stamp duty (SDLT) for an English/NI household.
 ///
 /// Multiplies the one-off SDLT liability by the annual purchase probability
 /// (1 / average holding period) to get an expected annual amount.
 pub fn calculate_stamp_duty(hh: &Household, params: &StampDutyParams) -> f64 {
     let sdlt = marginal_sdlt(hh.main_residence_value, &params.bands);
     sdlt * params.annual_purchase_probability
+}
+
+/// Calculate annualised Land Transaction Tax (LTT) for a Welsh household.
+///
+/// LTT replaced SDLT in Wales from 1 April 2018. Uses the same marginal-rate
+/// calculation as SDLT but with Welsh Government bands and rates.
+/// Source: Land Transaction Tax and Anti-avoidance of Devolved Taxes (Wales) Act 2017.
+pub fn calculate_land_transaction_tax(hh: &Household, params: &LandTransactionTaxParams) -> f64 {
+    let ltt = marginal_sdlt(hh.main_residence_value, &params.bands);
+    ltt * params.annual_purchase_probability
+}
+
+/// Calculate the appropriate property transaction tax for a household,
+/// routing to LTT (Wales) or SDLT (England/NI) based on region.
+///
+/// Scottish LBTT is also distinct; not yet modelled separately — falls through
+/// to SDLT as a conservative approximation until LBTT params are added.
+pub fn calculate_property_transaction_tax(
+    hh: &Household,
+    sdlt_params: Option<&StampDutyParams>,
+    ltt_params: Option<&LandTransactionTaxParams>,
+) -> f64 {
+    if hh.region.is_wales() {
+        if let Some(ltt) = ltt_params {
+            return calculate_land_transaction_tax(hh, ltt);
+        }
+    }
+    if let Some(sdlt) = sdlt_params {
+        return calculate_stamp_duty(hh, sdlt);
+    }
+    0.0
 }
 
 /// Calculate annual wealth tax for a household.
@@ -114,15 +168,34 @@ mod tests {
 
     #[test]
     fn council_tax_calculation() {
+        // With no nation-specific override, the reported CT is preserved 1:1
+        // (reform rate = baseline rate → scaling factor = 1.0).
         let params = CouncilTaxParams {
             average_band_d: 2280.0,
+            wales_average_band_d: None,
+            scotland_average_band_d: None,
             band_multipliers: vec![6.0/9.0, 7.0/9.0, 8.0/9.0, 1.0, 11.0/9.0, 13.0/9.0, 15.0/9.0, 18.0/9.0],
             band_thresholds: vec![0.0, 40001.0, 52001.0, 68001.0, 88001.0, 120001.0, 160001.0, 320001.0],
         };
         let mut hh = Household::default();
-        hh.main_residence_value = 80000.0; // Band D
+        hh.council_tax = 2280.0;
         let ct = calculate_council_tax(&hh, &params);
-        assert!((ct - 2280.0).abs() < 1.0); // Band D = 1.0 * band_d
+        assert!((ct - 2280.0).abs() < 1.0); // no change when reform rate = baseline
+
+        // Wales abolition: wales_average_band_d = 0 → Welsh CT goes to zero
+        let params_wales_zero = CouncilTaxParams {
+            wales_average_band_d: Some(0.0),
+            ..params.clone()
+        };
+        let mut hh_wales = Household::default();
+        hh_wales.region = crate::engine::entities::Region::Wales;
+        hh_wales.council_tax = 1955.0;
+        let ct_wales = calculate_council_tax(&hh_wales, &params_wales_zero);
+        assert_eq!(ct_wales, 0.0); // abolished
+
+        // England unaffected
+        let ct_england = calculate_council_tax(&hh, &params_wales_zero);
+        assert!((ct_england - 2280.0).abs() < 1.0);
     }
 
     #[test]

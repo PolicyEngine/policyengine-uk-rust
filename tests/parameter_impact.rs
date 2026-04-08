@@ -202,6 +202,16 @@ const SKIP_PARAMS: &[&str] = &[
     // These configure how employment income adjusts to policy changes; they have
     // no effect on a static run, by design.
     "labour_supply",
+    // LTT: Welsh property transaction tax. Requires Welsh households with non-zero
+    // property values; like SDLT it has no effect on a plain FRS net income run.
+    "land_transaction_tax",
+    // FSM secondary_annual_value: only activates when wales_secondary_universal=true.
+    // In the baseline (wales_secondary_universal=false) the value is unreachable.
+    "free_school_meals.secondary_annual_value",
+    // OBR fiscal headroom: metadata parameters for reform impact summaries.
+    // Not used in the microsimulation calculation — they contextualise fiscal costs.
+    "obr_fiscal_headroom_bn",
+    "obr_headroom_sensitivity",
 ];
 
 fn is_array_element(path: &str) -> bool {
