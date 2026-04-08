@@ -211,6 +211,116 @@ def ensure_dataset(dataset: str, year: int) -> str:
     return str(local_base)
 
 
+def capabilities() -> dict:
+    """Return a structured description of engine capabilities for LLM consumption.
+
+    Does not require authentication — reports only what is locally cached
+    plus static knowledge about the engine. Returns a plain dict suitable
+    for JSON serialisation.
+    """
+    # Locally cached years per dataset
+    dataset_years: dict[str, list[int]] = {}
+    for ds in DATASETS:
+        ds_dir = LOCAL_CACHE / ds
+        if ds_dir.is_dir():
+            years = sorted(
+                int(p.name) for p in ds_dir.iterdir()
+                if p.is_dir() and p.name.isdigit()
+            )
+            if years:
+                dataset_years[ds] = years
+
+    dataset_descriptions = {
+        "efrs": (
+            "Enhanced Family Resources Survey. Gold standard for distributional analysis. "
+            "Merges FRS household microdata with Wealth and Assets Survey (wealth) and "
+            "Living Costs and Food Survey (expenditure). Full tax-benefit model. "
+            "Available from 2023."
+        ),
+        "frs": (
+            "Family Resources Survey. Full tax-benefit model, ~20,000 households. "
+            "Available from 1994 to present. Use for historical analysis (pre-2023) "
+            "or to cross-check EFRS estimates."
+        ),
+        "spi": (
+            "Survey of Personal Incomes (HMRC administrative data). Person-level only — "
+            "no household or benefit calculations. Far better coverage of very high earners "
+            "(top 1–5%). Use when the question is specifically about high-income taxpayers "
+            "or income tax/NI only."
+        ),
+        "was": (
+            "Wealth and Assets Survey. Authoritative source for wealth distribution. "
+            "Use for wealth tax, inheritance, or asset-based analysis."
+        ),
+        "lcfs": (
+            "Living Costs and Food Survey. Expenditure and consumption data. "
+            "Use for VAT, duties, or consumption-based tax analysis."
+        ),
+    }
+
+    return {
+        "engine": "PolicyEngine UK compiled microsimulation engine",
+        "fiscal_years_supported": "1994–2029 (year=2025 means 2025/26 fiscal year)",
+        "multi_year_analysis": (
+            "Fully supported. Call tools once per year and collate results. "
+            "Never refuse a multi-year or trend question — just loop over years."
+        ),
+        "datasets": {
+            ds: {
+                "description": dataset_descriptions.get(ds, ""),
+                "locally_cached_years": dataset_years.get(ds, []),
+            }
+            for ds in DATASETS
+        },
+        "default_dataset": "efrs",
+        "programmes_modelled": [
+            "Income tax", "National Insurance (employee and employer)",
+            "Universal Credit", "Child Benefit", "State Pension",
+            "Pension Credit", "Housing Benefit", "Tax Credits (CTC/WTC)",
+            "Scottish Child Payment", "Benefit Cap", "Stamp Duty",
+            "Capital Gains Tax", "Wealth Tax (parametric)",
+        ],
+        "microdata_columns_available": {
+            "persons": [
+                "age", "gender", "employment_income", "self_employment_income",
+                "pension_income", "capital_gains", "savings_interest",
+                "baseline_income_tax", "reform_income_tax",
+                "baseline_employee_ni", "reform_employee_ni",
+                "baseline_total_income", "reform_total_income",
+                "weight", "region", "is_household_head", "is_benunit_head",
+                "household_id", "benunit_id",
+            ],
+            "benunits": [
+                "baseline_universal_credit", "reform_universal_credit",
+                "baseline_child_benefit", "reform_child_benefit",
+                "baseline_housing_benefit", "reform_housing_benefit",
+                "baseline_child_tax_credit", "reform_child_tax_credit",
+                "baseline_working_tax_credit", "reform_working_tax_credit",
+                "baseline_pension_credit", "reform_pension_credit",
+                "baseline_total_benefits", "reform_total_benefits",
+                "weight", "household_id",
+            ],
+            "households": [
+                "baseline_net_income", "reform_net_income",
+                "baseline_total_tax", "reform_total_tax",
+                "baseline_total_benefits", "reform_total_benefits",
+                "baseline_gross_income", "rent", "council_tax",
+                "main_residence_value", "region", "weight",
+                "household_id",
+            ],
+        },
+        "notes": [
+            "Rent is an input field on households (rent_monthly). "
+            "The FRS records actual rent paid, so rent burden (rent/income) "
+            "can be computed directly from microdata across any year 1994–2026.",
+            "Poverty and HBAI fields (relative/absolute poverty rates, mean/median "
+            "equivalised income) are only available from run_economy_simulation, "
+            "not from analyse_microdata.",
+            "EFRS is only available from 2023. For earlier years use FRS.",
+        ],
+    }
+
+
 def download_all(force: bool = False, datasets: tuple = DATASETS) -> None:
     """Download all available years for the given datasets (default: all)."""
     import re
