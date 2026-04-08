@@ -3,6 +3,7 @@
 Sources (local xlsx files in data/obr/):
 - Receipts: efo-march-2026-detailed-forecast-tables-receipts.xlsx
 - Expenditure: efo-march-2026-detailed-forecast-tables-expenditure.xlsx
+- Economy: efo-march-2026-detailed-forecast-tables-economy.xlsx
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ OBR_DIR = REPO_ROOT / "data" / "obr"
 
 RECEIPTS_FILE = OBR_DIR / "efo-march-2026-detailed-forecast-tables-receipts.xlsx"
 EXPENDITURE_FILE = OBR_DIR / "efo-march-2026-detailed-forecast-tables-expenditure.xlsx"
+ECONOMY_FILE = OBR_DIR / "efo-march-2026-detailed-forecast-tables-economy.xlsx"
 
 # Sheet 3.8 (cash receipts): D=2024-25, E=2025-26, ..., J=2030-31
 _RECEIPTS_COL_TO_YEAR = {
@@ -52,6 +54,83 @@ _IT_COL_TO_YEAR = {
     "H": 2029,
     "I": 2030,
 }
+
+
+def get_income_growth_indexes() -> dict[str, dict[int, float]]:
+    """Return cumulative growth indexes relative to 2023 for each income type.
+
+    Uses OBR sheet 3.5 (self-employment, dividend, property, savings growth
+    rates) and sheet 1.6 (wages & salaries levels) to build indexes that can
+    scale the HMRC SPI 2022-23 snapshot to other years.
+
+    Returns e.g. {"employment_income": {2023: 1.0, 2024: 1.07, ...}, ...}
+    """
+    indexes: dict[str, dict[int, float]] = {}
+
+    # ── Wages & salaries from sheet 1.6 (levels, £bn) ──
+    if ECONOMY_FILE.exists():
+        wb = openpyxl.load_workbook(ECONOMY_FILE, data_only=True)
+        ws = wb["1.6"]
+        wage_levels: dict[int, float] = {}
+        for row in range(4, 200):
+            b = ws.cell(row=row, column=2).value
+            if b is None:
+                continue
+            year = _parse_fiscal_year(str(b))
+            if year is not None and 2022 <= year <= 2030:
+                val = ws.cell(row=row, column=14).value  # Col N = wages & salaries
+                if val is not None and isinstance(val, (int, float)):
+                    wage_levels[year] = float(val)
+        wb.close()
+        if 2022 in wage_levels:
+            base = wage_levels[2022]
+            indexes["employment_income"] = {y: v / base for y, v in wage_levels.items()}
+
+    # ── Growth rates from sheet 3.5 ──
+    # Cols: C=2023-24, D=2024-25, ..., J=2030-31
+    _35_col_to_year = {3: 2023, 4: 2024, 5: 2025, 6: 2026, 7: 2027, 8: 2028, 9: 2029, 10: 2030}
+    _35_rows = {
+        "self_employment_income": 6,
+        "dividend_income": 7,
+        "property_income": 8,
+        "savings_interest": 9,
+    }
+    if RECEIPTS_FILE.exists():
+        wb = openpyxl.load_workbook(RECEIPTS_FILE, data_only=True)
+        ws = wb["3.5"]
+        for variable, data_row in _35_rows.items():
+            # Build cumulative index from growth rates (% p.a.)
+            # Base year is 2022 (FY 2022-23), so index[2022] = 1.0
+            idx: dict[int, float] = {2022: 1.0}
+            for col, year in sorted(_35_col_to_year.items()):
+                rate = ws.cell(row=data_row, column=col).value
+                if rate is not None and isinstance(rate, (int, float)):
+                    prev_year = year - 1
+                    idx[year] = idx.get(prev_year, 1.0) * (1 + rate / 100.0)
+            indexes[variable] = idx
+        wb.close()
+
+    # State pension and private pension: use CPI as a proxy (triple lock ≈ max of CPI, AWE, 2.5%)
+    # For calibration purposes CPI is a reasonable approximation
+    if ECONOMY_FILE.exists():
+        wb = openpyxl.load_workbook(ECONOMY_FILE, data_only=True)
+        ws = wb["1.7"]
+        # CPI growth is in a fiscal year row format too
+        cpi_idx: dict[int, float] = {2022: 1.0}
+        for row in range(4, 200):
+            b = ws.cell(row=row, column=2).value
+            if b is None:
+                continue
+            year = _parse_fiscal_year(str(b))
+            if year is not None and 2023 <= year <= 2030:
+                rate = ws.cell(row=row, column=4).value  # Col D = CPI
+                if rate is not None and isinstance(rate, (int, float)):
+                    cpi_idx[year] = cpi_idx.get(year - 1, 1.0) * (1 + rate / 100.0)
+        wb.close()
+        indexes["state_pension"] = cpi_idx
+        indexes["private_pension_income"] = cpi_idx
+
+    return indexes
 
 
 def _find_row(ws, label: str, col: str = "B", max_row: int = 70) -> int | None:
@@ -316,6 +395,145 @@ def _parse_council_tax() -> list[dict]:
     return targets
 
 
+def _parse_fiscal_year(label: str) -> int | None:
+    """Parse '2025-26' → 2025, or '2025/26' → 2025."""
+    s = str(label).strip()
+    for sep in ["-", "/"]:
+        if sep in s:
+            parts = s.split(sep)
+            try:
+                return int(parts[0])
+            except ValueError:
+                return None
+    return None
+
+
+def _read_fiscal_year_rows(
+    ws, col_map: dict[str, str], max_row: int = 200
+) -> list[tuple[int, dict[str, float]]]:
+    """Scan column B for fiscal year labels (e.g. '2025-26') and read values.
+
+    col_map maps a descriptive key to a column letter, e.g. {"employment": "C"}.
+    Returns [(year, {key: value}), ...].
+    """
+    results = []
+    for row in range(4, max_row):
+        b = ws[f"B{row}"].value
+        if b is None:
+            continue
+        year = _parse_fiscal_year(b)
+        if year is None or year < 2020:
+            continue
+        vals = {}
+        for key, col in col_map.items():
+            v = ws[f"{col}{row}"].value
+            if v is not None and isinstance(v, (int, float)):
+                vals[key] = float(v)
+        if vals:
+            results.append((year, vals))
+    return results
+
+
+def _parse_economy() -> list[dict]:
+    """Parse economy tables for labour market and income aggregates."""
+    wb = openpyxl.load_workbook(ECONOMY_FILE, data_only=True)
+    targets = []
+
+    # ── 1.6 Labour market (fiscal year rows) ──
+    ws = wb["1.6"]
+    for year, vals in _read_fiscal_year_rows(
+        ws,
+        {
+            "employment": "C",  # Employment 16+, millions
+            "employees": "E",  # Employees 16+, millions
+            "unemployment": "F",  # ILO unemployment, millions
+            "total_hours": "J",  # Total hours worked, millions per week
+            "comp_employees": "M",  # Compensation of employees, £bn
+            "wages_salaries": "N",  # Wages and salaries, £bn
+            "employer_social": "O",  # Employer social contributions, £bn
+            "mixed_income": "P",  # Mixed income (self-employment), £bn
+        },
+    ):
+        # Employment count: people with employment_income > 0
+        if "employment" in vals:
+            targets.append(
+                {
+                    "name": f"obr/employment_count/{year}",
+                    "variable": "employment_income",
+                    "entity": "person",
+                    "aggregation": "count_nonzero",
+                    "filter": None,
+                    "value": vals["employment"] * 1e6,
+                    "source": "obr",
+                    "year": year,
+                    "holdout": False,
+                }
+            )
+
+        # Total wages and salaries: sum of employment_income
+        if "wages_salaries" in vals:
+            targets.append(
+                {
+                    "name": f"obr/wages_salaries/{year}",
+                    "variable": "employment_income",
+                    "entity": "person",
+                    "aggregation": "sum",
+                    "filter": None,
+                    "value": vals["wages_salaries"] * 1e9,
+                    "source": "obr",
+                    "year": year,
+                    "holdout": False,
+                }
+            )
+
+        # Employer social contributions — skipped: OBR figure includes pensions
+        # and other employer costs beyond NI. employer_ni already covered by
+        # NI receipts target.
+
+        # Mixed income ≈ total self-employment income
+        if "mixed_income" in vals:
+            targets.append(
+                {
+                    "name": f"obr/self_employment_income/{year}",
+                    "variable": "self_employment_income",
+                    "entity": "person",
+                    "aggregation": "sum",
+                    "filter": None,
+                    "value": vals["mixed_income"] * 1e9,
+                    "source": "obr",
+                    "year": year,
+                    "holdout": False,
+                }
+            )
+
+        # Self-employment count
+        if "mixed_income" in vals:
+            targets.append(
+                {
+                    "name": f"obr/self_employed_count/{year}",
+                    "variable": "self_employment_income",
+                    "entity": "person",
+                    "aggregation": "count_nonzero",
+                    "filter": None,
+                    "value": (vals["employment"] - vals.get("employees", 0)) * 1e6
+                    if "employment" in vals and "employees" in vals
+                    else 0,
+                    "source": "obr",
+                    "year": year,
+                    "holdout": True,
+                }
+            )
+
+        # Total hours worked — skipped: hours_worked not populated in EFRS.
+
+    # RHDI (1.12) excluded — OBR national accounts definition differs from
+    # HBAI net income (includes imputed rent, NPISH, etc.).
+    # Housing stock (1.16) excluded — overlaps with ONS total_households.
+
+    wb.close()
+    return targets
+
+
 def get_targets() -> list[dict]:
     targets = []
     if RECEIPTS_FILE.exists():
@@ -324,4 +542,6 @@ def get_targets() -> list[dict]:
     if EXPENDITURE_FILE.exists():
         targets.extend(_parse_welfare())
         targets.extend(_parse_council_tax())
+    if ECONOMY_FILE.exists():
+        targets.extend(_parse_economy())
     return targets
