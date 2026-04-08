@@ -20,6 +20,7 @@ use crate::data::was::load_was;
 use crate::data::clean::{write_clean_csvs, load_clean_dataset, write_microdata, write_microdata_to_stdout};
 use crate::data::stdin::load_dataset_from_reader;
 use crate::data::efrs;
+use crate::data::calibrate;
 
 #[derive(Parser)]
 #[command(name = "policyengine-uk")]
@@ -122,6 +123,20 @@ struct Cli {
     /// LCFS 2021/22 TAB file directory (for EFRS consumption imputation).
     #[arg(long)]
     lcfs_dir: Option<PathBuf>,
+
+    // ── Calibration ──
+
+    /// Calibration targets JSON file. Runs reweighting before any simulation.
+    #[arg(long)]
+    calibrate: Option<PathBuf>,
+
+    /// Output directory for calibrated dataset CSVs.
+    #[arg(long)]
+    calibrate_output: Option<PathBuf>,
+
+    /// Number of calibration epochs (default: 512).
+    #[arg(long, default_value = "512")]
+    calibrate_epochs: usize,
 
     // ── Parameter inspection ──
 
@@ -402,6 +417,66 @@ fn main() -> anyhow::Result<()> {
         eprintln!("Writing enhanced CSVs...");
         write_clean_csvs(&mut dataset, efrs_output)?;
         eprintln!("Wrote Enhanced FRS to {}", efrs_output.display());
+        return Ok(());
+    }
+
+    // Calibrate dataset weights if requested
+    if let Some(targets_path) = &cli.calibrate {
+        let base = cli.data.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("--calibrate requires --data <clean-data-base>"))?;
+        let year_dir = base.join(cli.year.to_string());
+        let mut dataset = if year_dir.is_dir() {
+            eprintln!("Loading clean data {}/{}...", cli.year, (cli.year + 1) % 100);
+            load_clean_dataset(&year_dir, cli.year)?
+        } else {
+            let latest = (1994..=cli.year).rev()
+                .find(|y| base.join(y.to_string()).is_dir())
+                .ok_or_else(|| anyhow::anyhow!("No clean data found in {}", base.display()))?;
+            eprintln!("Loading clean data {}/{} and uprating to {}/{}...",
+                latest, (latest + 1) % 100, cli.year, (cli.year + 1) % 100);
+            let mut ds = load_clean_dataset(&base.join(latest.to_string()), latest)?;
+            ds.uprate_to(cli.year);
+            ds
+        };
+        eprintln!("Loaded {} households, {} people", dataset.households.len(), dataset.people.len());
+
+        // Load and filter targets for the requested year
+        let all_targets = calibrate::load_targets(targets_path)?;
+        let targets: Vec<_> = all_targets.into_iter()
+            .filter(|t| t.year == cli.year)
+            .collect();
+        eprintln!("Loaded {} calibration targets for {}", targets.len(), cli.year);
+
+        if targets.is_empty() {
+            anyhow::bail!("No calibration targets found for year {}", cli.year);
+        }
+
+        // Build calibration matrix
+        let (matrix, target_values, training_mask) = calibrate::build_matrix(&dataset, &targets);
+        let initial_weights: Vec<f64> = dataset.households.iter().map(|h| h.weight).collect();
+
+        // Run optimisation
+        eprintln!("Running calibration ({} epochs)...", cli.calibrate_epochs);
+        let config = calibrate::CalibrateConfig {
+            epochs: cli.calibrate_epochs,
+            ..Default::default()
+        };
+        let mut result = calibrate::calibrate(&matrix, &target_values, &training_mask, &initial_weights, &config);
+
+        // Fill in target names for reporting
+        for (j, entry) in result.per_target_error.iter_mut().enumerate() {
+            entry.0 = targets[j].name.clone();
+        }
+
+        calibrate::print_report(&targets, &result, &dataset);
+
+        // Write calibrated dataset
+        calibrate::apply_weights(&mut dataset, &result.weights);
+        let output_dir = cli.calibrate_output.as_ref()
+            .unwrap_or(&year_dir);
+        std::fs::create_dir_all(output_dir)?;
+        write_clean_csvs(&mut dataset, output_dir)?;
+        eprintln!("Wrote calibrated dataset to {}", output_dir.display());
         return Ok(());
     }
 
