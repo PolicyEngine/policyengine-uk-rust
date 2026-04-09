@@ -355,6 +355,21 @@ pub fn build_matrix(
                                 .sum::<f64>()
                         };
 
+                        // Apply min/max range filter on the benunit variable value
+                        if let Some(ref filter) = target.filter {
+                            let filter_val = if filter.variable == target.variable {
+                                bu_val
+                            } else if let Some(results) = sim_results {
+                                benunit_result_variable(&results.benunit_results[bu_id], &filter.variable)
+                                    .unwrap_or(0.0)
+                            } else {
+                                0.0
+                            };
+                            if filter_val < filter.min || filter_val >= filter.max {
+                                continue;
+                            }
+                        }
+
                         match target.aggregation.as_str() {
                             "sum" => {
                                 contribution += bu_val;
@@ -418,6 +433,9 @@ pub struct CalibrateConfig {
     pub eps: f64,
     pub dropout: f64,
     pub log_interval: usize,
+    /// Maximum ratio of calibrated weight to initial weight (e.g. 100.0 means
+    /// no household can exceed 100x its original weight). Set to 0 to disable.
+    pub max_weight_ratio: f64,
 }
 
 impl Default for CalibrateConfig {
@@ -430,6 +448,7 @@ impl Default for CalibrateConfig {
             eps: 1e-8,
             dropout: 0.05,
             log_interval: 50,
+            max_weight_ratio: 100.0,
         }
     }
 }
@@ -466,6 +485,22 @@ pub fn calibrate(
     let mut u: Vec<f64> = initial_weights.iter()
         .map(|&w| if w > 0.0 { w.ln() } else { 0.0 })
         .collect();
+
+    // Compute log-space bounds for weight clamping
+    let u_max: Vec<f64> = if config.max_weight_ratio > 0.0 {
+        initial_weights.iter()
+            .map(|&w| if w > 0.0 { (w * config.max_weight_ratio).ln() } else { (config.max_weight_ratio).ln() })
+            .collect()
+    } else {
+        vec![f64::INFINITY; n_hh]
+    };
+    let u_min: Vec<f64> = if config.max_weight_ratio > 0.0 {
+        initial_weights.iter()
+            .map(|&w| if w > 0.0 { (w / config.max_weight_ratio).ln() } else { -(config.max_weight_ratio).ln() })
+            .collect()
+    } else {
+        vec![f64::NEG_INFINITY; n_hh]
+    };
 
     let mut m = vec![0.0f64; n_hh];
     let mut v = vec![0.0f64; n_hh];
@@ -582,6 +617,8 @@ pub fn calibrate(
             let m_hat = m[i] / bc1;
             let v_hat = v[i] / bc2;
             u[i] -= config.lr * m_hat / (v_hat.sqrt() + config.eps);
+            // Clamp to max weight ratio bounds
+            u[i] = u[i].clamp(u_min[i], u_max[i]);
         }
     }
 

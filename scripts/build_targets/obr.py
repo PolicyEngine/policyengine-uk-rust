@@ -319,29 +319,30 @@ def _parse_welfare() -> list[dict]:
         ("State pension", "obr/state_pension", "state_pension", "benunit"),
     ]
 
-    # UC appears twice in 4.9 — inside and outside the welfare cap. We want both.
-    uc_rows_found = 0
+    # UC appears twice in 4.9 — inside and outside the welfare cap. Sum them
+    # into a single total UC spend target since our simulation doesn't
+    # distinguish the two components.
+    uc_by_year: dict[int, float] = {}
     for row_num in range(6, 50):
         val = ws[f"B{row_num}"].value
         if val and str(val).strip().startswith("Universal credit"):
-            uc_rows_found += 1
-            suffix = "in_cap" if uc_rows_found == 1 else "outside_cap"
             values = _read_row(ws, row_num, _WELFARE_COL_TO_YEAR)
             for year, value in values.items():
-                targets.append(
-                    {
-                        "name": f"obr/universal_credit_{suffix}/{year}",
-                        "variable": "universal_credit",
-                        "entity": "benunit",
-                        "aggregation": "sum",
-                        "filter": None,
-                        "value": value,
-                        "source": "obr",
-                        "year": year,
-                        "holdout": suffix
-                        == "outside_cap",  # Only use one UC total for training
-                    }
-                )
+                uc_by_year[year] = uc_by_year.get(year, 0.0) + value
+    for year, value in uc_by_year.items():
+        targets.append(
+            {
+                "name": f"obr/universal_credit_total/{year}",
+                "variable": "universal_credit",
+                "entity": "benunit",
+                "aggregation": "sum",
+                "filter": None,
+                "value": value,
+                "source": "obr",
+                "year": year,
+                "holdout": False,
+            }
+        )
 
     for label, name, variable, entity in benefit_rows:
         row = _find_row(ws, label)
