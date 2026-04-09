@@ -204,6 +204,8 @@ fn household_variable(
         "net_financial_wealth" => h.net_financial_wealth,
         "gross_financial_wealth" => h.gross_financial_wealth,
         "savings" => h.savings,
+        "tenure_type" => h.tenure_type.to_rf_code(),
+        "region" => h.region.to_rf_code(),
         _ => 0.0,
     }
 }
@@ -390,6 +392,13 @@ pub fn build_matrix(
             }
             "household" => {
                 for (i, hh) in dataset.households.iter().enumerate() {
+                    // Apply filter if present
+                    if let Some(ref filter) = target.filter {
+                        let filter_val = household_variable(hh, sim_results, i, &filter.variable);
+                        if filter_val < filter.min || filter_val >= filter.max {
+                            continue;
+                        }
+                    }
                     match target.aggregation.as_str() {
                         "sum" => {
                             matrix[i][j] = household_variable(hh, sim_results, i, &target.variable);

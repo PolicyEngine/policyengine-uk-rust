@@ -613,6 +613,12 @@ def _scale_targets_to_years(
         "dwp/uc_payment_band_1200_to_1500": "universal_credit",
         "dwp/uc_payment_band_1500_to_2000": "universal_credit",
         "dwp/uc_payment_band_2000_plus": "universal_credit",
+        # Age band breakdowns scale with total UC
+        "dwp/uc_age_16_24": "universal_credit",
+        "dwp/uc_age_25_34": "universal_credit",
+        "dwp/uc_age_35_49": "universal_credit",
+        "dwp/uc_age_50_64": "universal_credit",
+        "dwp/uc_age_65_plus": "universal_credit",
     }
 
     scaled: list[dict] = []
