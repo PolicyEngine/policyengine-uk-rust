@@ -51,7 +51,7 @@ def get_targets() -> list[dict]:
     targets = []
 
     # Emit for all plausible calibration years
-    for year in range(2024, 2031):
+    for year in range(2023, 2031):
         # Age group population counts
         for group, count in _POPULATION.items():
             if group == "total":

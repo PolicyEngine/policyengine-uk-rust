@@ -459,10 +459,10 @@ DWP_FORECAST_URL = (
 )
 DWP_FORECAST_FILE = CACHE_DIR / "dwp_spring_statement_2025.xlsx"
 
-CALIBRATION_YEARS = range(2024, 2030)  # 2024/25 through 2029/30
+CALIBRATION_YEARS = range(2023, 2030)  # 2023/24 through 2029/30
 
 # Column 80 = 2024/25, ..., 85 = 2029/30 in the DWP forecast xlsx
-_FORECAST_COL_TO_YEAR = {80: 2024, 81: 2025, 82: 2026, 83: 2027, 84: 2028, 85: 2029}
+_FORECAST_COL_TO_YEAR = {79: 2023, 80: 2024, 81: 2025, 82: 2026, 83: 2027, 84: 2028, 85: 2029}
 
 
 def _download_forecast() -> Path:
