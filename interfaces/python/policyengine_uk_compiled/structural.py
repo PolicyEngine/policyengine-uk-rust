@@ -126,8 +126,6 @@ def aggregate_microdata(
         return float((bw * bu_with_w[col].fillna(0.0).values).sum()) if col in bu_with_w.columns else 0.0
 
     # ── Person-level tax totals ──────────────────────────────────────────────
-    _tax_cols_bl = ["baseline_income_tax", "baseline_employee_ni", "baseline_employer_ni"]
-    _tax_cols_rf = ["reform_income_tax", "reform_employee_ni", "reform_employer_ni"]
     it_baseline = _wsum("baseline_income_tax")
     it_reform   = _wsum("reform_income_tax")
     eni_baseline = _wsum("baseline_employee_ni")
@@ -152,13 +150,6 @@ def aggregate_microdata(
         _bwsum(f"reform_{prog}") for prog in _benefit_programs
     ) - _bwsum("reform_benefit_cap_reduction")
 
-    # Also check household-level totals (for hooks that modify reform_net_income
-    # directly without touching individual benefit columns)
-    baseline_revenue_hh = (w * households["baseline_total_tax"].values).sum()
-    reform_revenue_hh   = (w * households["reform_total_tax"].values).sum()
-    baseline_benefits_hh = (w * households["baseline_total_benefits"].values).sum()
-    reform_benefits_hh   = (w * households["reform_total_benefits"].values).sum()
-
     # Use program-level sums for benefits (captures individual column changes)
     baseline_benefits = float(baseline_benefits_from_programs)
     reform_benefits   = float(reform_benefits_from_programs)
@@ -167,19 +158,19 @@ def aggregate_microdata(
     baseline_revenue = float(it_baseline + eni_baseline + enr_baseline)
     reform_revenue   = float(it_reform + eni_reform + enr_reform)
 
-    # If hooks modified reform_net_income directly (without touching individual
-    # benefit/tax columns), capture the residual change
+    # If hooks modified reform_net_income directly on households (without
+    # touching individual benefit/tax columns), capture that as additional
+    # benefit spending.  Only attribute the residual when household
+    # net_income actually changed — if net_income is unchanged but program
+    # columns changed, trust the program columns.
     net_income_change = float(
         (w * (households["reform_net_income"].values - households["baseline_net_income"].values)).sum()
     )
-    program_change = (reform_revenue - baseline_revenue) - (reform_benefits - baseline_benefits)
-    # Residual = net_income change not explained by tax/benefit program changes
-    # (positive residual means households gained income from a non-program source)
-    residual = net_income_change - (-program_change)
-    if abs(residual) > 1.0:
-        # Attribute the residual to benefits (most hooks add to net_income
-        # to simulate benefit-like transfers)
-        reform_benefits += residual
+    if abs(net_income_change) > 1.0:
+        program_net_change = (reform_benefits - baseline_benefits) - (reform_revenue - baseline_revenue)
+        residual = net_income_change - program_net_change
+        if abs(residual) > 1.0:
+            reform_benefits += residual
 
     revenue_change = reform_revenue - baseline_revenue
     benefit_change = reform_benefits - baseline_benefits
