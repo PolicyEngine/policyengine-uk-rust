@@ -108,25 +108,72 @@ def aggregate_microdata(
 
     w = households["weight"].values
 
-    # ── Budgetary impact ──────────────────────────────────────────────────────
-    baseline_revenue = (w * households["baseline_total_tax"].values).sum()
-    reform_revenue   = (w * households["reform_total_tax"].values).sum()
-    baseline_benefits = (w * households["baseline_total_benefits"].values).sum()
-    reform_benefits   = (w * households["reform_total_benefits"].values).sum()
-    revenue_change   = reform_revenue - baseline_revenue
-    benefit_change   = reform_benefits - baseline_benefits
-    net_cost         = -revenue_change + benefit_change
-
-    # ── Income breakdown (from person-level inputs) ───────────────────────────
-    # Persons need to be joined to household weights via household_id
+    # ── Join weights to persons and benunits ──────────────────────────────────
     p_with_w = persons.merge(
         households[["household_id", "weight"]], on="household_id", how="left"
     )
     pw = p_with_w["weight"].fillna(1.0).values
 
+    bu_with_w = benunits.merge(
+        households[["household_id", "weight"]], on="household_id", how="left"
+    )
+    bw = bu_with_w["weight"].fillna(1.0).values
+
     def _wsum(col: str) -> float:
         return float((pw * p_with_w[col].fillna(0.0).values).sum()) if col in p_with_w.columns else 0.0
 
+    def _bwsum(col: str) -> float:
+        return float((bw * bu_with_w[col].fillna(0.0).values).sum()) if col in bu_with_w.columns else 0.0
+
+    # ── Person-level tax totals ──────────────────────────────────────────────
+    it_baseline = _wsum("baseline_income_tax")
+    it_reform   = _wsum("reform_income_tax")
+    eni_baseline = _wsum("baseline_employee_ni")
+    eni_reform   = _wsum("reform_employee_ni")
+    enr_baseline = _wsum("baseline_employer_ni")
+    enr_reform   = _wsum("reform_employer_ni")
+
+    # ── Benefit program totals (from individual benunit columns) ─────────────
+    # Recompute from individual program columns so that post-hooks modifying
+    # benunit-level benefit columns are reflected in the budget totals.
+    _benefit_programs = [
+        "universal_credit", "child_benefit", "state_pension", "pension_credit",
+        "housing_benefit", "child_tax_credit", "working_tax_credit",
+        "income_support", "esa_income_related", "jsa_income_based",
+        "carers_allowance", "scottish_child_payment", "passthrough_benefits",
+    ]
+
+    baseline_benefits = sum(
+        _bwsum(f"baseline_{prog}") for prog in _benefit_programs
+    ) - _bwsum("baseline_benefit_cap_reduction")
+    reform_benefits = sum(
+        _bwsum(f"reform_{prog}") for prog in _benefit_programs
+    ) - _bwsum("reform_benefit_cap_reduction")
+
+    # ── Revenue: recompute from person-level tax columns ─────────────────────
+    baseline_revenue = it_baseline + eni_baseline + enr_baseline
+    reform_revenue   = it_reform + eni_reform + enr_reform
+
+    # If a post-hook changed reform_net_income directly on households
+    # (without touching individual program columns), capture that as
+    # additional benefit spending.  We only attribute the residual when
+    # household net_income actually changed — if net_income is unchanged
+    # but program columns changed, trust the program columns.
+    hh_net_change = float((w * (
+        households["reform_net_income"].values
+        - households["baseline_net_income"].values
+    )).sum())
+    if abs(hh_net_change) > 1.0:
+        program_net_change = (reform_benefits - baseline_benefits) - (reform_revenue - baseline_revenue)
+        residual = hh_net_change - program_net_change
+        if abs(residual) > 1.0:
+            reform_benefits += residual
+
+    revenue_change = reform_revenue - baseline_revenue
+    benefit_change = reform_benefits - baseline_benefits
+    net_cost       = -revenue_change + benefit_change
+
+    # ── Income breakdown (from person-level inputs) ──────────────────────────
     income_breakdown = IncomeBreakdown(
         employment_income=_wsum("employment_income"),
         self_employment_income=_wsum("self_employment_income"),
@@ -136,20 +183,6 @@ def aggregate_microdata(
         property_income=_wsum("property_income"),
         other_income=_wsum("other_income"),
     )
-
-    # ── Program breakdown (benunit-level benefits, weighted by household) ─────
-    bu_with_w = benunits.merge(
-        households[["household_id", "weight"]], on="household_id", how="left"
-    )
-    bw = bu_with_w["weight"].fillna(1.0).values
-
-    def _bwsum(col: str) -> float:
-        return float((bw * bu_with_w[col].fillna(0.0).values).sum()) if col in bu_with_w.columns else 0.0
-
-    # Person-level tax totals
-    it_reform  = float((pw * p_with_w["reform_income_tax"].fillna(0.0).values).sum()) if "reform_income_tax" in p_with_w.columns else 0.0
-    eni_reform = float((pw * p_with_w["reform_employee_ni"].fillna(0.0).values).sum()) if "reform_employee_ni" in p_with_w.columns else 0.0
-    enr_reform = float((pw * p_with_w["reform_employer_ni"].fillna(0.0).values).sum()) if "reform_employer_ni" in p_with_w.columns else 0.0
 
     program_breakdown = ProgramBreakdown(
         income_tax=it_reform,
