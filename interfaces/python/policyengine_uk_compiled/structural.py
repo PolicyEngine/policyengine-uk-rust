@@ -108,25 +108,84 @@ def aggregate_microdata(
 
     w = households["weight"].values
 
-    # ── Budgetary impact ──────────────────────────────────────────────────────
-    baseline_revenue = (w * households["baseline_total_tax"].values).sum()
-    reform_revenue   = (w * households["reform_total_tax"].values).sum()
-    baseline_benefits = (w * households["baseline_total_benefits"].values).sum()
-    reform_benefits   = (w * households["reform_total_benefits"].values).sum()
-    revenue_change   = reform_revenue - baseline_revenue
-    benefit_change   = reform_benefits - baseline_benefits
-    net_cost         = -revenue_change + benefit_change
-
-    # ── Income breakdown (from person-level inputs) ───────────────────────────
-    # Persons need to be joined to household weights via household_id
+    # ── Join weights to persons and benunits ─────────────────────────────────
     p_with_w = persons.merge(
         households[["household_id", "weight"]], on="household_id", how="left"
     )
     pw = p_with_w["weight"].fillna(1.0).values
 
+    bu_with_w = benunits.merge(
+        households[["household_id", "weight"]], on="household_id", how="left"
+    )
+    bw = bu_with_w["weight"].fillna(1.0).values
+
     def _wsum(col: str) -> float:
         return float((pw * p_with_w[col].fillna(0.0).values).sum()) if col in p_with_w.columns else 0.0
 
+    def _bwsum(col: str) -> float:
+        return float((bw * bu_with_w[col].fillna(0.0).values).sum()) if col in bu_with_w.columns else 0.0
+
+    # ── Person-level tax totals ──────────────────────────────────────────────
+    _tax_cols_bl = ["baseline_income_tax", "baseline_employee_ni", "baseline_employer_ni"]
+    _tax_cols_rf = ["reform_income_tax", "reform_employee_ni", "reform_employer_ni"]
+    it_baseline = _wsum("baseline_income_tax")
+    it_reform   = _wsum("reform_income_tax")
+    eni_baseline = _wsum("baseline_employee_ni")
+    eni_reform   = _wsum("reform_employee_ni")
+    enr_baseline = _wsum("baseline_employer_ni")
+    enr_reform   = _wsum("reform_employer_ni")
+
+    # ── Benefit program totals (from individual benunit columns) ─────────────
+    _benefit_programs = [
+        "universal_credit", "child_benefit", "state_pension", "pension_credit",
+        "housing_benefit", "child_tax_credit", "working_tax_credit",
+        "income_support", "esa_income_related", "jsa_income_based",
+        "carers_allowance", "scottish_child_payment", "passthrough_benefits",
+    ]
+
+    # Recompute total benefits from individual program columns so that
+    # post-hooks modifying individual benefit columns are reflected in totals.
+    baseline_benefits_from_programs = sum(
+        _bwsum(f"baseline_{prog}") for prog in _benefit_programs
+    ) - _bwsum("baseline_benefit_cap_reduction")
+    reform_benefits_from_programs = sum(
+        _bwsum(f"reform_{prog}") for prog in _benefit_programs
+    ) - _bwsum("reform_benefit_cap_reduction")
+
+    # Also check household-level totals (for hooks that modify reform_net_income
+    # directly without touching individual benefit columns)
+    baseline_revenue_hh = (w * households["baseline_total_tax"].values).sum()
+    reform_revenue_hh   = (w * households["reform_total_tax"].values).sum()
+    baseline_benefits_hh = (w * households["baseline_total_benefits"].values).sum()
+    reform_benefits_hh   = (w * households["reform_total_benefits"].values).sum()
+
+    # Use program-level sums for benefits (captures individual column changes)
+    baseline_benefits = float(baseline_benefits_from_programs)
+    reform_benefits   = float(reform_benefits_from_programs)
+
+    # For revenue, recompute from person-level tax columns
+    baseline_revenue = float(it_baseline + eni_baseline + enr_baseline)
+    reform_revenue   = float(it_reform + eni_reform + enr_reform)
+
+    # If hooks modified reform_net_income directly (without touching individual
+    # benefit/tax columns), capture the residual change
+    net_income_change = float(
+        (w * (households["reform_net_income"].values - households["baseline_net_income"].values)).sum()
+    )
+    program_change = (reform_revenue - baseline_revenue) - (reform_benefits - baseline_benefits)
+    # Residual = net_income change not explained by tax/benefit program changes
+    # (positive residual means households gained income from a non-program source)
+    residual = net_income_change - (-program_change)
+    if abs(residual) > 1.0:
+        # Attribute the residual to benefits (most hooks add to net_income
+        # to simulate benefit-like transfers)
+        reform_benefits += residual
+
+    revenue_change = reform_revenue - baseline_revenue
+    benefit_change = reform_benefits - baseline_benefits
+    net_cost       = -revenue_change + benefit_change
+
+    # ── Income breakdown (from person-level inputs) ──────────────────────────
     income_breakdown = IncomeBreakdown(
         employment_income=_wsum("employment_income"),
         self_employment_income=_wsum("self_employment_income"),
@@ -137,20 +196,7 @@ def aggregate_microdata(
         other_income=_wsum("other_income"),
     )
 
-    # ── Program breakdown (benunit-level benefits, weighted by household) ─────
-    bu_with_w = benunits.merge(
-        households[["household_id", "weight"]], on="household_id", how="left"
-    )
-    bw = bu_with_w["weight"].fillna(1.0).values
-
-    def _bwsum(col: str) -> float:
-        return float((bw * bu_with_w[col].fillna(0.0).values).sum()) if col in bu_with_w.columns else 0.0
-
-    # Person-level tax totals
-    it_reform  = float((pw * p_with_w["reform_income_tax"].fillna(0.0).values).sum()) if "reform_income_tax" in p_with_w.columns else 0.0
-    eni_reform = float((pw * p_with_w["reform_employee_ni"].fillna(0.0).values).sum()) if "reform_employee_ni" in p_with_w.columns else 0.0
-    enr_reform = float((pw * p_with_w["reform_employer_ni"].fillna(0.0).values).sum()) if "reform_employer_ni" in p_with_w.columns else 0.0
-
+    # ── Program breakdown ────────────────────────────────────────────────────
     program_breakdown = ProgramBreakdown(
         income_tax=it_reform,
         employee_ni=eni_reform,
