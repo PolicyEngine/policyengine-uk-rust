@@ -541,6 +541,11 @@ fn write_microdata_csv_households<W: std::io::Write>(
     wtr.write_record(&[
         "household_id", "weight", "region",
         "rent_annual", "council_tax_annual", "tenure_type",
+        // Wealth
+        "main_residence_value", "other_residential_property_value",
+        // Consumption
+        "food_consumption", "transport_consumption",
+        "housing_water_electricity_consumption", "domestic_energy_consumption",
         // ── Baseline outputs ──
         "baseline_net_income", "baseline_gross_income",
         "baseline_total_tax", "baseline_total_benefits",
@@ -562,6 +567,14 @@ fn write_microdata_csv_households<W: std::io::Write>(
             format!("{:.2}", hh.rent),
             format!("{:.2}", hh.council_tax),
             (hh.tenure_type.to_rf_code() as i32).to_string(),
+            // Wealth
+            format!("{:.2}", hh.main_residence_value),
+            format!("{:.2}", hh.other_residential_property_value),
+            // Consumption
+            format!("{:.2}", hh.food_consumption),
+            format!("{:.2}", hh.transport_consumption),
+            format!("{:.2}", hh.housing_water_electricity_consumption),
+            format!("{:.2}", hh.domestic_energy_consumption),
             // Baseline
             format!("{:.2}", bl.net_income),
             format!("{:.2}", bl.gross_income),
