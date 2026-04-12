@@ -5,9 +5,14 @@ import os
 import subprocess
 from typing import Any, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+from api.security import (
+    enforce_simulation_rate_limit,
+    require_simulation_api_key,
+)
 
 app = FastAPI(title="PolicyEngine UK API")
 
@@ -147,7 +152,13 @@ async def get_years():
     return {"years": AVAILABLE_YEARS}
 
 
-@app.post("/api/simulate")
+@app.post(
+    "/api/simulate",
+    dependencies=[
+        Depends(require_simulation_api_key),
+        Depends(enforce_simulation_rate_limit),
+    ],
+)
 async def simulate(req: SimulateRequest):
     if req.year not in AVAILABLE_YEARS:
         raise HTTPException(400, detail=f"Year {req.year} not available")
@@ -158,7 +169,13 @@ async def simulate(req: SimulateRequest):
     return run_simulation(req.year, json.dumps(overlay))
 
 
-@app.post("/api/simulate-multi")
+@app.post(
+    "/api/simulate-multi",
+    dependencies=[
+        Depends(require_simulation_api_key),
+        Depends(enforce_simulation_rate_limit),
+    ],
+)
 async def simulate_multi(req: SimulateMultiYearRequest):
     """Run the same reform across multiple years. Returns {year: result}."""
     overlay = _extract_overlay(req)

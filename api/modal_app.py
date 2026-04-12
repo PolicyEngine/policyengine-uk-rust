@@ -24,6 +24,10 @@ import modal
 # ---------------------------------------------------------------------------
 frs_volume = modal.Volume.from_name("policyengine-uk-frs", create_if_missing=True)
 FRS_MOUNT_PATH = "/data/frs_clean"
+rate_limit_volume = modal.Volume.from_name(
+    "policyengine-uk-rate-limit", create_if_missing=True
+)
+RATE_LIMIT_MOUNT_PATH = "/data/policyengine-uk-rate-limit"
 
 # ---------------------------------------------------------------------------
 # Image — Debian base, install Rust toolchain, clone repo, compile binary
@@ -63,11 +67,33 @@ def _make_fastapi_app():
     import json
     import os
     import subprocess
+    import tempfile
     from typing import Any, Optional
 
-    from fastapi import FastAPI, HTTPException
+    from fastapi import Depends, FastAPI, HTTPException
     from fastapi.middleware.cors import CORSMiddleware
     from pydantic import BaseModel
+
+    rate_limit_db_path = os.path.join(
+        tempfile.gettempdir(),
+        "policyengine-uk-rate-limit.sqlite",
+    )
+    if os.path.isdir(RATE_LIMIT_MOUNT_PATH) and os.access(
+        RATE_LIMIT_MOUNT_PATH, os.W_OK
+    ):
+        rate_limit_db_path = (
+            f"{RATE_LIMIT_MOUNT_PATH}/simulation-rate-limit.sqlite"
+        )
+
+    os.environ.setdefault(
+        "POLICYENGINE_UK_RATE_LIMIT_DB_PATH",
+        rate_limit_db_path,
+    )
+
+    from api.security import (
+        enforce_simulation_rate_limit,
+        require_simulation_api_key,
+    )
 
     RUST_BINARY = "policyengine-uk"
     CLEAN_FRS_DIR = FRS_MOUNT_PATH
@@ -191,7 +217,13 @@ def _make_fastapi_app():
     async def get_years():
         return {"years": AVAILABLE_YEARS}
 
-    @fastapi_app.post("/api/simulate")
+    @fastapi_app.post(
+        "/api/simulate",
+        dependencies=[
+            Depends(require_simulation_api_key),
+            Depends(enforce_simulation_rate_limit),
+        ],
+    )
     async def simulate(req: SimulateRequest):
         if req.year not in AVAILABLE_YEARS:
             raise HTTPException(400, detail=f"Year {req.year} not available")
@@ -200,7 +232,13 @@ def _make_fastapi_app():
             return baseline_cache.get(req.year, run_simulation(req.year))
         return run_simulation(req.year, json.dumps(overlay))
 
-    @fastapi_app.post("/api/simulate-multi")
+    @fastapi_app.post(
+        "/api/simulate-multi",
+        dependencies=[
+            Depends(require_simulation_api_key),
+            Depends(enforce_simulation_rate_limit),
+        ],
+    )
     async def simulate_multi(req: SimulateMultiYearRequest):
         overlay = _extract_overlay(req)
         results = {}
@@ -227,7 +265,10 @@ def _make_fastapi_app():
 
 
 @app.function(
-    volumes={FRS_MOUNT_PATH: frs_volume},
+    volumes={
+        FRS_MOUNT_PATH: frs_volume,
+        RATE_LIMIT_MOUNT_PATH: rate_limit_volume,
+    },
     # Startup caches all 7 year baselines — give it enough RAM
     memory=4096,
     cpu=4,
