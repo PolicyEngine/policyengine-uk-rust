@@ -216,11 +216,11 @@ struct JsonOutput {
 }
 
 /// CPI index by fiscal year (2025/26 = 100).
-/// Sources: ONS CPI annual average (historical), OBR EFO March 2026 (forecast).
-/// Each value is the annual average CPI index for that fiscal year.
+/// Sources: ONS CPI annual average (historical), OBR EFO March 2026 table 1.7 (forecast).
+/// Each value is the annual average CPI index aligned to the fiscal year label.
 fn cpi_index_for_year(year: u32) -> f64 {
     // ONS CPI Index (2015=100) annual averages, mapped to fiscal years.
-    // Historical values from ONS series D7BT; forecasts from OBR EFO March 2026.
+    // Historical values from ONS series D7BT; forecasts from OBR EFO March 2026 table 1.7.
     // All rebased to 2025/26 = 100.
     let table: &[(u32, f64)] = &[
         (1994, 55.5), (1995, 56.9), (1996, 58.3), (1997, 59.5),
@@ -230,12 +230,12 @@ fn cpi_index_for_year(year: u32) -> f64 {
         (2010, 78.0), (2011, 81.5), (2012, 83.6), (2013, 85.6),
         (2014, 86.5), (2015, 86.5), (2016, 87.5), (2017, 89.9),
         (2018, 92.1), (2019, 93.8), (2020, 94.6), (2021, 97.5),
-        (2022, 107.3), (2023, 113.4), (2024, 116.1),
-        (2025, 120.1), (2026, 122.5), (2027, 124.9),
-        (2028, 127.4), (2029, 130.0),
+        (2022, 107.3), (2023, 113.4), (2024, 133.853167),
+        (2025, 138.368083), (2026, 141.552006), (2027, 144.338518),
+        (2028, 147.191323), (2029, 150.164842),
     ];
     // Rebase so 2025/26 = 100
-    let base = 120.1;
+    let base = 138.368083;
     table.iter()
         .find(|(y, _)| *y == year)
         .map(|(_, v)| v / base * 100.0)
