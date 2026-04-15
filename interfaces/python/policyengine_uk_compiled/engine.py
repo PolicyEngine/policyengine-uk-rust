@@ -290,7 +290,12 @@ def _aggregate_persons_only(records: list[dict], year: int) -> SimulationResult:
             avg_gain=round(total_gain / winners_w) if winners_w > 0 else 0.0,
             avg_loss=round(total_loss / losers_w) if losers_w > 0 else 0.0,
         ),
-        hbai_incomes=HbaiIncomes(
+        baseline_hbai_incomes=HbaiIncomes(
+            mean_equiv_bhc=0.0, mean_equiv_ahc=0.0,
+            mean_bhc=0.0, mean_ahc=0.0,
+            median_equiv_bhc=0.0, median_equiv_ahc=0.0,
+        ),
+        reform_hbai_incomes=HbaiIncomes(
             mean_equiv_bhc=0.0, mean_equiv_ahc=0.0,
             mean_bhc=0.0, mean_ahc=0.0,
             median_equiv_bhc=0.0, median_equiv_ahc=0.0,

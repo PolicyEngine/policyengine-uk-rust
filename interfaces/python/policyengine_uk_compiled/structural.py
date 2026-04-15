@@ -100,11 +100,57 @@ def aggregate_microdata(
     wealth-tax reforms, which are unlikely to be applied as post-hooks.
     """
     import numpy as np
+    import pandas as pd
     from policyengine_uk_compiled.models import (
         BudgetaryImpact, IncomeBreakdown, ProgramBreakdown, Caseloads,
         DecileImpact, WinnersLosers, SimulationResult,
         HbaiIncomes, PovertyHeadcounts,
     )
+
+    def cpi_index_for_year(year: int) -> float:
+        table = {
+            1994: 55.5, 1995: 56.9, 1996: 58.3, 1997: 59.5,
+            1998: 61.0, 1999: 61.7, 2000: 62.7, 2001: 63.6,
+            2002: 64.7, 2003: 65.7, 2004: 66.8, 2005: 68.1,
+            2006: 69.8, 2007: 71.5, 2008: 74.1, 2009: 75.5,
+            2010: 78.0, 2011: 81.5, 2012: 83.6, 2013: 85.6,
+            2014: 86.5, 2015: 86.5, 2016: 87.5, 2017: 89.9,
+            2018: 92.1, 2019: 93.8, 2020: 94.6, 2021: 97.5,
+            2022: 107.3, 2023: 113.4, 2024: 116.1, 2025: 120.1,
+            2026: 122.5, 2027: 124.9, 2028: 127.4, 2029: 130.0,
+        }
+        base = 120.1
+        return table.get(year, base) / base * 100.0
+
+    def weighted_median(values: np.ndarray, weights: np.ndarray) -> float:
+        if len(values) == 0:
+            return 0.0
+        order = np.argsort(values)
+        values = values[order]
+        weights = weights[order]
+        cutoff = weights.sum() / 2.0
+        return float(values[np.searchsorted(np.cumsum(weights), cutoff, side="left")])
+
+    person_counts = persons.groupby("household_id").size() if "household_id" in persons.columns else pd.Series(dtype=float)
+
+    def hbai_for(prefix: str) -> HbaiIncomes:
+        hh = households.copy()
+        hh["person_count"] = hh["household_id"].map(person_counts).fillna(0.0)
+        person_weights = hh["weight"].values * hh["person_count"].values
+        equiv_ahc_col = f"{prefix}_equivalised_net_income_ahc"
+        net_ahc_col = f"{prefix}_net_income_ahc"
+        if equiv_ahc_col not in hh.columns:
+            hh[equiv_ahc_col] = hh[f"{prefix}_equivalised_net_income"]
+        if net_ahc_col not in hh.columns:
+            hh[net_ahc_col] = hh[f"{prefix}_net_income"]
+        return HbaiIncomes(
+            mean_equiv_bhc=float((hh["weight"] * hh[f"{prefix}_equivalised_net_income"]).sum() / hh["weight"].sum()) if len(hh) else 0.0,
+            mean_equiv_ahc=float((hh["weight"] * hh[equiv_ahc_col]).sum() / hh["weight"].sum()) if len(hh) else 0.0,
+            mean_bhc=float((hh["weight"] * hh[f"{prefix}_net_income"]).sum() / hh["weight"].sum()) if len(hh) else 0.0,
+            mean_ahc=float((hh["weight"] * hh[net_ahc_col]).sum() / hh["weight"].sum()) if len(hh) else 0.0,
+            median_equiv_bhc=weighted_median(hh[f"{prefix}_equivalised_net_income"].values, person_weights),
+            median_equiv_ahc=weighted_median(hh[equiv_ahc_col].values, person_weights),
+        )
 
     w = households["weight"].values
 
@@ -281,6 +327,63 @@ def aggregate_microdata(
     )
 
     fiscal_year = f"{year}/{(year + 1) % 100:02d}"
+    baseline_hbai_incomes = hbai_for("baseline")
+    reform_hbai_incomes = hbai_for("reform")
+
+    rel_line_bhc = 0.60 * baseline_hbai_incomes.median_equiv_bhc
+    rel_line_ahc = 0.60 * baseline_hbai_incomes.median_equiv_ahc
+    cpi_index = cpi_index_for_year(year)
+    abs_line_bhc = 14_400.0 * (cpi_index / 100.0)
+    abs_line_ahc = 11_600.0 * (cpi_index / 100.0)
+
+    hh_for_poverty = households.copy()
+    for prefix in ("baseline", "reform"):
+        equiv_ahc_col = f"{prefix}_equivalised_net_income_ahc"
+        if equiv_ahc_col not in hh_for_poverty.columns:
+            hh_for_poverty[equiv_ahc_col] = hh_for_poverty[f"{prefix}_equivalised_net_income"]
+
+    pw = persons.merge(
+        hh_for_poverty[[
+            "household_id", "weight",
+            "baseline_equivalised_net_income", "baseline_equivalised_net_income_ahc",
+            "reform_equivalised_net_income", "reform_equivalised_net_income_ahc",
+        ]],
+        on="household_id",
+        how="left",
+    )
+
+    def poverty_for(prefix: str) -> PovertyHeadcounts:
+        eq_bhc = pw[f"{prefix}_equivalised_net_income"]
+        eq_ahc = pw[f"{prefix}_equivalised_net_income_ahc"]
+        weights = pw["weight"].fillna(1.0)
+        ages = pw["age"]
+
+        child = ages < 16.0
+        working = (ages >= 16.0) & (ages < 66.0)
+        pensioner = ages >= 66.0
+
+        def pct(mask, denom_mask):
+            denom = float(weights[denom_mask].sum())
+            num = float(weights[mask & denom_mask].sum())
+            return round(100.0 * num / denom, 1) if denom > 0 else 0.0
+
+        return PovertyHeadcounts(
+            relative_bhc_children=pct(eq_bhc < rel_line_bhc, child),
+            relative_bhc_working_age=pct(eq_bhc < rel_line_bhc, working),
+            relative_bhc_pensioners=pct(eq_bhc < rel_line_bhc, pensioner),
+            relative_ahc_children=pct(eq_ahc < rel_line_ahc, child),
+            relative_ahc_working_age=pct(eq_ahc < rel_line_ahc, working),
+            relative_ahc_pensioners=pct(eq_ahc < rel_line_ahc, pensioner),
+            absolute_bhc_children=pct(eq_bhc < abs_line_bhc, child),
+            absolute_bhc_working_age=pct(eq_bhc < abs_line_bhc, working),
+            absolute_bhc_pensioners=pct(eq_bhc < abs_line_bhc, pensioner),
+            absolute_ahc_children=pct(eq_ahc < abs_line_ahc, child),
+            absolute_ahc_working_age=pct(eq_ahc < abs_line_ahc, working),
+            absolute_ahc_pensioners=pct(eq_ahc < abs_line_ahc, pensioner),
+        )
+
+    baseline_poverty = poverty_for("baseline")
+    reform_poverty = poverty_for("reform")
 
     return SimulationResult(
         fiscal_year=fiscal_year,
@@ -298,22 +401,40 @@ def aggregate_microdata(
         caseloads=caseloads,
         decile_impacts=decile_impacts,
         winners_losers=winners_losers,
-        hbai_incomes=HbaiIncomes(
-            mean_equiv_bhc=0.0, mean_equiv_ahc=0.0,
-            mean_bhc=0.0, mean_ahc=0.0,
-            median_equiv_bhc=0.0, median_equiv_ahc=0.0,
-        ),
-        baseline_poverty=PovertyHeadcounts(
-            relative_bhc_children=0.0, relative_bhc_working_age=0.0, relative_bhc_pensioners=0.0,
-            relative_ahc_children=0.0, relative_ahc_working_age=0.0, relative_ahc_pensioners=0.0,
-            absolute_bhc_children=0.0, absolute_bhc_working_age=0.0, absolute_bhc_pensioners=0.0,
-            absolute_ahc_children=0.0, absolute_ahc_working_age=0.0, absolute_ahc_pensioners=0.0,
-        ),
-        reform_poverty=PovertyHeadcounts(
-            relative_bhc_children=0.0, relative_bhc_working_age=0.0, relative_bhc_pensioners=0.0,
-            relative_ahc_children=0.0, relative_ahc_working_age=0.0, relative_ahc_pensioners=0.0,
-            absolute_bhc_children=0.0, absolute_bhc_working_age=0.0, absolute_bhc_pensioners=0.0,
-            absolute_ahc_children=0.0, absolute_ahc_working_age=0.0, absolute_ahc_pensioners=0.0,
-        ),
-        cpi_index=100.0,
+        baseline_hbai_incomes=baseline_hbai_incomes,
+        reform_hbai_incomes=reform_hbai_incomes,
+        baseline_poverty=baseline_poverty,
+        reform_poverty=reform_poverty,
+        cpi_index=cpi_index,
+    )
+
+
+def combine_microdata(
+    baseline: "MicrodataResult",  # noqa: F821
+    reform: "MicrodataResult",  # noqa: F821
+) -> "MicrodataResult":  # noqa: F821
+    """Combine baseline-run and reform-run microdata into one comparison view.
+
+    Baseline columns come from the original run. Reform columns come from the
+    structurally/policy-modified run. Unprefixed columns come from the reform run.
+    """
+    from policyengine_uk_compiled.models import MicrodataResult
+
+    def combine_entity(baseline_df, reform_df, id_col: str):
+        if reform_df is None or len(reform_df) == 0:
+            return reform_df
+        combined = reform_df.copy()
+        if baseline_df is None or len(baseline_df) == 0 or id_col not in baseline_df.columns or id_col not in reform_df.columns:
+            return combined
+        baseline_prefixed = [c for c in baseline_df.columns if c.startswith("baseline_")]
+        if not baseline_prefixed:
+            return combined
+        baseline_slice = baseline_df[[id_col] + baseline_prefixed].copy()
+        combined = combined.drop(columns=[c for c in baseline_prefixed if c in combined.columns])
+        return combined.merge(baseline_slice, on=id_col, how="left")
+
+    return MicrodataResult(
+        persons=combine_entity(baseline.persons, reform.persons, "person_id"),
+        benunits=combine_entity(baseline.benunits, reform.benunits, "benunit_id"),
+        households=combine_entity(baseline.households, reform.households, "household_id"),
     )

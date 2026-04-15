@@ -1,0 +1,1 @@
+Export separate `baseline_hbai_incomes` and `reform_hbai_incomes` in simulation results, and add shared helpers for combining baseline and structurally modified microdata into one clean comparison view for chatbot consumers using `StructuralReform`.

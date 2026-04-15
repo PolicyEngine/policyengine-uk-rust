@@ -154,7 +154,7 @@ struct Cli {
     persons_only: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 struct HbaiIncomes {
     /// Weighted mean equivalised net income BHC
     mean_equiv_bhc: f64,
@@ -207,7 +207,8 @@ struct JsonOutput {
     caseloads: Caseloads,
     decile_impacts: Vec<DecileImpact>,
     winners_losers: WinnersLosers,
-    hbai_incomes: HbaiIncomes,
+    baseline_hbai_incomes: HbaiIncomes,
+    reform_hbai_incomes: HbaiIncomes,
     baseline_poverty: PovertyHeadcounts,
     reform_poverty: PovertyHeadcounts,
     /// CPI index (2025/26 = 100) for deflating nominal values to real terms.
@@ -215,11 +216,11 @@ struct JsonOutput {
 }
 
 /// CPI index by fiscal year (2025/26 = 100).
-/// Sources: ONS CPI annual average (historical), OBR EFO March 2026 (forecast).
-/// Each value is the annual average CPI index for that fiscal year.
+/// Sources: ONS CPI annual average (historical), OBR EFO March 2026 table 1.7 (forecast).
+/// Each value is the annual average CPI index aligned to the fiscal year label.
 fn cpi_index_for_year(year: u32) -> f64 {
     // ONS CPI Index (2015=100) annual averages, mapped to fiscal years.
-    // Historical values from ONS series D7BT; forecasts from OBR EFO March 2026.
+    // Historical values from ONS series D7BT; forecasts from OBR EFO March 2026 table 1.7.
     // All rebased to 2025/26 = 100.
     let table: &[(u32, f64)] = &[
         (1994, 55.5), (1995, 56.9), (1996, 58.3), (1997, 59.5),
@@ -229,12 +230,12 @@ fn cpi_index_for_year(year: u32) -> f64 {
         (2010, 78.0), (2011, 81.5), (2012, 83.6), (2013, 85.6),
         (2014, 86.5), (2015, 86.5), (2016, 87.5), (2017, 89.9),
         (2018, 92.1), (2019, 93.8), (2020, 94.6), (2021, 97.5),
-        (2022, 107.3), (2023, 113.4), (2024, 116.1),
-        (2025, 120.1), (2026, 122.5), (2027, 124.9),
-        (2028, 127.4), (2029, 130.0),
+        (2022, 107.3), (2023, 113.4), (2024, 133.853167),
+        (2025, 138.368083), (2026, 141.552006), (2027, 144.338518),
+        (2028, 147.191323), (2029, 150.164842),
     ];
     // Rebase so 2025/26 = 100
-    let base = 120.1;
+    let base = 138.368083;
     table.iter()
         .find(|(y, _)| *y == year)
         .map(|(_, v)| v / base * 100.0)
@@ -892,10 +893,14 @@ fn main() -> anyhow::Result<()> {
     // ── HBAI income aggregates ────────────────────────────────────────────────
     let total_weight: f64 = households.iter().map(|h| h.weight).sum();
 
-    let hbai_incomes = {
+    let compute_hbai_incomes = |results: &crate::engine::simulation::SimulationResults| -> HbaiIncomes {
+        // Weighted median over individuals: each person carries the household's weight.
+        let total_person_weight: f64 = households.iter()
+            .map(|h| h.weight * (h.person_ids.len() as f64))
+            .sum();
         let weighted_median = |vals: &mut Vec<(f64, f64)>| -> f64 {
             vals.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-            let half = total_weight / 2.0;
+            let half = total_person_weight / 2.0;
             let mut cum = 0.0;
             for &(v, w) in vals.iter() {
                 cum += w;
@@ -905,36 +910,44 @@ fn main() -> anyhow::Result<()> {
         };
 
         let mut equiv_bhc: Vec<(f64, f64)> = households.iter()
-            .map(|h| (baseline.household_results[h.id].equivalised_net_income, h.weight))
+            .map(|h| {
+                let w = h.weight * (h.person_ids.len() as f64);
+                (results.household_results[h.id].equivalised_net_income, w)
+            })
             .collect();
         let mut equiv_ahc: Vec<(f64, f64)> = households.iter()
-            .map(|h| (baseline.household_results[h.id].equivalised_net_income_ahc, h.weight))
+            .map(|h| {
+                let w = h.weight * (h.person_ids.len() as f64);
+                (results.household_results[h.id].equivalised_net_income_ahc, w)
+            })
             .collect();
 
         let median_equiv_bhc = weighted_median(&mut equiv_bhc);
         let median_equiv_ahc = weighted_median(&mut equiv_ahc);
 
         let mean_equiv_bhc = households.iter()
-            .map(|h| h.weight * baseline.household_results[h.id].equivalised_net_income)
+            .map(|h| h.weight * results.household_results[h.id].equivalised_net_income)
             .sum::<f64>() / total_weight;
         let mean_equiv_ahc = households.iter()
-            .map(|h| h.weight * baseline.household_results[h.id].equivalised_net_income_ahc)
+            .map(|h| h.weight * results.household_results[h.id].equivalised_net_income_ahc)
             .sum::<f64>() / total_weight;
         let mean_bhc = households.iter()
-            .map(|h| h.weight * baseline.household_results[h.id].net_income)
+            .map(|h| h.weight * results.household_results[h.id].net_income)
             .sum::<f64>() / total_weight;
         let mean_ahc = households.iter()
-            .map(|h| h.weight * baseline.household_results[h.id].net_income_ahc)
+            .map(|h| h.weight * results.household_results[h.id].net_income_ahc)
             .sum::<f64>() / total_weight;
 
         HbaiIncomes { mean_equiv_bhc, mean_equiv_ahc, mean_bhc, mean_ahc,
                       median_equiv_bhc, median_equiv_ahc }
     };
+    let baseline_hbai_incomes = compute_hbai_incomes(&baseline);
+    let reform_hbai_incomes = compute_hbai_incomes(&reformed);
 
     // ── Poverty headcounts ────────────────────────────────────────────────────
     // Relative lines: 60% of baseline weighted median equivalised income
-    let rel_line_bhc = 0.60 * hbai_incomes.median_equiv_bhc;
-    let rel_line_ahc = 0.60 * hbai_incomes.median_equiv_ahc;
+    let rel_line_bhc = 0.60 * baseline_hbai_incomes.median_equiv_bhc;
+    let rel_line_ahc = 0.60 * baseline_hbai_incomes.median_equiv_ahc;
     // Absolute lines: 60% of median in 2010/11 (ONS HBAI reference, uprated by CPI to nominal)
     // 2010/11 median equivalised BHC ~£14,400/yr; AHC ~£11,600/yr (2010/11 prices)
     // Uprate to simulation year using CPI index
@@ -1023,7 +1036,8 @@ fn main() -> anyhow::Result<()> {
             caseloads,
             decile_impacts,
             winners_losers,
-            hbai_incomes,
+            baseline_hbai_incomes,
+            reform_hbai_incomes,
             baseline_poverty,
             reform_poverty,
             cpi_index: cpi_index_for_year(cli.year),
@@ -1085,6 +1099,51 @@ fn main() -> anyhow::Result<()> {
         "▼".bright_red(), winners_losers.losers_pct, winners_losers.avg_loss);
     println!("    {} {:.1}% unchanged",
         "●".dimmed(), winners_losers.unchanged_pct);
+
+    // HBAI incomes (means/medians)
+    println!("\n  {}", "HBAI INCOMES".bright_white().bold().underline());
+    println!();
+    let mut hbai_table = Table::new();
+    hbai_table.load_preset(presets::UTF8_FULL);
+    hbai_table.set_content_arrangement(ContentArrangement::Dynamic);
+    hbai_table.set_header(vec!["Metric", "Value"]);
+    hbai_table.add_row(vec!["Median equivalised BHC".to_string(), format!("£{:.0}", baseline_hbai_incomes.median_equiv_bhc)]);
+    hbai_table.add_row(vec!["Median equivalised AHC".to_string(), format!("£{:.0}", baseline_hbai_incomes.median_equiv_ahc)]);
+    hbai_table.add_row(vec!["Mean equivalised BHC".to_string(), format!("£{:.0}", baseline_hbai_incomes.mean_equiv_bhc)]);
+    hbai_table.add_row(vec!["Mean equivalised AHC".to_string(), format!("£{:.0}", baseline_hbai_incomes.mean_equiv_ahc)]);
+    hbai_table.add_row(vec!["Mean BHC (unequivalised)".to_string(), format!("£{:.0}", baseline_hbai_incomes.mean_bhc)]);
+    hbai_table.add_row(vec!["Mean AHC (unequivalised)".to_string(), format!("£{:.0}", baseline_hbai_incomes.mean_ahc)]);
+    println!("{hbai_table}");
+
+    // Poverty headcounts
+    println!("\n  {}", "POVERTY HEADCOUNTS".bright_white().bold().underline());
+    println!();
+    let mut pov_table = Table::new();
+    pov_table.load_preset(presets::UTF8_FULL);
+    pov_table.set_content_arrangement(ContentArrangement::Dynamic);
+    pov_table.set_header(vec!["Group", "Relative BHC", "Relative AHC", "Absolute BHC", "Absolute AHC"]);
+    pov_table.add_row(vec![
+        "Children".to_string(),
+        format!("{:.1}%", baseline_poverty.relative_bhc_children),
+        format!("{:.1}%", baseline_poverty.relative_ahc_children),
+        format!("{:.1}%", baseline_poverty.absolute_bhc_children),
+        format!("{:.1}%", baseline_poverty.absolute_ahc_children),
+    ]);
+    pov_table.add_row(vec![
+        "Working-age".to_string(),
+        format!("{:.1}%", baseline_poverty.relative_bhc_working_age),
+        format!("{:.1}%", baseline_poverty.relative_ahc_working_age),
+        format!("{:.1}%", baseline_poverty.absolute_bhc_working_age),
+        format!("{:.1}%", baseline_poverty.absolute_ahc_working_age),
+    ]);
+    pov_table.add_row(vec![
+        "Pensioners".to_string(),
+        format!("{:.1}%", baseline_poverty.relative_bhc_pensioners),
+        format!("{:.1}%", baseline_poverty.relative_ahc_pensioners),
+        format!("{:.1}%", baseline_poverty.absolute_bhc_pensioners),
+        format!("{:.1}%", baseline_poverty.absolute_ahc_pensioners),
+    ]);
+    println!("{pov_table}");
 
     println!();
     println!("{}", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".bright_blue());

@@ -371,7 +371,8 @@ class SimulationResult(BaseModel):
     caseloads: Caseloads
     decile_impacts: list[DecileImpact]
     winners_losers: WinnersLosers
-    hbai_incomes: HbaiIncomes
+    baseline_hbai_incomes: HbaiIncomes
+    reform_hbai_incomes: HbaiIncomes
     baseline_poverty: PovertyHeadcounts
     reform_poverty: PovertyHeadcounts
     cpi_index: float
