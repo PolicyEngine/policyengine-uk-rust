@@ -131,6 +131,55 @@ def aggregate_microdata(
         cutoff = weights.sum() / 2.0
         return float(values[np.searchsorted(np.cumsum(weights), cutoff, side="left")])
 
+    def refresh_household_hbai_columns(hh: "pd.DataFrame") -> "pd.DataFrame":
+        """Recompute derived HBAI household columns from primitive inputs.
+
+        Post-hooks often mutate household net income directly. Re-deriving the
+        AHC and equivalised fields here keeps poverty metrics consistent with
+        those changes, rather than trusting stale columns emitted before the
+        hook ran.
+        """
+        hh = hh.copy()
+
+        if "housing_costs_ahc_annual" in hh.columns:
+            housing_costs = hh["housing_costs_ahc_annual"].fillna(0.0)
+        elif {"baseline_net_income", "baseline_net_income_ahc"}.issubset(hh.columns):
+            housing_costs = (
+                hh["baseline_net_income"].fillna(0.0)
+                - hh["baseline_net_income_ahc"].fillna(0.0)
+            )
+        else:
+            housing_costs = 0.0
+
+        for prefix in ("baseline", "reform"):
+            net_col = f"{prefix}_net_income"
+            net_ahc_col = f"{prefix}_net_income_ahc"
+            eq_factor_col = f"{prefix}_equivalisation_factor"
+            eq_col = f"{prefix}_equivalised_net_income"
+            eq_factor_ahc_col = f"{prefix}_equivalisation_factor_ahc"
+            eq_ahc_col = f"{prefix}_equivalised_net_income_ahc"
+
+            if net_col not in hh.columns:
+                continue
+
+            hh[net_ahc_col] = hh[net_col].fillna(0.0) - housing_costs
+
+            if eq_factor_col in hh.columns:
+                eq_factor = hh[eq_factor_col].fillna(1.0).clip(lower=1e-9)
+                hh[eq_col] = hh[net_col].fillna(0.0) / eq_factor
+            elif eq_col not in hh.columns:
+                hh[eq_col] = hh[net_col].fillna(0.0)
+
+            if eq_factor_ahc_col in hh.columns:
+                eq_factor_ahc = hh[eq_factor_ahc_col].fillna(1.0).clip(lower=1e-9)
+                hh[eq_ahc_col] = hh[net_ahc_col].fillna(0.0) / eq_factor_ahc
+            elif eq_ahc_col not in hh.columns:
+                hh[eq_ahc_col] = hh[net_ahc_col].fillna(0.0)
+
+        return hh
+
+    households = refresh_household_hbai_columns(households)
+
     person_counts = persons.groupby("household_id").size() if "household_id" in persons.columns else pd.Series(dtype=float)
 
     def hbai_for(prefix: str) -> HbaiIncomes:
